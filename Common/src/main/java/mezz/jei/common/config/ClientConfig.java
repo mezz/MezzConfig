@@ -43,13 +43,13 @@ public final class ClientConfig implements IClientConfig {
 
 	// recipes gui
 	private final ConfigValue<Boolean> ingredientsSummaryEnabled;
+	private final Supplier<Boolean> showTagRecipesEnabled;
 
 	// advanced
 	private final Supplier<Boolean> lowMemorySlowSearchEnabled;
 	private final Supplier<Boolean> catchRenderErrorsEnabled;
 	private final Supplier<Boolean> lookupFluidContentsEnabled;
 	private final Supplier<Boolean> lookupBlockTagsEnabled;
-	private final Supplier<Boolean> showTagRecipesEnabled;
 	private final Supplier<Boolean> showCreativeTabNamesEnabled;
 
 	// input
@@ -83,7 +83,9 @@ public final class ClientConfig implements IClientConfig {
 		giveMode = cheating.addEnum("giveMode", GiveMode.defaultGiveMode);
 		cheatToHotbarUsingHotkeysEnabled = cheating.addBoolean("cheatToHotbarUsingHotkeysEnabled", false);
 		showHiddenIngredients = cheating.addBoolean("showHiddenIngredients", false);
-		showTagRecipesEnabled = cheating.addBoolean("showTagRecipesEnabled", isDev);
+
+		IConfigCategoryBuilder recipes = schema.addCategory("recipes");
+		showTagRecipesEnabled = recipes.addBoolean("showTagRecipesEnabled", true);
 
 		IConfigCategoryBuilder bookmarks = schema.addCategory("bookmarks");
 		addBookmarksToFrontEnabled = bookmarks.addBoolean("addBookmarksToFrontEnabled", false);
@@ -93,7 +95,7 @@ public final class ClientConfig implements IClientConfig {
 		bookmarkTooltipFeatures = tooltips.addList(
 			"bookmarkTooltipFeatures",
 			BookmarkTooltipFeature.DEFAULT_BOOKMARK_TOOLTIP_FEATURES,
-			new ListSerializer<>(new EnumSerializer<>(BookmarkTooltipFeature.class))
+			ListSerializer.flagSet(new EnumSerializer<>(BookmarkTooltipFeature.class))
 		);
 		holdShiftToShowBookmarkTooltipFeaturesEnabled = tooltips.addBoolean("holdShiftToShowBookmarkTooltipFeatures", true);
 		showCreativeTabNamesEnabled = tooltips.addBoolean("showCreativeTabNamesEnabled", false);
@@ -152,12 +154,12 @@ public final class ClientConfig implements IClientConfig {
 		ingredientSorterStages = sorting.addList(
 			"ingredientSortStages",
 			IngredientSortStage.defaultStages,
-			new ListSerializer<>(new EnumSerializer<>(IngredientSortStage.class))
+			ListSerializer.ordered(new EnumSerializer<>(IngredientSortStage.class))
 		);
 		recipeSorterStages = sorting.addList(
 			"recipeSorterStages",
 			RecipeSorterStage.defaultStages,
-			new ListSerializer<>(new EnumSerializer<>(RecipeSorterStage.class))
+			ListSerializer.flagSet(new EnumSerializer<>(RecipeSorterStage.class))
 		);
 	}
 

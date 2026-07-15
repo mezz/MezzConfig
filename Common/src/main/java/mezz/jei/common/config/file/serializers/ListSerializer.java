@@ -12,9 +12,28 @@ import java.util.stream.Collectors;
 
 public class ListSerializer<T> implements IJeiConfigListValueSerializer<T> {
 	private final IJeiConfigValueSerializer<T> valueSerializer;
+	private final boolean orderSensitive;
+	private final boolean flagSet;
 
 	public ListSerializer(IJeiConfigValueSerializer<T> valueSerializer) {
+		this(valueSerializer, false, false);
+	}
+
+	private ListSerializer(IJeiConfigValueSerializer<T> valueSerializer, boolean orderSensitive, boolean flagSet) {
+		if (orderSensitive && flagSet) {
+			throw new IllegalArgumentException("A list cannot be both order-sensitive and a flag set");
+		}
 		this.valueSerializer = valueSerializer;
+		this.orderSensitive = orderSensitive;
+		this.flagSet = flagSet;
+	}
+
+	public static <T> ListSerializer<T> ordered(IJeiConfigValueSerializer<T> valueSerializer) {
+		return new ListSerializer<>(valueSerializer, true, false);
+	}
+
+	public static <T> ListSerializer<T> flagSet(IJeiConfigValueSerializer<T> valueSerializer) {
+		return new ListSerializer<>(valueSerializer, false, true);
 	}
 
 	@Override
@@ -66,6 +85,16 @@ public class ListSerializer<T> implements IJeiConfigListValueSerializer<T> {
 	@Override
 	public IJeiConfigValueSerializer<T> getListValueSerializer() {
 		return valueSerializer;
+	}
+
+	@Override
+	public boolean isOrderSensitive() {
+		return orderSensitive;
+	}
+
+	@Override
+	public boolean isFlagSet() {
+		return flagSet;
 	}
 
 	@Override
