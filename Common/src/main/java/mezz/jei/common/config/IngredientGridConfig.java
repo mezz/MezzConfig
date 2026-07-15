@@ -2,10 +2,11 @@ package mezz.jei.common.config;
 
 import mezz.jei.api.gui.placement.HorizontalAlignment;
 import mezz.jei.api.gui.placement.VerticalAlignment;
+import mezz.jei.api.runtime.config.ConfigValueUpdateType;
 import mezz.jei.common.config.file.ConfigValue;
-import mezz.jei.common.util.NavigationVisibility;
 import mezz.jei.common.config.file.IConfigCategoryBuilder;
 import mezz.jei.common.config.file.IConfigSchemaBuilder;
+import mezz.jei.common.util.NavigationVisibility;
 
 public class IngredientGridConfig implements IIngredientGridConfig {
 	private static final int minNumRows = 1;
@@ -33,18 +34,20 @@ public class IngredientGridConfig implements IIngredientGridConfig {
 			"maxRows",
 			defaultNumRows,
 			minNumRows,
-			largestNumRows
+			largestNumRows,
+			ConfigValueUpdateType.IMMEDIATE
 		);
 		maxColumns = category.addInteger(
 			"maxColumns",
 			defaultNumColumns,
 			minNumColumns,
-			largestNumColumns
+			largestNumColumns,
+			ConfigValueUpdateType.IMMEDIATE
 		);
-		horizontalAlignment = category.addEnum("horizontalAlignment", defaultHorizontalAlignment);
-		verticalAlignment = category.addEnum("verticalAlignment", defaultVerticalAlignment);
-		buttonNavigationVisibility = category.addEnum("buttonNavigationVisibility", defaultButtonNavigationVisibility);
-		drawBackground = category.addBoolean("drawBackground", defaultDrawBackground);
+		horizontalAlignment = category.addEnum("horizontalAlignment", defaultHorizontalAlignment, ConfigValueUpdateType.IMMEDIATE);
+		verticalAlignment = category.addEnum("verticalAlignment", defaultVerticalAlignment, ConfigValueUpdateType.IMMEDIATE);
+		buttonNavigationVisibility = category.addEnum("buttonNavigationVisibility", defaultButtonNavigationVisibility, ConfigValueUpdateType.IMMEDIATE);
+		drawBackground = category.addBoolean("drawBackground", defaultDrawBackground, ConfigValueUpdateType.IMMEDIATE);
 	}
 
 	@Override

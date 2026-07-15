@@ -1,5 +1,7 @@
 package mezz.jei.common.config.file;
 
+import mezz.jei.api.runtime.config.ConfigValueUpdateType;
+import mezz.jei.api.runtime.config.IJeiConfigValue;
 import mezz.jei.common.config.ConfigManager;
 import mezz.jei.common.util.DeduplicatingRunner;
 import net.minecraft.locale.Language;
@@ -11,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -48,6 +51,73 @@ public class ConfigSchema implements IConfigSchema {
 
 	private void onFileChanged() {
 		needsLoad.set(true);
+	}
+
+	@Override
+	public ConfigValueUpdateType getUpdateType(List<ConfigValueChange<?>> changes) {
+		ConfigValueUpdateType updateType = ConfigValueUpdateType.IMMEDIATE;
+		for (ConfigValueChange<?> change : changes) {
+			updateType = max(updateType, change.configValue().getUpdateType());
+		}
+		return updateType;
+	}
+
+	@Override
+	public ConfigValueUpdateType applyChanges(List<ConfigValueChange<?>> changes) {
+		ConfigValueUpdateType updateType = ConfigValueUpdateType.IMMEDIATE;
+		List<ConfigValue<?>> changedValues = new ArrayList<>();
+		for (ConfigValueChange<?> change : changes) {
+			if (isInternalConfigValue(change) && applyInternalChange(change, changedValues)) {
+				updateType = max(updateType, change.configValue().getUpdateType());
+			}
+		}
+		for (ConfigValueChange<?> change : changes) {
+			if (!isInternalConfigValue(change) && applyExternalChange(change)) {
+				updateType = max(updateType, change.configValue().getUpdateType());
+			}
+		}
+		if (!changedValues.isEmpty()) {
+			markDirty();
+			changedValues.forEach(ConfigValue::notifyListeners);
+		}
+		return updateType;
+	}
+
+	private static ConfigValueUpdateType max(ConfigValueUpdateType first, ConfigValueUpdateType second) {
+		if (first == ConfigValueUpdateType.RESTART_JEI || second == ConfigValueUpdateType.RESTART_JEI) {
+			return ConfigValueUpdateType.RESTART_JEI;
+		}
+		if (first == ConfigValueUpdateType.ON_APPLY || second == ConfigValueUpdateType.ON_APPLY) {
+			return ConfigValueUpdateType.ON_APPLY;
+		}
+		return ConfigValueUpdateType.IMMEDIATE;
+	}
+
+	private static boolean isInternalConfigValue(ConfigValueChange<?> change) {
+		return change.configValue() instanceof ConfigValue<?>;
+	}
+
+	private static <T> boolean applyInternalChange(ConfigValueChange<T> change, List<ConfigValue<?>> changedValues) {
+		return applyInternalChange(change.configValue(), change.value(), changedValues);
+	}
+
+	private static <T> boolean applyExternalChange(ConfigValueChange<T> change) {
+		IJeiConfigValue<T> configValue = change.configValue();
+		return configValue.set(change.value());
+	}
+
+	@SuppressWarnings("unchecked")
+	private static <T> boolean applyInternalChange(
+		IJeiConfigValue<T> configValue,
+		T value,
+		List<ConfigValue<?>> changedValues
+	) {
+		ConfigValue<T> internalConfigValue = (ConfigValue<T>) configValue;
+		if (internalConfigValue.setWithoutNotifying(value)) {
+			changedValues.add(internalConfigValue);
+			return true;
+		}
+		return false;
 	}
 
 	@Override

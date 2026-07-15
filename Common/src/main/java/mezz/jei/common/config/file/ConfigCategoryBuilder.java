@@ -1,8 +1,9 @@
 package mezz.jei.common.config.file;
 
+import mezz.jei.api.runtime.config.ConfigValueUpdateType;
 import mezz.jei.api.runtime.config.IJeiConfigValueSerializer;
-import mezz.jei.common.config.file.serializers.EnumSerializer;
 import mezz.jei.common.config.file.serializers.BooleanSerializer;
+import mezz.jei.common.config.file.serializers.EnumSerializer;
 import mezz.jei.common.config.file.serializers.IntegerSerializer;
 
 import java.util.ArrayList;
@@ -28,30 +29,30 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 	}
 
 	@Override
-	public <T> ConfigValue<T> addValue(String name, T defaultValue, IJeiConfigValueSerializer<T> serializer) {
-		return addValue(new ConfigValue<>(localizationPath, name, defaultValue, serializer));
+	public <T> ConfigValue<T> addValue(String name, T defaultValue, IJeiConfigValueSerializer<T> serializer, ConfigValueUpdateType updateType) {
+		return addValue(new ConfigValue<>(localizationPath, name, defaultValue, serializer, updateType));
 	}
 
 	@Override
-	public ConfigValue<Boolean> addBoolean(String name, boolean defaultValue) {
-		return addValue(name, defaultValue, BooleanSerializer.INSTANCE);
+	public ConfigValue<Boolean> addBoolean(String name, boolean defaultValue, ConfigValueUpdateType updateType) {
+		return addValue(name, defaultValue, BooleanSerializer.INSTANCE, updateType);
 	}
 
 	@Override
-	public <T extends Enum<T>> ConfigValue<T> addEnum(String name, T defaultValue) {
+	public <T extends Enum<T>> ConfigValue<T> addEnum(String name, T defaultValue, ConfigValueUpdateType updateType) {
 		EnumSerializer<T> serializer = new EnumSerializer<>(defaultValue.getDeclaringClass());
-		return addValue(name, defaultValue, serializer);
+		return addValue(name, defaultValue, serializer, updateType);
 	}
 
 	@Override
-	public ConfigValue<Integer> addInteger(String name, int defaultValue, int minValue, int maxValue) {
+	public ConfigValue<Integer> addInteger(String name, int defaultValue, int minValue, int maxValue, ConfigValueUpdateType updateType) {
 		IntegerSerializer serializer = new IntegerSerializer(minValue, maxValue);
-		return addValue(name, defaultValue, serializer);
+		return addValue(name, defaultValue, serializer, updateType);
 	}
 
 	@Override
-	public <T> ConfigValue<List<T>> addList(String name, List<T> defaultValue, IJeiConfigValueSerializer<List<T>> listSerializer) {
-		return addValue(name, defaultValue, listSerializer);
+	public <T> ConfigValue<List<T>> addList(String name, List<T> defaultValue, IJeiConfigValueSerializer<List<T>> listSerializer, ConfigValueUpdateType updateType) {
+		return addValue(name, defaultValue, listSerializer, updateType);
 	}
 
 	public ConfigCategory build(ConfigSchema schema) {

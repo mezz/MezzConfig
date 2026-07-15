@@ -1,6 +1,7 @@
 package mezz.jei.common.config;
 
 import com.google.common.base.Preconditions;
+import mezz.jei.api.runtime.config.ConfigValueUpdateType;
 import mezz.jei.common.config.file.ConfigValue;
 import mezz.jei.common.config.file.IConfigCategoryBuilder;
 import mezz.jei.common.config.file.IConfigSchemaBuilder;
@@ -73,96 +74,106 @@ public final class ClientConfig implements IClientConfig {
 		searchBarPosition = appearance.addValue(
 			"centerSearch",
 			SearchBarPosition.fromCentered(defaultCenterSearchBar),
-			enumWithLegacyBooleanAliases(SearchBarPosition.class, SearchBarPosition.STANDARD, SearchBarPosition.CENTERED)
+			enumWithLegacyBooleanAliases(SearchBarPosition.class, SearchBarPosition.STANDARD, SearchBarPosition.CENTERED),
+			ConfigValueUpdateType.IMMEDIATE
 		);
 		maxRecipeGuiHeight = appearance.addInteger(
 			"recipeGuiHeight",
 			defaultRecipeGuiHeight,
 			minRecipeGuiHeight,
-			Integer.MAX_VALUE
+			Integer.MAX_VALUE,
+			ConfigValueUpdateType.IMMEDIATE
 		);
-		toastReflowEnabled = appearance.addBoolean("toastReflowEnabled", true);
+		toastReflowEnabled = appearance.addBoolean("toastReflowEnabled", true, ConfigValueUpdateType.IMMEDIATE);
 
 		IConfigCategoryBuilder cheating = schema.addCategory("cheating");
-		giveMode = cheating.addEnum("giveMode", GiveMode.defaultGiveMode);
-		cheatToHotbarUsingHotkeysEnabled = cheating.addBoolean("cheatToHotbarUsingHotkeysEnabled", false);
-		showHiddenIngredients = cheating.addBoolean("showHiddenIngredients", false);
+		giveMode = cheating.addEnum("giveMode", GiveMode.defaultGiveMode, ConfigValueUpdateType.IMMEDIATE);
+		cheatToHotbarUsingHotkeysEnabled = cheating.addBoolean("cheatToHotbarUsingHotkeysEnabled", false, ConfigValueUpdateType.IMMEDIATE);
+		showHiddenIngredients = cheating.addBoolean("showHiddenIngredients", false, ConfigValueUpdateType.RESTART_JEI);
 
 		IConfigCategoryBuilder recipes = schema.addCategory("recipes");
-		showTagRecipesEnabled = recipes.addBoolean("showTagRecipesEnabled", true);
+		showTagRecipesEnabled = recipes.addBoolean("showTagRecipesEnabled", true, ConfigValueUpdateType.RESTART_JEI);
 
 		IConfigCategoryBuilder bookmarks = schema.addCategory("bookmarks");
 		bookmarkAddPosition = bookmarks.addValue(
 			"addBookmarksToFrontEnabled",
 			BookmarkAddPosition.END,
-			enumWithLegacyBooleanAliases(BookmarkAddPosition.class, BookmarkAddPosition.END, BookmarkAddPosition.FRONT)
+			enumWithLegacyBooleanAliases(BookmarkAddPosition.class, BookmarkAddPosition.END, BookmarkAddPosition.FRONT),
+			ConfigValueUpdateType.IMMEDIATE
 		);
-		dragToRearrangeBookmarksEnabled = bookmarks.addBoolean("dragToRearrangeBookmarksEnabled", true);
+		dragToRearrangeBookmarksEnabled = bookmarks.addBoolean("dragToRearrangeBookmarksEnabled", true, ConfigValueUpdateType.IMMEDIATE);
 
 		IConfigCategoryBuilder tooltips = schema.addCategory("tooltips");
-		bookmarkTooltipPreviewEnabled = tooltips.addBoolean("bookmarkTooltipPreview", true);
-		bookmarkTooltipIngredientsEnabled = tooltips.addBoolean("bookmarkTooltipIngredients", false);
-		holdShiftToShowBookmarkTooltipFeaturesEnabled = tooltips.addBoolean("holdShiftToShowBookmarkTooltipFeatures", true);
-		showCreativeTabNamesEnabled = tooltips.addBoolean("showCreativeTabNamesEnabled", false);
-		tagContentTooltipEnabled = tooltips.addBoolean("tagContentTooltipEnabled", true);
-		hideSingleTagContentTooltipEnabled = tooltips.addBoolean("hideSingleTagContentTooltipEnabled", true);
-		ingredientsSummaryEnabled = tooltips.addBoolean("enableRecipesGuiIngredientsSummary", false);
+		bookmarkTooltipPreviewEnabled = tooltips.addBoolean("bookmarkTooltipPreview", true, ConfigValueUpdateType.IMMEDIATE);
+		bookmarkTooltipIngredientsEnabled = tooltips.addBoolean("bookmarkTooltipIngredients", false, ConfigValueUpdateType.IMMEDIATE);
+		holdShiftToShowBookmarkTooltipFeaturesEnabled = tooltips.addBoolean("holdShiftToShowBookmarkTooltipFeatures", true, ConfigValueUpdateType.IMMEDIATE);
+		showCreativeTabNamesEnabled = tooltips.addBoolean("showCreativeTabNamesEnabled", false, ConfigValueUpdateType.IMMEDIATE);
+		tagContentTooltipEnabled = tooltips.addBoolean("tagContentTooltipEnabled", true, ConfigValueUpdateType.IMMEDIATE);
+		hideSingleTagContentTooltipEnabled = tooltips.addBoolean("hideSingleTagContentTooltipEnabled", true, ConfigValueUpdateType.IMMEDIATE);
+		ingredientsSummaryEnabled = tooltips.addBoolean("enableRecipesGuiIngredientsSummary", false, ConfigValueUpdateType.IMMEDIATE);
 
 		IConfigCategoryBuilder performance = schema.addCategory("performance");
-		lowMemorySlowSearchEnabled = performance.addBoolean("lowMemorySlowSearchEnabled", false);
+		lowMemorySlowSearchEnabled = performance.addBoolean("lowMemorySlowSearchEnabled", false, ConfigValueUpdateType.ON_APPLY);
 
 		IConfigCategoryBuilder lookups = schema.addCategory("lookups");
-		lookupFluidContentsEnabled = lookups.addBoolean("lookupFluidContentsEnabled", false);
-		lookupBlockTagsEnabled = lookups.addBoolean("lookupBlockTagsEnabled", true);
+		lookupFluidContentsEnabled = lookups.addBoolean("lookupFluidContentsEnabled", false, ConfigValueUpdateType.IMMEDIATE);
+		lookupBlockTagsEnabled = lookups.addBoolean("lookupBlockTagsEnabled", true, ConfigValueUpdateType.IMMEDIATE);
 
 		IConfigCategoryBuilder lookupHistory = schema.addCategory("lookupHistory");
 
 		lookupHistoryEnabled = lookupHistory.addBoolean(
 			"enabled",
-			false
+			false,
+			ConfigValueUpdateType.IMMEDIATE
 		);
 		maxLookupHistoryRows = lookupHistory.addInteger(
 			"maxRows",
 			2,
 			1,
-			7
+			7,
+			ConfigValueUpdateType.IMMEDIATE
 		);
 		maxLookupHistoryIngredients = lookupHistory.addInteger(
 			"maxIngredients",
 			100,
 			10,
-			1_000
+			1_000,
+			ConfigValueUpdateType.IMMEDIATE
 		);
 		lookupHistoryDisplaySide = lookupHistory.addEnum(
 			"displaySide",
-			HistoryDisplaySide.LEFT
+			HistoryDisplaySide.LEFT,
+			ConfigValueUpdateType.IMMEDIATE
 		);
 
 		IConfigCategoryBuilder advanced = schema.addCategory("advanced");
-		catchRenderErrorsEnabled = advanced.addBoolean("catchRenderErrorsEnabled", !isDev);
+		catchRenderErrorsEnabled = advanced.addBoolean("catchRenderErrorsEnabled", !isDev, ConfigValueUpdateType.IMMEDIATE);
 
 		IConfigCategoryBuilder input = schema.addCategory("input");
 		dragDelayMs = input.addInteger(
 			"dragDelayInMilliseconds",
 			150,
 			0,
-			1000
+			1000,
+			ConfigValueUpdateType.IMMEDIATE
 		);
 		smoothScrollRate = input.addInteger(
 			"smoothScrollRate",
 			9,
 			1,
-			50
+			50,
+			ConfigValueUpdateType.IMMEDIATE
 		);
 
 		IConfigCategoryBuilder sorting = schema.addCategory("sorting");
 		ingredientSorterStages = sorting.addList(
 			"ingredientSortStages",
 			IngredientSortStage.defaultStages,
-			new ListSerializer<>(new EnumSerializer<>(IngredientSortStage.class))
+			new ListSerializer<>(new EnumSerializer<>(IngredientSortStage.class)),
+			ConfigValueUpdateType.ON_APPLY
 		);
-		recipeSortingBookmarksEnabled = sorting.addBoolean("recipeSortingBookmarks", true);
-		recipeSortingCraftableEnabled = sorting.addBoolean("recipeSortingCraftable", true);
+		recipeSortingBookmarksEnabled = sorting.addBoolean("recipeSortingBookmarks", true, ConfigValueUpdateType.IMMEDIATE);
+		recipeSortingCraftableEnabled = sorting.addBoolean("recipeSortingCraftable", true, ConfigValueUpdateType.IMMEDIATE);
 	}
 
 	/**

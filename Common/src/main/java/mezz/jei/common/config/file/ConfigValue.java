@@ -1,5 +1,6 @@
 package mezz.jei.common.config.file;
 
+import mezz.jei.api.runtime.config.ConfigValueUpdateType;
 import mezz.jei.api.runtime.config.IJeiConfigValue;
 import mezz.jei.api.runtime.config.IJeiConfigValueSerializer;
 import net.minecraft.network.chat.Component;
@@ -20,6 +21,7 @@ public class ConfigValue<T> implements IJeiConfigValue<T>, Supplier<T> {
 	private final Component description;
 	private final T defaultValue;
 	private final IJeiConfigValueSerializer<T> serializer;
+	private final ConfigValueUpdateType updateType;
 	private @Nullable List<Consumer<T>> listeners;
 	private volatile T currentValue;
 	@Nullable
@@ -29,7 +31,8 @@ public class ConfigValue<T> implements IJeiConfigValue<T>, Supplier<T> {
 		String localizationPath,
 		String name,
 		T defaultValue,
-		IJeiConfigValueSerializer<T> serializer
+		IJeiConfigValueSerializer<T> serializer,
+		ConfigValueUpdateType updateType
 	) {
 		this.name = name;
 
@@ -40,6 +43,7 @@ public class ConfigValue<T> implements IJeiConfigValue<T>, Supplier<T> {
 		this.defaultValue = defaultValue;
 		this.currentValue = defaultValue;
 		this.serializer = serializer;
+		this.updateType = updateType;
 	}
 
 	public void setSchema(IConfigSchema schema) {
@@ -90,6 +94,11 @@ public class ConfigValue<T> implements IJeiConfigValue<T>, Supplier<T> {
 		return serializer;
 	}
 
+	@Override
+	public ConfigValueUpdateType getUpdateType() {
+		return updateType;
+	}
+
 	public List<String> setFromSerializedValue(String value) {
 		IJeiConfigValueSerializer.IDeserializeResult<T> deserializeResult = serializer.deserialize(value);
 		deserializeResult.getResult()
@@ -106,21 +115,36 @@ public class ConfigValue<T> implements IJeiConfigValue<T>, Supplier<T> {
 
 	@Override
 	public boolean set(T value) {
+		if (setWithoutNotifying(value)) {
+			notifyListeners();
+			markDirty();
+			return true;
+		}
+		return false;
+	}
+
+	boolean setWithoutNotifying(T value) {
 		if (!serializer.isValid(value)) {
 			LOGGER.error("Tried to set invalid value : {}\n{}", value,  serializer.getValidValuesDescription());
 			return false;
 		}
 		if (!currentValue.equals(value)) {
 			currentValue = value;
-			if (listeners != null) {
-				listeners.forEach(listener -> listener.accept(currentValue));
-			}
-			if (schema != null) {
-				schema.markDirty();
-			}
 			return true;
 		}
 		return false;
+	}
+
+	void notifyListeners() {
+		if (listeners != null) {
+			listeners.forEach(listener -> listener.accept(currentValue));
+		}
+	}
+
+	void markDirty() {
+		if (schema != null) {
+			schema.markDirty();
+		}
 	}
 
 	@Override

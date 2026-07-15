@@ -78,6 +78,15 @@ public interface IJeiConfigValue<T> {
 	}
 
 	/**
+	 * Get the kind of update needed for this config value to take effect.
+	 *
+	 * @since 19.39.0
+	 */
+	default ConfigValueUpdateType getUpdateType() {
+		return ConfigValueUpdateType.IMMEDIATE;
+	}
+
+	/**
 	 * Get the helper for serializing values to and from Strings, and validating values.
 	 *
 	 * @since 12.1.1

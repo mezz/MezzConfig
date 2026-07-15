@@ -1,5 +1,6 @@
 package mezz.jei.common.config;
 
+import mezz.jei.api.runtime.config.ConfigValueUpdateType;
 import mezz.jei.common.config.file.IConfigCategoryBuilder;
 import mezz.jei.common.config.file.IConfigSchemaBuilder;
 import org.jetbrains.annotations.Nullable;
@@ -24,13 +25,13 @@ public final class DebugConfig {
 
 	private DebugConfig(IConfigSchemaBuilder schema) {
 		IConfigCategoryBuilder advanced = schema.addCategory("debug");
-		debugModeEnabled = advanced.addBoolean("debugMode", false);
-		debugGuisEnabled = advanced.addBoolean("debugGuis", false);
-		debugInputsEnabled = advanced.addBoolean("debugInputs", false);
-		debugInfoTooltipsEnabled = advanced.addBoolean("debugInfoTooltipsEnabled", false);
-		crashingTestIngredientsEnabled = advanced.addBoolean("crashingTestItemsEnabled", false);
-		crashingTestRecipesEnabled =  advanced.addBoolean("crashingTestRecipesEnabled", false);
-		logSuffixTreeStats = advanced.addBoolean("logSuffixTreeStats", false);
+		debugModeEnabled = advanced.addBoolean("debugMode", false, ConfigValueUpdateType.RESTART_JEI);
+		debugGuisEnabled = advanced.addBoolean("debugGuis", false, ConfigValueUpdateType.IMMEDIATE);
+		debugInputsEnabled = advanced.addBoolean("debugInputs", false, ConfigValueUpdateType.IMMEDIATE);
+		debugInfoTooltipsEnabled = advanced.addBoolean("debugInfoTooltipsEnabled", false, ConfigValueUpdateType.IMMEDIATE);
+		crashingTestIngredientsEnabled = advanced.addBoolean("crashingTestItemsEnabled", false, ConfigValueUpdateType.RESTART_JEI);
+		crashingTestRecipesEnabled =  advanced.addBoolean("crashingTestRecipesEnabled", false, ConfigValueUpdateType.RESTART_JEI);
+		logSuffixTreeStats = advanced.addBoolean("logSuffixTreeStats", false, ConfigValueUpdateType.RESTART_JEI);
 	}
 
 	public static boolean isDebugModeEnabled() {

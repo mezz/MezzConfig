@@ -1,5 +1,6 @@
 package mezz.jei.common.config;
 
+import mezz.jei.api.runtime.config.ConfigValueUpdateType;
 import mezz.jei.common.config.file.ConfigValue;
 import mezz.jei.common.config.file.IConfigCategoryBuilder;
 import mezz.jei.common.config.file.IConfigSchemaBuilder;
@@ -20,17 +21,17 @@ public class IngredientFilterConfig implements IIngredientFilterConfig {
 
 	public IngredientFilterConfig(IConfigSchemaBuilder builder) {
 		IConfigCategoryBuilder search = builder.addCategory("search");
-		modNameSearchMode = search.addEnum("modNameSearchMode", SearchMode.REQUIRE_PREFIX);
-		tagSearchMode = search.addEnum("tagSearchMode", SearchMode.REQUIRE_PREFIX);
-		tooltipSearchMode = search.addEnum("tooltipSearchMode", SearchMode.ENABLED);
-		colorSearchMode = search.addEnum("colorSearchMode", SearchMode.DISABLED);
-		resourceLocationSearchMode = search.addEnum("resourceLocationSearchMode", SearchMode.DISABLED);
-		creativeTabSearchMode = search.addEnum("creativeTabSearchMode", SearchMode.DISABLED);
-		searchAdvancedTooltips = search.addBoolean("searchAdvancedTooltips", false);
-		searchModIds = search.addBoolean("searchModIds", true);
-		searchModAliases = search.addBoolean("searchModAliases", true);
-		searchShortModNames = search.addBoolean("searchShortModNames", false);
-		searchIngredientAliases = search.addBoolean("searchIngredientAliases", true);
+		modNameSearchMode = search.addEnum("modNameSearchMode", SearchMode.REQUIRE_PREFIX, ConfigValueUpdateType.ON_APPLY);
+		tagSearchMode = search.addEnum("tagSearchMode", SearchMode.REQUIRE_PREFIX, ConfigValueUpdateType.ON_APPLY);
+		tooltipSearchMode = search.addEnum("tooltipSearchMode", SearchMode.ENABLED, ConfigValueUpdateType.ON_APPLY);
+		colorSearchMode = search.addEnum("colorSearchMode", SearchMode.DISABLED, ConfigValueUpdateType.ON_APPLY);
+		resourceLocationSearchMode = search.addEnum("resourceLocationSearchMode", SearchMode.DISABLED, ConfigValueUpdateType.ON_APPLY);
+		creativeTabSearchMode = search.addEnum("creativeTabSearchMode", SearchMode.DISABLED, ConfigValueUpdateType.ON_APPLY);
+		searchAdvancedTooltips = search.addBoolean("searchAdvancedTooltips", false, ConfigValueUpdateType.ON_APPLY);
+		searchModIds = search.addBoolean("searchModIds", true, ConfigValueUpdateType.ON_APPLY);
+		searchModAliases = search.addBoolean("searchModAliases", true, ConfigValueUpdateType.RESTART_JEI);
+		searchShortModNames = search.addBoolean("searchShortModNames", false, ConfigValueUpdateType.ON_APPLY);
+		searchIngredientAliases = search.addBoolean("searchIngredientAliases", true, ConfigValueUpdateType.RESTART_JEI);
 	}
 
 	@Override
