@@ -6,12 +6,15 @@ import mezz.jei.common.config.file.IConfigCategoryBuilder;
 import mezz.jei.common.config.file.IConfigListener;
 import mezz.jei.common.config.file.IConfigSchemaBuilder;
 import mezz.jei.common.config.file.serializers.EnumSerializer;
+import mezz.jei.common.config.file.serializers.EnumSerializerWithAliases;
 import mezz.jei.common.config.file.serializers.ListSerializer;
 import mezz.jei.common.platform.Services;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -20,7 +23,7 @@ public final class ClientConfig implements IClientConfig {
 	private static IClientConfig instance;
 
 	// appearance
-	private final Supplier<Boolean> centerSearchBarEnabled;
+	private final Supplier<SearchBarPosition> searchBarPosition;
 	private final Supplier<Integer> maxRecipeGuiHeight;
 	private final Supplier<Boolean> toastReflowEnabled;
 
@@ -30,8 +33,9 @@ public final class ClientConfig implements IClientConfig {
 	private final Supplier<Boolean> showHiddenIngredients;
 
 	// bookmarks
-	private final Supplier<Boolean> addBookmarksToFrontEnabled;
-	private final Supplier<List<BookmarkTooltipFeature>> bookmarkTooltipFeatures;
+	private final Supplier<BookmarkAddPosition> bookmarkAddPosition;
+	private final Supplier<Boolean> bookmarkTooltipPreviewEnabled;
+	private final Supplier<Boolean> bookmarkTooltipIngredientsEnabled;
 	private final Supplier<Boolean> holdShiftToShowBookmarkTooltipFeaturesEnabled;
 	private final Supplier<Boolean> dragToRearrangeBookmarksEnabled;
 
@@ -58,7 +62,8 @@ public final class ClientConfig implements IClientConfig {
 
 	// sorting
 	private final Supplier<List<IngredientSortStage>> ingredientSorterStages;
-	private final ConfigValue<List<RecipeSorterStage>> recipeSorterStages;
+	private final ConfigValue<Boolean> recipeSortingBookmarksEnabled;
+	private final ConfigValue<Boolean> recipeSortingCraftableEnabled;
 
 	// tags
 	private final Supplier<Boolean> tagContentTooltipEnabled;
@@ -70,7 +75,11 @@ public final class ClientConfig implements IClientConfig {
 		boolean isDev = Services.PLATFORM.getModHelper().isInDev();
 
 		IConfigCategoryBuilder appearance = schema.addCategory("appearance");
-		centerSearchBarEnabled = appearance.addBoolean("centerSearch",			defaultCenterSearchBar		);
+		searchBarPosition = appearance.addValue(
+			"centerSearch",
+			SearchBarPosition.fromCentered(defaultCenterSearchBar),
+			enumWithLegacyBooleanAliases(SearchBarPosition.class, SearchBarPosition.STANDARD, SearchBarPosition.CENTERED)
+		);
 		maxRecipeGuiHeight = appearance.addInteger(
 			"recipeGuiHeight",
 			defaultRecipeGuiHeight,
@@ -88,15 +97,16 @@ public final class ClientConfig implements IClientConfig {
 		showTagRecipesEnabled = recipes.addBoolean("showTagRecipesEnabled", true);
 
 		IConfigCategoryBuilder bookmarks = schema.addCategory("bookmarks");
-		addBookmarksToFrontEnabled = bookmarks.addBoolean("addBookmarksToFrontEnabled", false);
+		bookmarkAddPosition = bookmarks.addValue(
+			"addBookmarksToFrontEnabled",
+			BookmarkAddPosition.END,
+			enumWithLegacyBooleanAliases(BookmarkAddPosition.class, BookmarkAddPosition.END, BookmarkAddPosition.FRONT)
+		);
 		dragToRearrangeBookmarksEnabled = bookmarks.addBoolean("dragToRearrangeBookmarksEnabled", true);
 
 		IConfigCategoryBuilder tooltips = schema.addCategory("tooltips");
-		bookmarkTooltipFeatures = tooltips.addList(
-			"bookmarkTooltipFeatures",
-			BookmarkTooltipFeature.DEFAULT_BOOKMARK_TOOLTIP_FEATURES,
-			ListSerializer.flagSet(new EnumSerializer<>(BookmarkTooltipFeature.class))
-		);
+		bookmarkTooltipPreviewEnabled = tooltips.addBoolean("bookmarkTooltipPreview", true);
+		bookmarkTooltipIngredientsEnabled = tooltips.addBoolean("bookmarkTooltipIngredients", false);
 		holdShiftToShowBookmarkTooltipFeaturesEnabled = tooltips.addBoolean("holdShiftToShowBookmarkTooltipFeatures", true);
 		showCreativeTabNamesEnabled = tooltips.addBoolean("showCreativeTabNamesEnabled", false);
 		tagContentTooltipEnabled = tooltips.addBoolean("tagContentTooltipEnabled", true);
@@ -154,13 +164,10 @@ public final class ClientConfig implements IClientConfig {
 		ingredientSorterStages = sorting.addList(
 			"ingredientSortStages",
 			IngredientSortStage.defaultStages,
-			ListSerializer.ordered(new EnumSerializer<>(IngredientSortStage.class))
+			new ListSerializer<>(new EnumSerializer<>(IngredientSortStage.class))
 		);
-		recipeSorterStages = sorting.addList(
-			"recipeSorterStages",
-			RecipeSorterStage.defaultStages,
-			ListSerializer.flagSet(new EnumSerializer<>(RecipeSorterStage.class))
-		);
+		recipeSortingBookmarksEnabled = sorting.addBoolean("recipeSortingBookmarks", true);
+		recipeSortingCraftableEnabled = sorting.addBoolean("recipeSortingCraftable", true);
 	}
 
 	/**
@@ -174,7 +181,7 @@ public final class ClientConfig implements IClientConfig {
 
 	@Override
 	public boolean isCenterSearchBarEnabled() {
-		return centerSearchBarEnabled.get();
+		return searchBarPosition.get().isCentered();
 	}
 
 	@Override
@@ -194,7 +201,7 @@ public final class ClientConfig implements IClientConfig {
 
 	@Override
 	public boolean isAddingBookmarksToFrontEnabled() {
-		return addBookmarksToFrontEnabled.get();
+		return bookmarkAddPosition.get().isFront();
 	}
 
 	@Override
@@ -219,7 +226,14 @@ public final class ClientConfig implements IClientConfig {
 
 	@Override
 	public List<BookmarkTooltipFeature> getBookmarkTooltipFeatures() {
-		return bookmarkTooltipFeatures.get();
+		List<BookmarkTooltipFeature> features = new ArrayList<>(2);
+		if (bookmarkTooltipPreviewEnabled.get()) {
+			features.add(BookmarkTooltipFeature.PREVIEW);
+		}
+		if (bookmarkTooltipIngredientsEnabled.get()) {
+			features.add(BookmarkTooltipFeature.INGREDIENTS);
+		}
+		return List.copyOf(features);
 	}
 
 	@Override
@@ -299,26 +313,30 @@ public final class ClientConfig implements IClientConfig {
 
 	@Override
 	public Set<RecipeSorterStage> getRecipeSorterStages() {
-		return Set.copyOf(recipeSorterStages.getValue());
+		Set<RecipeSorterStage> stages = EnumSet.noneOf(RecipeSorterStage.class);
+		if (recipeSortingBookmarksEnabled.get()) {
+			stages.add(RecipeSorterStage.BOOKMARKED);
+		}
+		if (recipeSortingCraftableEnabled.get()) {
+			stages.add(RecipeSorterStage.CRAFTABLE);
+		}
+		return Set.copyOf(stages);
 	}
 
 	@Override
 	public void enableRecipeSorterStage(RecipeSorterStage stage) {
-		List<RecipeSorterStage> recipeSorterStages = this.recipeSorterStages.get();
-		if (!recipeSorterStages.contains(stage)) {
-			recipeSorterStages = new ArrayList<>(recipeSorterStages);
-			recipeSorterStages.add(stage);
-			this.recipeSorterStages.set(recipeSorterStages);
-		}
+		setRecipeSorterStage(stage, true);
 	}
 
 	@Override
 	public void disableRecipeSorterStage(RecipeSorterStage stage) {
-		List<RecipeSorterStage> recipeSorterStages = this.recipeSorterStages.get();
-		if (recipeSorterStages.contains(stage)) {
-			recipeSorterStages = new ArrayList<>(recipeSorterStages);
-			recipeSorterStages.remove(stage);
-			this.recipeSorterStages.set(recipeSorterStages);
+		setRecipeSorterStage(stage, false);
+	}
+
+	private void setRecipeSorterStage(RecipeSorterStage stage, boolean enabled) {
+		switch (stage) {
+			case BOOKMARKED -> recipeSortingBookmarksEnabled.set(enabled);
+			case CRAFTABLE -> recipeSortingCraftableEnabled.set(enabled);
 		}
 	}
 
@@ -345,5 +363,19 @@ public final class ClientConfig implements IClientConfig {
 	@Override
 	public boolean isToastReflowEnabled() {
 		return toastReflowEnabled.get();
+	}
+
+	private static <T extends Enum<T>> EnumSerializerWithAliases<T> enumWithLegacyBooleanAliases(
+		Class<T> enumClass,
+		T falseValue,
+		T trueValue
+	) {
+		return new EnumSerializerWithAliases<>(
+			enumClass,
+			Map.of(
+				"false", falseValue,
+				"true", trueValue
+			)
+		);
 	}
 }

@@ -28,25 +28,30 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 	}
 
 	@Override
+	public <T> ConfigValue<T> addValue(String name, T defaultValue, IJeiConfigValueSerializer<T> serializer) {
+		return addValue(new ConfigValue<>(localizationPath, name, defaultValue, serializer));
+	}
+
+	@Override
 	public ConfigValue<Boolean> addBoolean(String name, boolean defaultValue) {
-		return addValue(new ConfigValue<>(localizationPath, name, defaultValue, BooleanSerializer.INSTANCE));
+		return addValue(name, defaultValue, BooleanSerializer.INSTANCE);
 	}
 
 	@Override
 	public <T extends Enum<T>> ConfigValue<T> addEnum(String name, T defaultValue) {
 		EnumSerializer<T> serializer = new EnumSerializer<>(defaultValue.getDeclaringClass());
-		return addValue(new ConfigValue<>(localizationPath, name, defaultValue, serializer));
+		return addValue(name, defaultValue, serializer);
 	}
 
 	@Override
 	public ConfigValue<Integer> addInteger(String name, int defaultValue, int minValue, int maxValue) {
 		IntegerSerializer serializer = new IntegerSerializer(minValue, maxValue);
-		return addValue(new ConfigValue<>(localizationPath, name, defaultValue, serializer));
+		return addValue(name, defaultValue, serializer);
 	}
 
 	@Override
 	public <T> ConfigValue<List<T>> addList(String name, List<T> defaultValue, IJeiConfigValueSerializer<List<T>> listSerializer) {
-		return addValue(new ConfigValue<>(localizationPath, name, defaultValue, listSerializer));
+		return addValue(name, defaultValue, listSerializer);
 	}
 
 	public ConfigCategory build(ConfigSchema schema) {

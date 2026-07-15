@@ -14,22 +14,4 @@ public interface IJeiConfigListValueSerializer<T> extends IJeiConfigValueSeriali
 	 * @since 12.1.1
 	 */
 	IJeiConfigValueSerializer<T> getListValueSerializer();
-
-	/**
-	 * Return true when changing the order of this list changes behavior.
-	 *
-	 * @since 19.21.0
-	 */
-	default boolean isOrderSensitive() {
-		return false;
-	}
-
-	/**
-	 * Return true when this list represents enabled values chosen from all valid values.
-	 *
-	 * @since 19.21.0
-	 */
-	default boolean isFlagSet() {
-		return false;
-	}
 }

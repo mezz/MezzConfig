@@ -5,6 +5,7 @@ import mezz.jei.api.runtime.config.IJeiConfigValueSerializer;
 import java.util.List;
 
 public interface IConfigCategoryBuilder {
+	<T> ConfigValue<T> addValue(String path, T defaultValue, IJeiConfigValueSerializer<T> serializer);
 	ConfigValue<Boolean> addBoolean(String path, boolean defaultValue);
 	ConfigValue<Integer> addInteger(String path, int defaultValue, int minValue, int maxValue);
 	<T extends Enum<T>> ConfigValue<T> addEnum(String path, T defaultValue);
