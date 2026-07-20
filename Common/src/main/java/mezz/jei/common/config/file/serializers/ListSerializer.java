@@ -2,6 +2,8 @@ package mezz.jei.common.config.file.serializers;
 
 import mezz.jei.api.runtime.config.IJeiConfigListValueSerializer;
 import mezz.jei.api.runtime.config.IJeiConfigValueSerializer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -71,5 +73,20 @@ public class ListSerializer<T> implements IJeiConfigListValueSerializer<T> {
 	@Override
 	public Optional<Collection<List<T>>> getAllValidValues() {
 		return Optional.empty();
+	}
+
+	@Override
+	public Component getLocalizedValueName(Component configValueName, List<T> values) {
+		if (values.isEmpty()) {
+			return Component.translatable("jei.config.value.list.empty");
+		}
+		MutableComponent result = Component.empty();
+		for (int i = 0; i < values.size(); i++) {
+			if (i > 0) {
+				result.append(Component.literal(", "));
+			}
+			result.append(valueSerializer.getLocalizedValueName(configValueName, values.get(i)));
+		}
+		return result;
 	}
 }

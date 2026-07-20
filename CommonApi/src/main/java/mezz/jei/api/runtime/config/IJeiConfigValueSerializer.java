@@ -1,5 +1,8 @@
 package mezz.jei.api.runtime.config;
 
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -45,6 +48,31 @@ public interface IJeiConfigValueSerializer<T> {
 	 * @since 12.1.1
 	 */
 	Optional<Collection<T>> getAllValidValues();
+
+	/**
+	 * Get the translated name component for a value option serialized by this helper.
+	 *
+	 * @since 19.39.0
+	 */
+	Component getLocalizedValueName(Component configValueName, T value);
+
+	/**
+	 * Get the translated description component for a value option serialized by this helper.
+	 *
+	 * @since 19.39.0
+	 */
+	default Optional<Component> getLocalizedValueDescription(Component configValueName, T value) {
+		return Optional.empty();
+	}
+
+	/**
+	 * Get the sprite icon for a value option serialized by this helper.
+	 *
+	 * @since 19.39.0
+	 */
+	default Optional<ResourceLocation> getValueIcon(T value) {
+		return Optional.empty();
+	}
 
 	/**
 	 * Get the description of what values are valid for this config value.

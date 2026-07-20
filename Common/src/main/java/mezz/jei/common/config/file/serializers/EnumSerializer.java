@@ -1,6 +1,8 @@
 package mezz.jei.common.config.file.serializers;
 
 import mezz.jei.api.runtime.config.IJeiConfigValueSerializer;
+import net.minecraft.locale.Language;
+import net.minecraft.network.chat.Component;
 
 import java.util.Collection;
 import java.util.List;
@@ -52,5 +54,30 @@ public class EnumSerializer<T extends Enum<T>> implements IJeiConfigValueSeriali
 	@Override
 	public Optional<Collection<T>> getAllValidValues() {
 		return Optional.of(validValues);
+	}
+
+	@Override
+	public Component getLocalizedValueName(Component configValueName, T value) {
+		return getTranslatedEnumValue(configValueName, value, ".name")
+			.orElseGet(() -> Component.literal(ConfigValueSerializerUtil.getDisplayNameFallback(value.name())));
+	}
+
+	@Override
+	public Optional<Component> getLocalizedValueDescription(Component configValueName, T value) {
+		return getTranslatedEnumValue(configValueName, value, ".description");
+	}
+
+	private Optional<Component> getTranslatedEnumValue(Component configValueName, T value, String suffix) {
+		String valueName = value.name();
+		Optional<Component> configValueTranslation = ConfigValueSerializerUtil.getTranslatedValue(configValueName, valueName, suffix);
+		if (configValueTranslation.isPresent()) {
+			return configValueTranslation;
+		}
+
+		String enumKey = "jei.config.value." + enumClass.getSimpleName() + "." + valueName + suffix;
+		if (Language.getInstance().has(enumKey)) {
+			return Optional.of(Component.translatable(enumKey));
+		}
+		return Optional.empty();
 	}
 }

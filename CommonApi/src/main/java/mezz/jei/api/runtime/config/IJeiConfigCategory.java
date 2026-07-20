@@ -19,8 +19,18 @@ public interface IJeiConfigCategory {
 	 */
 	String getName();
 
+	/**
+	 * Get the translated name component of this config category.
+	 *
+	 * @since 19.39.0
+	 */
 	Component getLocalizedName();
 
+	/**
+	 * Get the translated description component of this config category.
+	 *
+	 * @since 19.39.0
+	 */
 	Component getDescription();
 
 	/**

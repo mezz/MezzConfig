@@ -1,6 +1,7 @@
 package mezz.jei.common.config.file.serializers;
 
 import mezz.jei.api.runtime.config.IJeiConfigValueSerializer;
+import net.minecraft.network.chat.Component;
 
 import java.util.Collection;
 import java.util.List;
@@ -72,5 +73,10 @@ public class IntegerSerializer implements IJeiConfigValueSerializer<Integer> {
 			return Optional.of(values);
 		}
 		return Optional.empty();
+	}
+
+	@Override
+	public Component getLocalizedValueName(Component configValueName, Integer value) {
+		return Component.literal(value.toString());
 	}
 }
