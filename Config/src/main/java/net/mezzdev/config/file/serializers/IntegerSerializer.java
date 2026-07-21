@@ -1,6 +1,6 @@
 package net.mezzdev.config.file.serializers;
 
-import net.mezzdev.config.IJeiConfigIntegerValueSerializer;
+import net.mezzdev.config.IConfigIntegerValueSerializer;
 import net.minecraft.network.chat.Component;
 
 import java.util.Collection;
@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
-public class IntegerSerializer implements IJeiConfigIntegerValueSerializer {
+public class IntegerSerializer implements IConfigIntegerValueSerializer {
 	private final int min;
 	private final int max;
 
@@ -76,7 +76,7 @@ public class IntegerSerializer implements IJeiConfigIntegerValueSerializer {
 	}
 
 	@Override
-	public Component getLocalizedValueName(Component configValueName, Integer value) {
+	public Component getLocalizedValueName(String configValueLocalizationKey, Integer value) {
 		return Component.literal(value.toString());
 	}
 }

@@ -2,7 +2,7 @@ package net.mezzdev.config.file;
 
 import net.mezzdev.config.ConfigValueChange;
 import net.mezzdev.config.ConfigValueUpdateType;
-import net.mezzdev.config.IJeiConfigValue;
+import net.mezzdev.config.IConfigValue;
 import net.minecraft.locale.Language;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,6 +19,7 @@ public class ConfigSchema implements IConfigSchema {
 	private static final Duration SAVE_DELAY_TIME = Duration.ofSeconds(2);
 
 	private final Path path;
+	private final String localizationPath;
 	private final List<ConfigCategory> categories;
 	private final List<ConfigDisplayCategory> displayCategories;
 	private final AtomicBoolean needsLoad = new AtomicBoolean(true);
@@ -26,19 +27,22 @@ public class ConfigSchema implements IConfigSchema {
 
 	public ConfigSchema(
 		Path path,
+		String localizationPath,
 		List<ConfigCategoryBuilder> categoryBuilders,
 		List<ConfigDisplayCategory> displayCategories,
 		IConfigSaveScheduler scheduler
 	) {
 		this.path = path;
+		this.localizationPath = localizationPath;
 		this.categories = categoryBuilders.stream()
 			.map(b -> b.build(this))
 			.toList();
-		this.displayCategories = createDisplayCategories(displayCategories, categories);
+		this.displayCategories = createDisplayCategories(localizationPath, displayCategories, categories);
 		this.delayedSave = new ConfigSaveRunner(SAVE_DELAY_TIME, scheduler);
 	}
 
 	private static List<ConfigDisplayCategory> createDisplayCategories(
+		String localizationPath,
 		List<ConfigDisplayCategory> displayCategories,
 		List<ConfigCategory> categories
 	) {
@@ -47,7 +51,7 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		return categories.stream()
 			.map(category -> new ConfigDisplayCategory(
-				"jei.config.client." + category.getName(),
+				localizationPath + "." + category.getName(),
 				category.getName(),
 				List.copyOf(category.getConfigValues())
 			))
@@ -99,8 +103,8 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private static ConfigValueUpdateType max(ConfigValueUpdateType first, ConfigValueUpdateType second) {
-		if (first == ConfigValueUpdateType.RESTART_JEI || second == ConfigValueUpdateType.RESTART_JEI) {
-			return ConfigValueUpdateType.RESTART_JEI;
+		if (first == ConfigValueUpdateType.RESTART || second == ConfigValueUpdateType.RESTART) {
+			return ConfigValueUpdateType.RESTART;
 		}
 		if (first == ConfigValueUpdateType.ON_APPLY || second == ConfigValueUpdateType.ON_APPLY) {
 			return ConfigValueUpdateType.ON_APPLY;
@@ -109,7 +113,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private static <T> boolean applyChange(ConfigValueChange<T> change) {
-		IJeiConfigValue<T> configValue = change.configValue();
+		IConfigValue<T> configValue = change.configValue();
 		return configValue.set(change.value());
 	}
 
@@ -125,8 +129,8 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private void save() {
-		if (!Language.getInstance().has("jei.config")) {
-			LOGGER.debug("Localization has not loaded yet, waiting to save the config file until JEI starts.");
+		if (!Language.getInstance().has(localizationPath)) {
+			LOGGER.debug("Localization has not loaded yet, waiting to save the config file: {}", path);
 			return;
 		}
 		try {

@@ -37,6 +37,6 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 
 	@Override
 	public IConfigSchema build() {
-		return new ConfigSchema(configFile, categoryBuilders, displayCategories, scheduler);
+		return new ConfigSchema(configFile, localizationPath, categoryBuilders, displayCategories, scheduler);
 	}
 }

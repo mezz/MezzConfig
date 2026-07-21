@@ -1,6 +1,6 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.IJeiConfigCategory;
+import net.mezzdev.config.IConfigCategory;
 import net.minecraft.network.chat.Component;
 
 import java.util.Collection;
@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-public class ConfigCategory implements IJeiConfigCategory {
+public class ConfigCategory implements IConfigCategory {
 	private final String name;
 	private final Component localizedName;
 	private final Component description;
@@ -39,7 +39,7 @@ public class ConfigCategory implements IJeiConfigCategory {
 	}
 
 	@Override
-	public Component getDescription() {
+	public Component getLocalizedDescription() {
 		return description;
 	}
 

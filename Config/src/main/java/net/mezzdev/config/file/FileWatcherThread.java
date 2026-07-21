@@ -183,7 +183,7 @@ public class FileWatcherThread extends Thread {
 		private final List<Runnable> runnables;
 
 		public CallbackRunner(List<Runnable> runnables) {
-			super("JEI File Watcher Callback Runner");
+			super("config File Watcher Callback Runner");
 			this.runnables = List.copyOf(runnables);
 		}
 

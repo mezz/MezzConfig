@@ -1,6 +1,6 @@
 package net.mezzdev.config.file.serializers;
 
-import net.mezzdev.config.IJeiConfigValueSerializer;
+import net.mezzdev.config.IConfigValueSerializer;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 
@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class EnumSerializer<T extends Enum<T>> implements IJeiConfigValueSerializer<T> {
+public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer<T> {
 	private final Class<T> enumClass;
 	private final Collection<T> validValues;
 
@@ -57,24 +57,24 @@ public class EnumSerializer<T extends Enum<T>> implements IJeiConfigValueSeriali
 	}
 
 	@Override
-	public Component getLocalizedValueName(Component configValueName, T value) {
-		return getTranslatedEnumValue(configValueName, value, ".name")
+	public Component getLocalizedValueName(String configValueLocalizationKey, T value) {
+		return getTranslatedEnumValue(configValueLocalizationKey, value, ".name")
 			.orElseGet(() -> Component.literal(ConfigValueSerializerUtil.getDisplayNameFallback(value.name())));
 	}
 
 	@Override
-	public Optional<Component> getLocalizedValueDescription(Component configValueName, T value) {
-		return getTranslatedEnumValue(configValueName, value, ".description");
+	public Optional<Component> getLocalizedValueDescription(String configValueLocalizationKey, T value) {
+		return getTranslatedEnumValue(configValueLocalizationKey, value, ".description");
 	}
 
-	private Optional<Component> getTranslatedEnumValue(Component configValueName, T value, String suffix) {
+	private Optional<Component> getTranslatedEnumValue(String configValueLocalizationKey, T value, String suffix) {
 		String valueName = value.name();
-		Optional<Component> configValueTranslation = ConfigValueSerializerUtil.getTranslatedValue(configValueName, valueName, suffix);
+		Optional<Component> configValueTranslation = ConfigValueSerializerUtil.getTranslatedValue(configValueLocalizationKey, valueName, suffix);
 		if (configValueTranslation.isPresent()) {
 			return configValueTranslation;
 		}
 
-		String enumKey = "jei.config.value." + enumClass.getSimpleName() + "." + valueName + suffix;
+		String enumKey = "mezz_config.config.value." + enumClass.getSimpleName() + "." + valueName + suffix;
 		if (Language.getInstance().has(enumKey)) {
 			return Optional.of(Component.translatable(enumKey));
 		}

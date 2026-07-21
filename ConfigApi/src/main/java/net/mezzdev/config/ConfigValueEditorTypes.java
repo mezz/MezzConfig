@@ -3,20 +3,21 @@ package net.mezzdev.config;
 import java.util.List;
 
 /**
- * Standard editor types used by JEI config screens.
+ * Standard editor types used by config screens.
  *
  * @since 19.39.0
  */
 public final class ConfigValueEditorTypes {
-	private static final String JEI_ID = "jei";
+	private static final String CONFIG_ID = "mezz_config";
 
-	public static final ConfigValueEditorType<Boolean> BOOLEAN = ConfigValueEditorType.create(JEI_ID, "boolean");
-	public static final ConfigValueEditorType<Integer> INTEGER = ConfigValueEditorType.create(JEI_ID, "integer");
+	public static final ConfigValueEditorType<Boolean> BOOLEAN = ConfigValueEditorType.create(CONFIG_ID, "boolean");
+	public static final ConfigValueEditorType<Integer> INTEGER = ConfigValueEditorType.create(CONFIG_ID, "integer");
 
-	private static final ConfigValueEditorType<Object> SELECTION = ConfigValueEditorType.create(JEI_ID, "selection");
-	private static final ConfigValueEditorType<List<Object>> LIST = ConfigValueEditorType.create(JEI_ID, "list");
-	private static final ConfigValueEditorType<Object> KEY_MAPPING = ConfigValueEditorType.create(JEI_ID, "key_mapping");
-	private static final ConfigValueEditorType<Object> UNSUPPORTED = ConfigValueEditorType.create(JEI_ID, "unsupported");
+	private static final ConfigValueEditorType<Object> SELECTION = ConfigValueEditorType.create(CONFIG_ID, "selection");
+	private static final ConfigValueEditorType<List<Object>> LIST = ConfigValueEditorType.create(CONFIG_ID, "list");
+	private static final ConfigValueEditorType<Object> ALIGNMENT = ConfigValueEditorType.create(CONFIG_ID, "alignment");
+	private static final ConfigValueEditorType<Object> KEY_MAPPING = ConfigValueEditorType.create(CONFIG_ID, "key_mapping");
+	private static final ConfigValueEditorType<Object> UNSUPPORTED = ConfigValueEditorType.create(CONFIG_ID, "unsupported");
 
 	private ConfigValueEditorTypes() {
 	}
@@ -39,6 +40,16 @@ public final class ConfigValueEditorTypes {
 	@SuppressWarnings("unchecked")
 	public static <T> ConfigValueEditorType<List<T>> list() {
 		return (ConfigValueEditorType<List<T>>) (Object) LIST;
+	}
+
+	/**
+	 * An editor for horizontal and vertical alignment values.
+	 *
+	 * @since 19.39.0
+	 */
+	@SuppressWarnings("unchecked")
+	public static <T> ConfigValueEditorType<T> alignment() {
+		return (ConfigValueEditorType<T>) ALIGNMENT;
 	}
 
 	/**

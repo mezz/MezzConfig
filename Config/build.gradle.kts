@@ -12,14 +12,17 @@ plugins {
 val jUnitVersion: String by extra
 val minecraftVersion: String by extra
 val neoformTimestamp: String by extra
-val modId: String by extra
+val configModId: String by extra
+val configModGroup: String by extra
 val modJavaVersion: String by extra
 val mixinVersion: String by extra
 val guavaVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
 val log4jVersion: String by extra
 
-val baseArchivesName = "${modId}-${minecraftVersion}-config"
+group = configModGroup
+
+val baseArchivesName = "${configModId}-${minecraftVersion}-config"
 base {
     archivesName.set(baseArchivesName)
 }
@@ -38,10 +41,6 @@ neoForge {
 }
 
 sourceSets {
-    named("main") {
-        //The config module has no resources
-        resources.setSrcDirs(emptyList<String>())
-    }
     named("test") {
         //The test module has no resources
         resources.setSrcDirs(emptyList<String>())
@@ -62,7 +61,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    include("mezz/jei/test/**")
+    include("net/mezzdev/config/test/**")
     outputs.upToDateWhen { false }
     testLogging {
         events = setOf(TestLogEvent.FAILED)

@@ -9,12 +9,15 @@ plugins {
 // gradle.properties
 val minecraftVersion: String by extra
 val neoformTimestamp: String by extra
-val modId: String by extra
+val configModId: String by extra
+val configModGroup: String by extra
 val modJavaVersion: String by extra
 val mixinVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
 
-val baseArchivesName = "${modId}-${minecraftVersion}-config-api"
+group = configModGroup
+
+val baseArchivesName = "${configModId}-${minecraftVersion}-config-api"
 base {
     archivesName.set(baseArchivesName)
 }

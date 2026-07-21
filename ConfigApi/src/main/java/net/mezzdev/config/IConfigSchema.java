@@ -4,9 +4,24 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
 
-public interface IConfigSchema extends IJeiConfigFile {
+/**
+ * Config data prepared for display in a config screen.
+ *
+ * @since 19.39.0
+ */
+public interface IConfigSchema extends IConfigFile {
+	/**
+	 * Get the most expensive update type required by the given pending changes.
+	 *
+	 * @since 19.39.0
+	 */
 	ConfigValueUpdateType getUpdateType(List<ConfigValueChange<?>> changes);
 
+	/**
+	 * Get the categories and ordering to display in a config screen.
+	 *
+	 * @since 19.39.0
+	 */
 	@Unmodifiable
 	List<? extends IConfigDisplayCategory> getDisplayCategories();
 }

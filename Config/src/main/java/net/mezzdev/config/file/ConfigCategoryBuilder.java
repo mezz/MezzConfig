@@ -1,7 +1,7 @@
 package net.mezzdev.config.file;
 
 import net.mezzdev.config.ConfigValueUpdateType;
-import net.mezzdev.config.IJeiConfigValueSerializer;
+import net.mezzdev.config.IConfigValueSerializer;
 import net.mezzdev.config.file.serializers.BooleanSerializer;
 import net.mezzdev.config.file.serializers.EnumSerializer;
 import net.mezzdev.config.file.serializers.IntegerSerializer;
@@ -29,7 +29,7 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 	}
 
 	@Override
-	public <T> ConfigValue<T> addValue(String name, T defaultValue, IJeiConfigValueSerializer<T> serializer, ConfigValueUpdateType updateType) {
+	public <T> ConfigValue<T> addValue(String name, T defaultValue, IConfigValueSerializer<T> serializer, ConfigValueUpdateType updateType) {
 		return addValue(new ConfigValue<>(localizationPath, name, defaultValue, serializer, updateType));
 	}
 
@@ -51,7 +51,7 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 	}
 
 	@Override
-	public <T> ConfigValue<List<T>> addList(String name, List<T> defaultValue, IJeiConfigValueSerializer<List<T>> listSerializer, ConfigValueUpdateType updateType) {
+	public <T> ConfigValue<List<T>> addList(String name, List<T> defaultValue, IConfigValueSerializer<List<T>> listSerializer, ConfigValueUpdateType updateType) {
 		return addValue(name, defaultValue, listSerializer, updateType);
 	}
 

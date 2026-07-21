@@ -2,7 +2,7 @@ package net.mezzdev.config.file.serializers;
 
 import net.mezzdev.config.ConfigValueEditorType;
 import net.mezzdev.config.ConfigValueEditorTypes;
-import net.mezzdev.config.IJeiConfigValueSerializer;
+import net.mezzdev.config.IConfigValueSerializer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
@@ -10,7 +10,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-public class BooleanSerializer implements IJeiConfigValueSerializer<Boolean> {
+public class BooleanSerializer implements IConfigValueSerializer<Boolean> {
 	public static final BooleanSerializer INSTANCE = new BooleanSerializer();
 	private static final ResourceLocation ENABLED_ICON = ResourceLocation.withDefaultNamespace("container/beacon/confirm");
 	private static final ResourceLocation DISABLED_ICON = ResourceLocation.withDefaultNamespace("container/beacon/cancel");
@@ -55,13 +55,13 @@ public class BooleanSerializer implements IJeiConfigValueSerializer<Boolean> {
 	}
 
 	@Override
-	public Component getLocalizedValueName(Component configValueName, Boolean value) {
-		return Component.translatable(value ? "jei.config.value.boolean.true" : "jei.config.value.boolean.false");
+	public Component getLocalizedValueName(String configValueLocalizationKey, Boolean value) {
+		return Component.translatable(value ? "mezz_config.config.value.boolean.true" : "mezz_config.config.value.boolean.false");
 	}
 
 	@Override
-	public Optional<Component> getLocalizedValueDescription(Component configValueName, Boolean value) {
-		return Optional.of(ConfigValueSerializerUtil.getTranslatedValue(configValueName, String.valueOf(value), ".description")
+	public Optional<Component> getLocalizedValueDescription(String configValueLocalizationKey, Boolean value) {
+		return Optional.of(ConfigValueSerializerUtil.getTranslatedValue(configValueLocalizationKey, String.valueOf(value), ".description")
 			.orElseGet(() -> getGenericValueDescription(value)));
 	}
 
@@ -71,6 +71,6 @@ public class BooleanSerializer implements IJeiConfigValueSerializer<Boolean> {
 	}
 
 	private static Component getGenericValueDescription(boolean value) {
-		return Component.translatable(value ? "jei.config.value.boolean.true.description" : "jei.config.value.boolean.false.description");
+		return Component.translatable(value ? "mezz_config.config.value.boolean.true.description" : "mezz_config.config.value.boolean.false.description");
 	}
 }

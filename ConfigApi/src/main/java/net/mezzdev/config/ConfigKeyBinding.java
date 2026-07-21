@@ -1,23 +1,23 @@
 package net.mezzdev.config;
 
-import com.mojang.blaze3d.platform.InputConstants;
-
 /**
  * A key or mouse binding with an optional modifier used by the config screen.
  *
  * @since 19.39.0
  */
-public record ConfigKeyBinding(InputConstants.Key key, ConfigKeyModifier modifier) {
+public record ConfigKeyBinding(String keyName, ConfigKeyModifier modifier) {
+	private static final String UNKNOWN_KEY_NAME = "key.keyboard.unknown";
+
 	/**
 	 * An unbound key binding.
 	 *
 	 * @since 19.39.0
 	 */
-	public static final ConfigKeyBinding UNKNOWN = new ConfigKeyBinding(InputConstants.UNKNOWN, ConfigKeyModifier.NONE);
+	public static final ConfigKeyBinding UNKNOWN = new ConfigKeyBinding(UNKNOWN_KEY_NAME, ConfigKeyModifier.NONE);
 
 	public ConfigKeyBinding {
-		if (key == null) {
-			key = InputConstants.UNKNOWN;
+		if (keyName == null) {
+			keyName = UNKNOWN_KEY_NAME;
 		}
 		if (modifier == null) {
 			modifier = ConfigKeyModifier.NONE;
@@ -30,6 +30,6 @@ public record ConfigKeyBinding(InputConstants.Key key, ConfigKeyModifier modifie
 	 * @since 19.39.0
 	 */
 	public boolean isUnbound() {
-		return key.equals(InputConstants.UNKNOWN);
+		return keyName.equals(UNKNOWN_KEY_NAME);
 	}
 }

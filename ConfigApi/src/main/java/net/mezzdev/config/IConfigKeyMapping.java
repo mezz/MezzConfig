@@ -1,7 +1,5 @@
 package net.mezzdev.config;
 
-import com.mojang.blaze3d.platform.InputConstants;
-import net.minecraft.client.KeyMapping;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -14,25 +12,32 @@ import java.util.List;
  */
 public interface IConfigKeyMapping {
 	/**
-	 * Get the backing Minecraft key mapping.
+	 * Get the stable name of this key mapping.
 	 *
 	 * @since 19.39.0
 	 */
-	KeyMapping getKeyMapping();
+	String getName();
+
+	/**
+	 * Get the localized display name for this key mapping.
+	 *
+	 * @since 19.39.0
+	 */
+	Component getLocalizedName();
 
 	/**
 	 * Get a localized description of where this key mapping is active.
 	 *
 	 * @since 19.39.0
 	 */
-	Component getContext();
+	Component getLocalizedContext();
 
 	/**
 	 * Get the localized description for this key mapping.
 	 *
 	 * @since 19.39.0
 	 */
-	Component getDescription();
+	Component getLocalizedDescription();
 
 	/**
 	 * Get the current binding value.
@@ -74,7 +79,7 @@ public interface IConfigKeyMapping {
 	 *
 	 * @since 19.39.0
 	 */
-	ConfigKeyModifier getKeyModifier(InputConstants.Key key);
+	ConfigKeyModifier getKeyModifier(String keyName);
 
 	/**
 	 * Get display information for key mappings that conflict with the given value.

@@ -1,6 +1,6 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.IJeiConfigValueSerializer;
+import net.mezzdev.config.IConfigValueSerializer;
 import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -141,20 +141,20 @@ public final class ConfigSerializer {
 
 	private static <T> void serializeConfigValue(List<String> serialized, ConfigValue<T> configValue) {
 		String name = configValue.getName();
-		IJeiConfigValueSerializer<T> serializer = configValue.getSerializer();
+		IConfigValueSerializer<T> serializer = configValue.getSerializer();
 
-		String localizedName = Component.translatable("jei.config.name", configValue.getLocalizedName().getString()).getString();
+		String localizedName = Component.translatable("mezz_config.config.name", configValue.getLocalizedName().getString()).getString();
 		addCommentedStrings(serialized, localizedName);
 
-		String description = Component.translatable("jei.config.description", configValue.getLocalizedDescription().getString()).getString();
+		String description = Component.translatable("mezz_config.config.description", configValue.getLocalizedDescription().getString()).getString();
 		addCommentedStrings(serialized, description);
 
-		String validValues = Component.translatable("jei.config.valueValues", serializer.getValidValuesDescription()).getString();
+		String validValues = Component.translatable("mezz_config.config.valueValues", serializer.getValidValuesDescription()).getString();
 		addCommentedStrings(serialized, validValues);
 
 		T defaultValue = configValue.getDefaultValue();
 		String defaultValueSerialized = serializer.serialize(defaultValue);
-		String defaultValueString = Component.translatable("jei.config.defaultValue", defaultValueSerialized).getString();
+		String defaultValueString = Component.translatable("mezz_config.config.defaultValue", defaultValueSerialized).getString();
 		addCommentedStrings(serialized, defaultValueString);
 
 		T value = configValue.getValue();

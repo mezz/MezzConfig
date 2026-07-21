@@ -1,8 +1,8 @@
 package net.mezzdev.config.file;
 
 import net.mezzdev.config.ConfigValueUpdateType;
-import net.mezzdev.config.IJeiConfigValue;
-import net.mezzdev.config.IJeiConfigValueSerializer;
+import net.mezzdev.config.IConfigValue;
+import net.mezzdev.config.IConfigValueSerializer;
 import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -13,14 +13,15 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class ConfigValue<T> implements IJeiConfigValue<T>, Supplier<T> {
+public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	private static final Logger LOGGER = LogManager.getLogger();
 
 	private final String name;
+	private final String localizationKey;
 	private final Component localizedName;
 	private final Component description;
 	private final T defaultValue;
-	private final IJeiConfigValueSerializer<T> serializer;
+	private final IConfigValueSerializer<T> serializer;
 	private final ConfigValueUpdateType updateType;
 	private @Nullable List<Consumer<T>> listeners;
 	private volatile T currentValue;
@@ -31,14 +32,14 @@ public class ConfigValue<T> implements IJeiConfigValue<T>, Supplier<T> {
 		String localizationPath,
 		String name,
 		T defaultValue,
-		IJeiConfigValueSerializer<T> serializer,
+		IConfigValueSerializer<T> serializer,
 		ConfigValueUpdateType updateType
 	) {
 		this.name = name;
 
-		String nameKey = localizationPath + "." + name;
-		String descriptionKey = nameKey + ".description";
-		this.localizedName = Component.translatable(nameKey);
+		this.localizationKey = localizationPath + "." + name;
+		String descriptionKey = localizationKey + ".description";
+		this.localizedName = Component.translatable(localizationKey);
 		this.description = Component.translatable(descriptionKey);
 		this.defaultValue = defaultValue;
 		this.currentValue = defaultValue;
@@ -55,10 +56,9 @@ public class ConfigValue<T> implements IJeiConfigValue<T>, Supplier<T> {
 		return name;
 	}
 
-	@SuppressWarnings("removal")
 	@Override
-	public String getDescription() {
-		return description.getString();
+	public String getLocalizationKey() {
+		return localizationKey;
 	}
 
 	@Override
@@ -90,7 +90,7 @@ public class ConfigValue<T> implements IJeiConfigValue<T>, Supplier<T> {
 	}
 
 	@Override
-	public IJeiConfigValueSerializer<T> getSerializer() {
+	public IConfigValueSerializer<T> getSerializer() {
 		return serializer;
 	}
 
@@ -100,7 +100,7 @@ public class ConfigValue<T> implements IJeiConfigValue<T>, Supplier<T> {
 	}
 
 	public List<String> setFromSerializedValue(String value) {
-		IJeiConfigValueSerializer.IDeserializeResult<T> deserializeResult = serializer.deserialize(value);
+		IConfigValueSerializer.IDeserializeResult<T> deserializeResult = serializer.deserialize(value);
 		deserializeResult.getResult()
 			.ifPresent(t -> {
 				if (currentValue != t) {

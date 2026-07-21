@@ -1,12 +1,12 @@
 package net.mezzdev.config.file.serializers;
 
-import net.mezzdev.config.IJeiConfigValueSerializer;
+import net.mezzdev.config.IConfigValueSerializer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Optional;
 
-public final class DeserializeResult<T> implements IJeiConfigValueSerializer.IDeserializeResult<T> {
+public final class DeserializeResult<T> implements IConfigValueSerializer.IDeserializeResult<T> {
 	private final @Nullable T result;
 	private final List<String> errors;
 

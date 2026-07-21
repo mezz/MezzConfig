@@ -1,7 +1,7 @@
 package net.mezzdev.config.file.serializers;
 
-import net.mezzdev.config.IJeiConfigListValueSerializer;
-import net.mezzdev.config.IJeiConfigValueSerializer;
+import net.mezzdev.config.IConfigListValueSerializer;
+import net.mezzdev.config.IConfigValueSerializer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
@@ -12,10 +12,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class ListSerializer<T> implements IJeiConfigListValueSerializer<T> {
-	private final IJeiConfigValueSerializer<T> valueSerializer;
+public class ListSerializer<T> implements IConfigListValueSerializer<T> {
+	private final IConfigValueSerializer<T> valueSerializer;
 
-	public ListSerializer(IJeiConfigValueSerializer<T> valueSerializer) {
+	public ListSerializer(IConfigValueSerializer<T> valueSerializer) {
 		this.valueSerializer = valueSerializer;
 	}
 
@@ -66,7 +66,7 @@ public class ListSerializer<T> implements IJeiConfigListValueSerializer<T> {
 	}
 
 	@Override
-	public IJeiConfigValueSerializer<T> getListValueSerializer() {
+	public IConfigValueSerializer<T> getListValueSerializer() {
 		return valueSerializer;
 	}
 
@@ -76,16 +76,16 @@ public class ListSerializer<T> implements IJeiConfigListValueSerializer<T> {
 	}
 
 	@Override
-	public Component getLocalizedValueName(Component configValueName, List<T> values) {
+	public Component getLocalizedValueName(String configValueLocalizationKey, List<T> values) {
 		if (values.isEmpty()) {
-			return Component.translatable("jei.config.value.list.empty");
+			return Component.translatable("mezz_config.config.value.list.empty");
 		}
 		MutableComponent result = Component.empty();
 		for (int i = 0; i < values.size(); i++) {
 			if (i > 0) {
 				result.append(Component.literal(", "));
 			}
-			result.append(valueSerializer.getLocalizedValueName(configValueName, values.get(i)));
+			result.append(valueSerializer.getLocalizedValueName(configValueLocalizationKey, values.get(i)));
 		}
 		return result;
 	}

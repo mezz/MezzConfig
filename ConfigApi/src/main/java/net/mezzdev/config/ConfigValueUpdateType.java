@@ -21,9 +21,9 @@ public enum ConfigValueUpdateType {
 	ON_APPLY,
 
 	/**
-	 * The value can be saved immediately, but JEI must restart before it fully takes effect.
+	 * The value can be saved immediately, but a larger reload or restart is needed before it fully takes effect.
 	 *
 	 * @since 19.39.0
 	 */
-	RESTART_JEI
+	RESTART
 }

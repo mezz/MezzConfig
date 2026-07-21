@@ -2,7 +2,6 @@ package net.mezzdev.config.file.serializers;
 
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.contents.TranslatableContents;
 
 import java.util.Optional;
 
@@ -11,11 +10,12 @@ final class ConfigValueSerializerUtil {
 
 	}
 
-	public static Optional<Component> getTranslatedValue(Component configValueName, String valueName, String suffix) {
-		return getConfigValueTranslationKey(configValueName)
-			.map(configValueKey -> configValueKey + ".value." + valueName + suffix)
-			.filter(Language.getInstance()::has)
-			.map(Component::translatable);
+	public static Optional<Component> getTranslatedValue(String configValueLocalizationKey, String valueName, String suffix) {
+		String translationKey = configValueLocalizationKey + ".value." + valueName + suffix;
+		if (Language.getInstance().has(translationKey)) {
+			return Optional.of(Component.translatable(translationKey));
+		}
+		return Optional.empty();
 	}
 
 	public static String getDisplayNameFallback(String name) {
@@ -36,10 +36,4 @@ final class ConfigValueSerializerUtil {
 		return result.toString();
 	}
 
-	private static Optional<String> getConfigValueTranslationKey(Component configValueName) {
-		if (configValueName.getContents() instanceof TranslatableContents translatableContents) {
-			return Optional.of(translatableContents.getKey());
-		}
-		return Optional.empty();
-	}
 }
