@@ -1,4 +1,4 @@
-package net.mezzdev.config.client;
+package net.mezzdev.config.alignment;
 
 import net.mezzdev.config.ConfigValueEditorType;
 import net.mezzdev.config.ConfigValueEditorTypes;

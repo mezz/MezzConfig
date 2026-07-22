@@ -1,4 +1,4 @@
-package net.mezzdev.config.client;
+package mezz.jei.common.config;
 
 import net.mezzdev.config.ConfigValueUpdateType;
 import net.mezzdev.config.file.ConfigValue;

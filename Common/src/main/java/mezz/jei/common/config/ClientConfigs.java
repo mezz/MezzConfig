@@ -1,7 +1,8 @@
-package net.mezzdev.config.client;
+package mezz.jei.common.config;
 
 import net.mezzdev.config.ConfigDisplayCategoryRole;
 import net.mezzdev.config.IConfigValue;
+import net.mezzdev.config.alignment.HorizontalConfigAlignment;
 import net.mezzdev.config.file.ConfigDisplayCategory;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.file.ConfigSchemaBuilder;

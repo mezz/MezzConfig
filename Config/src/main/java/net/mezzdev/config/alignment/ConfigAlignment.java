@@ -1,4 +1,4 @@
-package net.mezzdev.config.client;
+package net.mezzdev.config.alignment;
 
 /**
  * Combined horizontal and vertical alignment for display in config screens.

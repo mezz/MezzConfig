@@ -13,6 +13,7 @@ public interface IConfigSchema extends net.mezzdev.config.IConfigSchema {
 	@Override
 	ConfigValueUpdateType getUpdateType(List<ConfigValueChange<?>> changes);
 
+	@Override
 	ConfigValueUpdateType applyChanges(List<ConfigValueChange<?>> changes);
 
 	@Override

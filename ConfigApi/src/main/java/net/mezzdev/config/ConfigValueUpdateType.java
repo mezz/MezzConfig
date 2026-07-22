@@ -14,7 +14,8 @@ public enum ConfigValueUpdateType {
 	IMMEDIATE,
 
 	/**
-	 * The value should be applied when the config screen's pending changes are applied.
+	 * The value is saved and applied with the config screen's pending changes.
+	 * Use this for changes that should take effect together instead of after every intermediate edit.
 	 *
 	 * @since 19.39.0
 	 */

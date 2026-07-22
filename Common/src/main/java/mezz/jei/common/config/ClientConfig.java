@@ -1,4 +1,4 @@
-package net.mezzdev.config.client;
+package mezz.jei.common.config;
 
 import com.google.common.base.Preconditions;
 import net.mezzdev.config.ConfigValueUpdateType;

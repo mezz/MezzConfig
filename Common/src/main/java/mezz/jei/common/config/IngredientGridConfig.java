@@ -1,6 +1,9 @@
-package net.mezzdev.config.client;
+package mezz.jei.common.config;
 
 import net.mezzdev.config.ConfigValueUpdateType;
+import net.mezzdev.config.alignment.AlignmentConfigValue;
+import net.mezzdev.config.alignment.HorizontalConfigAlignment;
+import net.mezzdev.config.alignment.VerticalConfigAlignment;
 import net.mezzdev.config.file.ConfigValue;
 import net.mezzdev.config.file.IConfigCategoryBuilder;
 import net.mezzdev.config.file.IConfigSchemaBuilder;

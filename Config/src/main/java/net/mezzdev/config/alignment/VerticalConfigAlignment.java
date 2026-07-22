@@ -1,4 +1,4 @@
-package net.mezzdev.config.client;
+package net.mezzdev.config.alignment;
 
 /**
  * Vertical alignment values used by config.

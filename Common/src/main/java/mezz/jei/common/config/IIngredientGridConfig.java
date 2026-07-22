@@ -1,6 +1,8 @@
-package net.mezzdev.config.client;
+package mezz.jei.common.config;
 
 import net.mezzdev.config.IConfigValue;
+import net.mezzdev.config.alignment.HorizontalConfigAlignment;
+import net.mezzdev.config.alignment.VerticalConfigAlignment;
 
 public interface IIngredientGridConfig {
 	IConfigValue<Integer> maxColumns();
