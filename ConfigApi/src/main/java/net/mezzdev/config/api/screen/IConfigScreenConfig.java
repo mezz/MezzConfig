@@ -33,7 +33,9 @@ public interface IConfigScreenConfig {
 	/**
 	 * Called when applying saved changes requires the owner mod to restart or reload.
 	 *
+	 * @return the result of trying to restart or reload the owner mod
+	 *
 	 * @since 19.39.0
 	 */
-	void onRestartRequired();
+	ConfigRestartResult onRestartRequired();
 }

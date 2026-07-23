@@ -17,9 +17,6 @@ public final class IntegerSerializer implements IConfigIntegerValueSerializer {
 	private final int min;
 	private final int max;
 
-	/**
-	 * Create an integer serializer with an inclusive valid range.
-	 */
 	public IntegerSerializer(int min, int max) {
 		this.min = min;
 		this.max = max;

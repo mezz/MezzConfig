@@ -5,6 +5,8 @@ import net.mezzdev.config.api.plugin.IConfigPlugin;
 import net.mezzdev.config.api.plugin.IConfigRegistration;
 import net.mezzdev.config.api.schema.IConfigEditableSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.screen.IConfigRestartHandler;
+import net.mezzdev.config.api.util.ErrorUtil;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.file.ConfigManagers;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
@@ -58,9 +60,7 @@ public final class ConfigPluginLoader {
 	}
 
 	private static String validateModId(@Nullable String modId) {
-		if (modId == null) {
-			throw new NullPointerException("modId must not be null.");
-		}
+		modId = ErrorUtil.checkNotNull(modId, "modId");
 		if (modId.isBlank()) {
 			throw new IllegalArgumentException("modId must not be blank.");
 		}
@@ -68,9 +68,7 @@ public final class ConfigPluginLoader {
 	}
 
 	private static Path resolveConfigFile(Path pluginConfigDir, String configFileName) {
-		if (configFileName == null) {
-			throw new NullPointerException("configFileName must not be null.");
-		}
+		configFileName = ErrorUtil.checkNotNull(configFileName, "configFileName");
 		if (configFileName.isBlank()) {
 			throw new IllegalArgumentException("configFileName must not be blank.");
 		}
@@ -88,24 +86,16 @@ public final class ConfigPluginLoader {
 	) implements IConfigRegistration {
 		@Override
 		public IConfigSchemaBuilder createSchemaBuilder(String configFileName, String localizationPath) {
-			if (localizationPath == null) {
-				throw new NullPointerException("localizationPath must not be null.");
-			}
+			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path configFile = resolveConfigFile(pluginConfigDir, configFileName);
 			return new ConfigSchemaBuilder(configFile, localizationPath, configManager);
 		}
 
 		@Override
-		public void registerConfigScreen(Component title, IConfigEditableSchema schema, Runnable restartHandler) {
-			if (title == null) {
-				throw new NullPointerException("title must not be null.");
-			}
-			if (schema == null) {
-				throw new NullPointerException("schema must not be null.");
-			}
-			if (restartHandler == null) {
-				throw new NullPointerException("restartHandler must not be null.");
-			}
+		public void registerConfigScreen(Component title, IConfigEditableSchema schema, IConfigRestartHandler restartHandler) {
+			title = ErrorUtil.checkNotNull(title, "title");
+			schema = ErrorUtil.checkNotNull(schema, "schema");
+			restartHandler = ErrorUtil.checkNotNull(restartHandler, "restartHandler");
 			configManager.registerConfigScreen(modId, title, schema, restartHandler);
 		}
 

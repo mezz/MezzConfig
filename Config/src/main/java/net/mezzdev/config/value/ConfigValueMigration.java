@@ -2,6 +2,7 @@ package net.mezzdev.config.value;
 
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.util.ErrorUtil;
 
 import java.util.List;
 import java.util.function.Function;
@@ -12,15 +13,9 @@ public record ConfigValueMigration<T, R>(
 	Function<T, R> migration
 ) {
 	public ConfigValueMigration {
-		if (configValue == null) {
-			throw new NullPointerException("configValue must not be null.");
-		}
-		if (serializer == null) {
-			throw new NullPointerException("serializer must not be null.");
-		}
-		if (migration == null) {
-			throw new NullPointerException("migration must not be null.");
-		}
+		configValue = ErrorUtil.checkNotNull(configValue, "configValue");
+		serializer = ErrorUtil.checkNotNull(serializer, "serializer");
+		migration = ErrorUtil.checkNotNull(migration, "migration");
 	}
 
 	public List<String> migrate(String value) {

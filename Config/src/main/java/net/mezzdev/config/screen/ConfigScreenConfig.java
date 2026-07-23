@@ -1,28 +1,23 @@
 package net.mezzdev.config.screen;
 
 import net.mezzdev.config.api.schema.IConfigEditableSchema;
+import net.mezzdev.config.api.screen.ConfigRestartResult;
+import net.mezzdev.config.api.screen.IConfigRestartHandler;
 import net.mezzdev.config.api.screen.IConfigScreenConfig;
+import net.mezzdev.config.api.util.ErrorUtil;
 import net.minecraft.network.chat.Component;
 
 public record ConfigScreenConfig(
 	String modId,
 	Component title,
 	IConfigEditableSchema schema,
-	Runnable restartHandler
+	IConfigRestartHandler restartHandler
 ) implements IConfigScreenConfig {
 	public ConfigScreenConfig {
-		if (modId == null) {
-			throw new NullPointerException("modId must not be null.");
-		}
-		if (title == null) {
-			throw new NullPointerException("title must not be null.");
-		}
-		if (schema == null) {
-			throw new NullPointerException("schema must not be null.");
-		}
-		if (restartHandler == null) {
-			throw new NullPointerException("restartHandler must not be null.");
-		}
+		modId = ErrorUtil.checkNotNull(modId, "modId");
+		title = ErrorUtil.checkNotNull(title, "title");
+		schema = ErrorUtil.checkNotNull(schema, "schema");
+		restartHandler = ErrorUtil.checkNotNull(restartHandler, "restartHandler");
 	}
 
 	@Override
@@ -41,7 +36,7 @@ public record ConfigScreenConfig(
 	}
 
 	@Override
-	public void onRestartRequired() {
-		restartHandler.run();
+	public ConfigRestartResult onRestartRequired() {
+		return restartHandler.onRestartRequired();
 	}
 }

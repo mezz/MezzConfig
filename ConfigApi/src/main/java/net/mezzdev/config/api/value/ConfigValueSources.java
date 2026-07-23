@@ -1,5 +1,6 @@
 package net.mezzdev.config.api.value;
 
+import net.mezzdev.config.api.util.ErrorUtil;
 import net.minecraft.client.KeyMapping;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -107,9 +108,7 @@ public final class ConfigValueSources {
 		Supplier<? extends Collection<? extends KeyMapping>> keyMappingsSupplier
 	) implements IKeyMappings {
 		private KeyMappings {
-			if (keyMappingsSupplier == null) {
-				throw new NullPointerException("keyMappingsSupplier must not be null.");
-			}
+			keyMappingsSupplier = ErrorUtil.checkNotNull(keyMappingsSupplier, "keyMappingsSupplier");
 		}
 
 		@Override

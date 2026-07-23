@@ -1,6 +1,7 @@
 package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.schema.IConfigDisplayCategoryBuilder;
+import net.mezzdev.config.api.util.ErrorUtil;
 import net.mezzdev.config.api.value.ConfigValueSources;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueSource;
@@ -17,14 +18,8 @@ public class ConfigDisplayCategoryBuilder implements IConfigDisplayCategoryBuild
 	private final List<IConfigValueSource> valueSources = new ArrayList<>();
 
 	public ConfigDisplayCategoryBuilder(String localizationPath, String name) {
-		if (localizationPath == null) {
-			throw new NullPointerException("localizationPath must not be null.");
-		}
-		if (name == null) {
-			throw new NullPointerException("name must not be null.");
-		}
-		this.localizationPath = localizationPath;
-		this.name = name;
+		this.localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
+		this.name = ErrorUtil.checkNotNull(name, "name");
 	}
 
 	@Override
@@ -39,9 +34,7 @@ public class ConfigDisplayCategoryBuilder implements IConfigDisplayCategoryBuild
 
 	@Override
 	public ConfigDisplayCategoryBuilder addValueSource(IConfigValueSource valueSource) {
-		if (valueSource == null) {
-			throw new NullPointerException("valueSource must not be null.");
-		}
+		valueSource = ErrorUtil.checkNotNull(valueSource, "valueSource");
 		valueSources.add(valueSource);
 		return this;
 	}

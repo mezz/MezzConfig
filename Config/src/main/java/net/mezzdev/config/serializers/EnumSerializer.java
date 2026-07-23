@@ -18,9 +18,6 @@ public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer
 	private final Class<T> enumClass;
 	private final Collection<T> validValues;
 
-	/**
-	 * Create an enum serializer for the given enum class.
-	 */
 	public EnumSerializer(Class<T> enumClass) {
 		this.enumClass = enumClass;
 		this.validValues = List.of(enumClass.getEnumConstants());

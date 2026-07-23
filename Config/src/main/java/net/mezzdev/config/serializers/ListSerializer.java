@@ -20,9 +20,6 @@ import java.util.stream.Collectors;
 public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 	private final IConfigValueSerializer<T> valueSerializer;
 
-	/**
-	 * Create a list serializer using the given serializer for each list element.
-	 */
 	public ListSerializer(IConfigValueSerializer<T> valueSerializer) {
 		this.valueSerializer = valueSerializer;
 	}

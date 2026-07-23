@@ -1,5 +1,6 @@
 package net.mezzdev.config.api.value;
 
+import net.mezzdev.config.api.util.ErrorUtil;
 import net.minecraft.resources.ResourceLocation;
 
 /**
@@ -34,12 +35,8 @@ public final class ConfigValueEditorType<T> {
 
 	private final ResourceLocation uid;
 
-	@SuppressWarnings("ConstantValue")
 	private ConfigValueEditorType(ResourceLocation uid) {
-		if (uid == null) {
-			throw new NullPointerException("uid must not be null.");
-		}
-		this.uid = uid;
+		this.uid = ErrorUtil.checkNotNull(uid, "uid");
 	}
 
 	/**

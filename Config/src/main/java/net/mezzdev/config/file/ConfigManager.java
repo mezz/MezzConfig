@@ -3,6 +3,7 @@ package net.mezzdev.config.file;
 import net.mezzdev.config.api.files.IConfigFile;
 import net.mezzdev.config.api.files.IConfigManager;
 import net.mezzdev.config.api.schema.IConfigEditableSchema;
+import net.mezzdev.config.api.screen.IConfigRestartHandler;
 import net.mezzdev.config.api.screen.IConfigScreenConfig;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.screen.ConfigScreenConfig;
@@ -48,7 +49,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 		String modId,
 		Component title,
 		IConfigEditableSchema schema,
-		Runnable restartHandler
+		IConfigRestartHandler restartHandler
 	) {
 		ConfigScreenConfig configScreen = new ConfigScreenConfig(modId, title, schema, restartHandler);
 		@Nullable ConfigScreenConfig previous = this.configScreens.putIfAbsent(modId, configScreen);

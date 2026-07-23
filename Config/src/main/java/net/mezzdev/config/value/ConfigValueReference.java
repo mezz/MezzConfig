@@ -1,15 +1,13 @@
 package net.mezzdev.config.value;
 
+import net.mezzdev.config.api.util.ErrorUtil;
+
 public record ConfigValueReference(
 	String categoryName,
 	String valueName
 ) {
 	public ConfigValueReference {
-		if (categoryName == null) {
-			throw new NullPointerException("categoryName must not be null.");
-		}
-		if (valueName == null) {
-			throw new NullPointerException("valueName must not be null.");
-		}
+		categoryName = ErrorUtil.checkNotNull(categoryName, "categoryName");
+		valueName = ErrorUtil.checkNotNull(valueName, "valueName");
 	}
 }
