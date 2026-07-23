@@ -3,7 +3,9 @@ package net.mezzdev.config.file;
 import net.mezzdev.config.files.IConfigManager;
 import net.mezzdev.config.plugin.IConfigPlugin;
 import net.mezzdev.config.plugin.IConfigRegistration;
+import net.mezzdev.config.schema.IConfigEditableSchema;
 import net.mezzdev.config.schema.IConfigSchemaBuilder;
+import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -32,6 +34,7 @@ public final class ConfigPluginLoader {
 			addPlugin(configManager, configRootDir, modIds, plugin);
 		}
 		configManager.startWatching();
+		ConfigManagers.setConfigManager(configManager);
 		return configManager;
 	}
 
@@ -44,7 +47,7 @@ public final class ConfigPluginLoader {
 			}
 			Path pluginConfigDir = configRootDir.resolve(modId);
 			Files.createDirectories(pluginConfigDir);
-			ConfigRegistration registration = new ConfigRegistration(configManager, pluginConfigDir);
+			ConfigRegistration registration = new ConfigRegistration(modId, configManager, pluginConfigDir);
 			plugin.registerConfigFiles(registration);
 		} catch (IOException | RuntimeException | LinkageError e) {
 			LOGGER.error("Failed to load config plugin: {}", plugin.getClass(), e);
@@ -76,6 +79,7 @@ public final class ConfigPluginLoader {
 	}
 
 	private record ConfigRegistration(
+		String modId,
 		ConfigManager configManager,
 		Path pluginConfigDir
 	) implements IConfigRegistration {
@@ -86,6 +90,20 @@ public final class ConfigPluginLoader {
 			}
 			Path configFile = resolveConfigFile(pluginConfigDir, configFileName);
 			return new ConfigSchemaBuilder(configFile, localizationPath, configManager);
+		}
+
+		@Override
+		public void registerConfigScreen(Component title, IConfigEditableSchema schema, Runnable restartHandler) {
+			if (title == null) {
+				throw new NullPointerException("title must not be null.");
+			}
+			if (schema == null) {
+				throw new NullPointerException("schema must not be null.");
+			}
+			if (restartHandler == null) {
+				throw new NullPointerException("restartHandler must not be null.");
+			}
+			configManager.registerConfigScreen(modId, title, schema, restartHandler);
 		}
 
 		@Override
