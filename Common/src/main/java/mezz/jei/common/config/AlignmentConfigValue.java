@@ -15,6 +15,7 @@ import net.minecraft.network.chat.Component;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Adapts separate horizontal and vertical alignment config values into one screen value.
@@ -96,6 +97,12 @@ final class AlignmentConfigValue implements IConfigValue<Alignment> {
 		boolean horizontalChanged = horizontalAlignment.set(value.horizontalAlignment());
 		boolean verticalChanged = verticalAlignment.set(value.verticalAlignment());
 		return horizontalChanged || verticalChanged;
+	}
+
+	@Override
+	public void addListener(Consumer<Alignment> listener) {
+		horizontalAlignment.addListener(value -> listener.accept(getValue()));
+		verticalAlignment.addListener(value -> listener.accept(getValue()));
 	}
 
 	@Override

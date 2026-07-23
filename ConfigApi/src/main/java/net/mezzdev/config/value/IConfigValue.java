@@ -71,18 +71,14 @@ public interface IConfigValue<T> {
 	 *
 	 * @since 19.39.0
 	 */
-	default void addListener(Consumer<T> listener) {
-
-	}
+	void addListener(Consumer<T> listener);
 
 	/**
 	 * Get the kind of update needed for this config value to take effect.
 	 *
 	 * @since 19.39.0
 	 */
-	default ConfigValueUpdateType getUpdateType() {
-		return ConfigValueUpdateType.IMMEDIATE;
-	}
+	ConfigValueUpdateType getUpdateType();
 
 	/**
 	 * Get the helper for serializing values to and from Strings, and validating values.

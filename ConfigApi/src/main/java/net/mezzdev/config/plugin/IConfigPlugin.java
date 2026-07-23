@@ -27,7 +27,5 @@ public interface IConfigPlugin {
 	 *
 	 * @since 19.39.0
 	 */
-	default void registerConfigFiles(IConfigRegistration registration) {
-
-	}
+	void registerConfigFiles(IConfigRegistration registration);
 }
