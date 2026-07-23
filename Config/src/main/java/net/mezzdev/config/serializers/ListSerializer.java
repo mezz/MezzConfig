@@ -3,6 +3,8 @@ package net.mezzdev.config.serializers;
 import net.mezzdev.config.api.value.ConfigValueEditorType;
 import net.mezzdev.config.api.value.ConfigValueEditorTypes;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
+import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.value.IConfigValueEditorSerializerVisitor;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -83,6 +85,11 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 	@Override
 	public ConfigValueEditorType<List<T>> getEditorType() {
 		return ConfigValueEditorTypes.getList();
+	}
+
+	@Override
+	public <R> R visitEditor(IConfigValue<List<T>> configValue, IConfigValueEditorSerializerVisitor<R> visitor) {
+		return visitor.visitList(configValue, this);
 	}
 
 	@Override

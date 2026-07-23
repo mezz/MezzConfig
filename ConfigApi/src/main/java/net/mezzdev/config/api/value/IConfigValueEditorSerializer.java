@@ -12,4 +12,15 @@ public interface IConfigValueEditorSerializer<T> extends IConfigValueSerializer<
 	 * @since 19.39.0
 	 */
 	ConfigValueEditorType<T> getEditorType();
+
+	/**
+	 * Visit the editor contract required by this serializer.
+	 *
+	 * @param configValue config value being edited
+	 * @param visitor visitor to handle this serializer's editor contract
+	 * @param <R> result type returned by the visitor
+	 *
+	 * @since 19.39.0
+	 */
+	<R> R visitEditor(IConfigValue<T> configValue, IConfigValueEditorSerializerVisitor<R> visitor);
 }

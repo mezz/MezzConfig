@@ -6,6 +6,7 @@ import net.mezzdev.config.api.value.ConfigValueEditorType;
 import net.mezzdev.config.api.value.ConfigValueUpdateType;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
+import net.mezzdev.config.api.value.IConfigValueEditorSerializerVisitor;
 import mezz.jei.common.config.serializers.DeserializeResult;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
@@ -157,6 +158,11 @@ final class AlignmentConfigValue implements IConfigValue<Alignment> {
 		@Override
 		public ConfigValueEditorType<Alignment> getEditorType() {
 			return EDITOR_TYPE;
+		}
+
+		@Override
+		public <R> R visitEditor(IConfigValue<Alignment> configValue, IConfigValueEditorSerializerVisitor<R> visitor) {
+			return visitor.visitCustom(configValue, this);
 		}
 
 		@Override
