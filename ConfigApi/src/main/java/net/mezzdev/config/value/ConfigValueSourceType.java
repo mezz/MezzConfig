@@ -8,15 +8,34 @@ import net.minecraft.resources.ResourceLocation;
  * @since 19.39.0
  */
 public final class ConfigValueSourceType<T extends IConfigValueSource> {
+	/**
+	 * Create a config value source type.
+	 *
+	 * @param namespace the namespace for this value source type
+	 * @param path the path for this value source type
+	 *
+	 * @since 19.39.0
+	 */
 	public static <T extends IConfigValueSource> ConfigValueSourceType<T> create(String namespace, String path) {
 		ResourceLocation uid = ResourceLocation.fromNamespaceAndPath(namespace, path);
+		return create(uid);
+	}
+
+	/**
+	 * Create a config value source type.
+	 *
+	 * @param uid the unique id for this value source type
+	 *
+	 * @since 19.39.0
+	 */
+	public static <T extends IConfigValueSource> ConfigValueSourceType<T> create(ResourceLocation uid) {
 		return new ConfigValueSourceType<>(uid);
 	}
 
 	private final ResourceLocation uid;
 
 	@SuppressWarnings("ConstantValue")
-	public ConfigValueSourceType(ResourceLocation uid) {
+	private ConfigValueSourceType(ResourceLocation uid) {
 		if (uid == null) {
 			throw new NullPointerException("uid must not be null.");
 		}

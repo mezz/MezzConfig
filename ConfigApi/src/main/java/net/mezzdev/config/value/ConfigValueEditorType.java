@@ -8,15 +8,34 @@ import net.minecraft.resources.ResourceLocation;
  * @since 19.39.0
  */
 public final class ConfigValueEditorType<T> {
+	/**
+	 * Create a config value editor type.
+	 *
+	 * @param namespace the namespace for this editor type
+	 * @param path the path for this editor type
+	 *
+	 * @since 19.39.0
+	 */
 	public static <T> ConfigValueEditorType<T> create(String namespace, String path) {
 		ResourceLocation uid = ResourceLocation.fromNamespaceAndPath(namespace, path);
+		return create(uid);
+	}
+
+	/**
+	 * Create a config value editor type.
+	 *
+	 * @param uid the unique id for this editor type
+	 *
+	 * @since 19.39.0
+	 */
+	public static <T> ConfigValueEditorType<T> create(ResourceLocation uid) {
 		return new ConfigValueEditorType<>(uid);
 	}
 
 	private final ResourceLocation uid;
 
 	@SuppressWarnings("ConstantValue")
-	public ConfigValueEditorType(ResourceLocation uid) {
+	private ConfigValueEditorType(ResourceLocation uid) {
 		if (uid == null) {
 			throw new NullPointerException("uid must not be null.");
 		}
