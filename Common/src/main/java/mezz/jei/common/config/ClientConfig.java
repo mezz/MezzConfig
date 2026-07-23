@@ -171,6 +171,35 @@ public final class ClientConfig implements IClientConfig {
 		);
 		recipeSortingBookmarksEnabled = sorting.addBoolean("recipeSortingBookmarks", true, ConfigValueUpdateType.IMMEDIATE);
 		recipeSortingCraftableEnabled = sorting.addBoolean("recipeSortingCraftable", true, ConfigValueUpdateType.IMMEDIATE);
+
+		schema.addLegacyValueMigration(
+			"cheating",
+			"showTagRecipesEnabled",
+			showTagRecipesEnabled.getSerializer(),
+			showTagRecipesEnabled::set
+		);
+		schema.addLegacyValueMigration(
+			"tooltips",
+			"bookmarkTooltipFeatures",
+			new ListSerializer<>(new EnumSerializer<>(BookmarkTooltipFeature.class)),
+			this::migrateBookmarkTooltipFeatures
+		);
+		schema.addLegacyValueMigration(
+			"sorting",
+			"recipeSorterStages",
+			new ListSerializer<>(new EnumSerializer<>(RecipeSorterStage.class)),
+			this::migrateRecipeSorterStages
+		);
+	}
+
+	private void migrateBookmarkTooltipFeatures(List<BookmarkTooltipFeature> features) {
+		bookmarkTooltipPreviewEnabled.set(features.contains(BookmarkTooltipFeature.PREVIEW));
+		bookmarkTooltipIngredientsEnabled.set(features.contains(BookmarkTooltipFeature.INGREDIENTS));
+	}
+
+	private void migrateRecipeSorterStages(List<RecipeSorterStage> stages) {
+		recipeSortingBookmarksEnabled.set(stages.contains(RecipeSorterStage.BOOKMARKED));
+		recipeSortingCraftableEnabled.set(stages.contains(RecipeSorterStage.CRAFTABLE));
 	}
 
 	/**

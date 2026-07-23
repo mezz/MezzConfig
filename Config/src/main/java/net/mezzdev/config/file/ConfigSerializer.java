@@ -4,6 +4,7 @@ import net.mezzdev.config.value.IConfigValueSerializer;
 import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -32,7 +33,11 @@ public final class ConfigSerializer {
 			Line #%s: "%s\"""".formatted(errorMessage, path, lineNumber, line);
 	}
 
-	public static void load(Path path, List<ConfigCategory> categories) throws IOException {
+	public static void load(
+		Path path,
+		List<ConfigCategory> categories,
+		Map<ConfigValueReference, ConfigValueMigration<?>> legacyValueMigrations
+	) throws IOException {
 		FileTime lastModifiedTime = Files.getLastModifiedTime(path);
 		FileTime savedTime = saveTimes.get(path);
 		if (savedTime != null && savedTime.compareTo(lastModifiedTime) >= 0) {
@@ -48,6 +53,7 @@ public final class ConfigSerializer {
 			categoriesMap.put(category.getName(), category);
 		}
 
+		String categoryName = "";
 		ConfigCategory category = null;
 		for (int i = 0; i < lines.size(); i++) {
 			int lineNumber = i + 1;
@@ -57,9 +63,9 @@ public final class ConfigSerializer {
 			}
 			Matcher categoryMatcher = categoryRegex.matcher(line);
 			if (categoryMatcher.matches()) {
-				String categoryName = categoryMatcher.group("category");
+				categoryName = categoryMatcher.group("category");
 				category = categoriesMap.get(categoryName);
-				if (category == null) {
+				if (category == null && !hasLegacyValues(categoryName, legacyValueMigrations)) {
 					LOGGER.error(getLineErrorString(path, lineNumber, line,
 						"""
 						'[%s]' is not a valid category name.
@@ -73,7 +79,7 @@ public final class ConfigSerializer {
 				}
 				continue;
 			}
-			if (category == null) {
+			if (categoryName.isEmpty()) {
 				LOGGER.error(getLineErrorString(path, lineNumber, line, """
 				Expected a '[category]' here.
 				Configs must start with a category before defining values.
@@ -85,25 +91,22 @@ public final class ConfigSerializer {
 			if (keyValueMatcher.matches()) {
 				final String key = keyValueMatcher.group("key").trim();
 				final String value = keyValueMatcher.group("value").trim();
-				Optional<ConfigValue<?>> configValue = category.getConfigValue(key);
+				Optional<ConfigValue<?>> configValue = getConfigValue(category, key);
 				if (configValue.isEmpty()) {
-					LOGGER.error(getLineErrorString(path, lineNumber, line,
-						"""
-						'%s' is not a valid config key for config category '%s'.
-						Valid keys: [%s]
-						Skipping this key."""
-						.formatted(
-							key, category.getName(),
-							String.join(", ", category.getValueNames())
-						)
-					));
+					ConfigValueReference legacyValueReference = new ConfigValueReference(categoryName, key);
+					@Nullable ConfigValueMigration<?> migration = legacyValueMigrations.get(legacyValueReference);
+					if (migration == null) {
+						logUnknownConfigValue(path, lineNumber, line, category, categoryName, key);
+					} else {
+						List<String> errors = migration.migrate(value);
+						if (!errors.isEmpty()) {
+							logDeserializeErrors(path, lineNumber, line, value, errors);
+						}
+					}
 				} else {
 					List<String> errors = configValue.get().setFromSerializedValue(value);
 					if (!errors.isEmpty()) {
-						String errorMessage = """
-							Encountered Errors when deserializing value '%s':
-							%s""".formatted(value, String.join("\n", errors));
-						LOGGER.error(getLineErrorString(path, lineNumber, line, errorMessage));
+						logDeserializeErrors(path, lineNumber, line, value, errors);
 					}
 				}
 			} else {
@@ -117,6 +120,61 @@ public final class ConfigSerializer {
 				));
 			}
 		}
+	}
+
+	private static Optional<ConfigValue<?>> getConfigValue(@Nullable ConfigCategory category, String key) {
+		if (category == null) {
+			return Optional.empty();
+		}
+		return category.getConfigValue(key);
+	}
+
+	private static boolean hasLegacyValues(String categoryName, Map<ConfigValueReference, ConfigValueMigration<?>> legacyValueMigrations) {
+		return legacyValueMigrations.keySet()
+			.stream()
+			.anyMatch(reference -> reference.categoryName().equals(categoryName));
+	}
+
+	private static void logUnknownConfigValue(
+		Path path,
+		int lineNumber,
+		String line,
+		@Nullable ConfigCategory category,
+		String categoryName,
+		String key
+	) {
+		if (category == null) {
+			LOGGER.error(getLineErrorString(path, lineNumber, line,
+				"""
+				'%s' is not a valid config category.
+				Skipping this key."""
+				.formatted(categoryName)
+			));
+			return;
+		}
+		LOGGER.error(getLineErrorString(path, lineNumber, line,
+			"""
+			'%s' is not a valid config key for config category '%s'.
+			Valid keys: [%s]
+			Skipping this key."""
+			.formatted(
+				key, category.getName(),
+				String.join(", ", category.getValueNames())
+			)
+		));
+	}
+
+	private static void logDeserializeErrors(
+		Path path,
+		int lineNumber,
+		String line,
+		String value,
+		List<String> errors
+	) {
+		String errorMessage = """
+			Encountered Errors when deserializing value '%s':
+			%s""".formatted(value, String.join("\n", errors));
+		LOGGER.error(getLineErrorString(path, lineNumber, line, errorMessage));
 	}
 
 	public static void save(Path path, List<ConfigCategory> categories) throws IOException {

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -57,6 +58,7 @@ public class ConfigSchemaTest {
 			"mezz_config.config.test",
 			List.of(builder),
 			List.of(),
+			Map.of(),
 			(command, delay) -> CompletableFuture.completedFuture(null)
 		);
 	}
