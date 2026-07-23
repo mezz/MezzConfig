@@ -1,13 +1,13 @@
 package mezz.jei.common.config;
 
 import com.google.common.base.Preconditions;
-import net.mezzdev.config.ConfigValueUpdateType;
-import net.mezzdev.config.file.ConfigValue;
-import net.mezzdev.config.file.IConfigCategoryBuilder;
-import net.mezzdev.config.file.IConfigSchemaBuilder;
-import net.mezzdev.config.file.serializers.EnumSerializer;
-import net.mezzdev.config.file.serializers.EnumSerializerWithAliases;
-import net.mezzdev.config.file.serializers.ListSerializer;
+import net.mezzdev.config.value.ConfigValueUpdateType;
+import net.mezzdev.config.value.IConfigValue;
+import net.mezzdev.config.schema.IConfigCategoryBuilder;
+import net.mezzdev.config.schema.IConfigSchemaBuilder;
+import mezz.jei.common.config.serializers.EnumSerializer;
+import mezz.jei.common.config.serializers.EnumSerializerWithAliases;
+import mezz.jei.common.config.serializers.ListSerializer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -18,51 +18,51 @@ public final class ClientConfig implements IClientConfig {
 	private static IClientConfig instance;
 
 	// appearance
-	private final ConfigValue<SearchBarPosition> searchBarPosition;
-	private final ConfigValue<Integer> maxRecipeGuiHeight;
-	private final ConfigValue<Boolean> toastReflowEnabled;
+	private final IConfigValue<SearchBarPosition> searchBarPosition;
+	private final IConfigValue<Integer> maxRecipeGuiHeight;
+	private final IConfigValue<Boolean> toastReflowEnabled;
 
 	// cheat_mode
-	private final ConfigValue<GiveMode> giveMode;
-	private final ConfigValue<Boolean> cheatToHotbarUsingHotkeysEnabled;
-	private final ConfigValue<Boolean> showHiddenIngredients;
+	private final IConfigValue<GiveMode> giveMode;
+	private final IConfigValue<Boolean> cheatToHotbarUsingHotkeysEnabled;
+	private final IConfigValue<Boolean> showHiddenIngredients;
 
 	// bookmarks
-	private final ConfigValue<BookmarkAddPosition> bookmarkAddPosition;
-	private final ConfigValue<Boolean> bookmarkTooltipPreviewEnabled;
-	private final ConfigValue<Boolean> bookmarkTooltipIngredientsEnabled;
-	private final ConfigValue<Boolean> holdShiftToShowBookmarkTooltipFeaturesEnabled;
-	private final ConfigValue<Boolean> dragToRearrangeBookmarksEnabled;
+	private final IConfigValue<BookmarkAddPosition> bookmarkAddPosition;
+	private final IConfigValue<Boolean> bookmarkTooltipPreviewEnabled;
+	private final IConfigValue<Boolean> bookmarkTooltipIngredientsEnabled;
+	private final IConfigValue<Boolean> holdShiftToShowBookmarkTooltipFeaturesEnabled;
+	private final IConfigValue<Boolean> dragToRearrangeBookmarksEnabled;
 
 	// lookup history
-	private final ConfigValue<Boolean> lookupHistoryEnabled;
-	private final ConfigValue<Integer> maxLookupHistoryRows;
-	private final ConfigValue<Integer> maxLookupHistoryIngredients;
-	private final ConfigValue<HistoryDisplaySide> lookupHistoryDisplaySide;
+	private final IConfigValue<Boolean> lookupHistoryEnabled;
+	private final IConfigValue<Integer> maxLookupHistoryRows;
+	private final IConfigValue<Integer> maxLookupHistoryIngredients;
+	private final IConfigValue<HistoryDisplaySide> lookupHistoryDisplaySide;
 
 	// recipes gui
-	private final ConfigValue<Boolean> ingredientsSummaryEnabled;
-	private final ConfigValue<Boolean> showTagRecipesEnabled;
+	private final IConfigValue<Boolean> ingredientsSummaryEnabled;
+	private final IConfigValue<Boolean> showTagRecipesEnabled;
 
 	// advanced
-	private final ConfigValue<Boolean> lowMemorySlowSearchEnabled;
-	private final ConfigValue<Boolean> catchRenderErrorsEnabled;
-	private final ConfigValue<Boolean> lookupFluidContentsEnabled;
-	private final ConfigValue<Boolean> lookupBlockTagsEnabled;
-	private final ConfigValue<Boolean> showCreativeTabNamesEnabled;
+	private final IConfigValue<Boolean> lowMemorySlowSearchEnabled;
+	private final IConfigValue<Boolean> catchRenderErrorsEnabled;
+	private final IConfigValue<Boolean> lookupFluidContentsEnabled;
+	private final IConfigValue<Boolean> lookupBlockTagsEnabled;
+	private final IConfigValue<Boolean> showCreativeTabNamesEnabled;
 
 	// input
-	private final ConfigValue<Integer> dragDelayMs;
-	private final ConfigValue<Integer> smoothScrollRate;
+	private final IConfigValue<Integer> dragDelayMs;
+	private final IConfigValue<Integer> smoothScrollRate;
 
 	// sorting
-	private final ConfigValue<List<IngredientSortStage>> ingredientSorterStages;
-	private final ConfigValue<Boolean> recipeSortingBookmarksEnabled;
-	private final ConfigValue<Boolean> recipeSortingCraftableEnabled;
+	private final IConfigValue<List<IngredientSortStage>> ingredientSorterStages;
+	private final IConfigValue<Boolean> recipeSortingBookmarksEnabled;
+	private final IConfigValue<Boolean> recipeSortingCraftableEnabled;
 
 	// tags
-	private final ConfigValue<Boolean> tagContentTooltipEnabled;
-	private final ConfigValue<Boolean> hideSingleTagContentTooltipEnabled;
+	private final IConfigValue<Boolean> tagContentTooltipEnabled;
+	private final IConfigValue<Boolean> hideSingleTagContentTooltipEnabled;
 
 	public ClientConfig(IConfigSchemaBuilder schema, boolean isDev) {
 		instance = this;
@@ -183,147 +183,147 @@ public final class ClientConfig implements IClientConfig {
 	}
 
 	@Override
-	public ConfigValue<SearchBarPosition> searchBarPosition() {
+	public IConfigValue<SearchBarPosition> searchBarPosition() {
 		return searchBarPosition;
 	}
 
 	@Override
-	public ConfigValue<Integer> maxRecipeGuiHeight() {
+	public IConfigValue<Integer> maxRecipeGuiHeight() {
 		return maxRecipeGuiHeight;
 	}
 
 	@Override
-	public ConfigValue<Boolean> toastReflowEnabled() {
+	public IConfigValue<Boolean> toastReflowEnabled() {
 		return toastReflowEnabled;
 	}
 
 	@Override
-	public ConfigValue<GiveMode> giveMode() {
+	public IConfigValue<GiveMode> giveMode() {
 		return giveMode;
 	}
 
 	@Override
-	public ConfigValue<Boolean> cheatToHotbarUsingHotkeysEnabled() {
+	public IConfigValue<Boolean> cheatToHotbarUsingHotkeysEnabled() {
 		return cheatToHotbarUsingHotkeysEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> showHiddenIngredients() {
+	public IConfigValue<Boolean> showHiddenIngredients() {
 		return showHiddenIngredients;
 	}
 
 	@Override
-	public ConfigValue<BookmarkAddPosition> bookmarkAddPosition() {
+	public IConfigValue<BookmarkAddPosition> bookmarkAddPosition() {
 		return bookmarkAddPosition;
 	}
 
 	@Override
-	public ConfigValue<Boolean> bookmarkTooltipPreviewEnabled() {
+	public IConfigValue<Boolean> bookmarkTooltipPreviewEnabled() {
 		return bookmarkTooltipPreviewEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> bookmarkTooltipIngredientsEnabled() {
+	public IConfigValue<Boolean> bookmarkTooltipIngredientsEnabled() {
 		return bookmarkTooltipIngredientsEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> holdShiftToShowBookmarkTooltipFeaturesEnabled() {
+	public IConfigValue<Boolean> holdShiftToShowBookmarkTooltipFeaturesEnabled() {
 		return holdShiftToShowBookmarkTooltipFeaturesEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> dragToRearrangeBookmarksEnabled() {
+	public IConfigValue<Boolean> dragToRearrangeBookmarksEnabled() {
 		return dragToRearrangeBookmarksEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> lookupHistoryEnabled() {
+	public IConfigValue<Boolean> lookupHistoryEnabled() {
 		return lookupHistoryEnabled;
 	}
 
 	@Override
-	public ConfigValue<Integer> maxLookupHistoryRows() {
+	public IConfigValue<Integer> maxLookupHistoryRows() {
 		return maxLookupHistoryRows;
 	}
 
 	@Override
-	public ConfigValue<Integer> maxLookupHistoryIngredients() {
+	public IConfigValue<Integer> maxLookupHistoryIngredients() {
 		return maxLookupHistoryIngredients;
 	}
 
 	@Override
-	public ConfigValue<HistoryDisplaySide> lookupHistoryDisplaySide() {
+	public IConfigValue<HistoryDisplaySide> lookupHistoryDisplaySide() {
 		return lookupHistoryDisplaySide;
 	}
 
 	@Override
-	public ConfigValue<Boolean> ingredientsSummaryEnabled() {
+	public IConfigValue<Boolean> ingredientsSummaryEnabled() {
 		return ingredientsSummaryEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> showTagRecipesEnabled() {
+	public IConfigValue<Boolean> showTagRecipesEnabled() {
 		return showTagRecipesEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> lowMemorySlowSearchEnabled() {
+	public IConfigValue<Boolean> lowMemorySlowSearchEnabled() {
 		return lowMemorySlowSearchEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> catchRenderErrorsEnabled() {
+	public IConfigValue<Boolean> catchRenderErrorsEnabled() {
 		return catchRenderErrorsEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> lookupFluidContentsEnabled() {
+	public IConfigValue<Boolean> lookupFluidContentsEnabled() {
 		return lookupFluidContentsEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> lookupBlockTagsEnabled() {
+	public IConfigValue<Boolean> lookupBlockTagsEnabled() {
 		return lookupBlockTagsEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> showCreativeTabNamesEnabled() {
+	public IConfigValue<Boolean> showCreativeTabNamesEnabled() {
 		return showCreativeTabNamesEnabled;
 	}
 
 	@Override
-	public ConfigValue<Integer> dragDelayMs() {
+	public IConfigValue<Integer> dragDelayMs() {
 		return dragDelayMs;
 	}
 
 	@Override
-	public ConfigValue<Integer> smoothScrollRate() {
+	public IConfigValue<Integer> smoothScrollRate() {
 		return smoothScrollRate;
 	}
 
 	@Override
-	public ConfigValue<List<IngredientSortStage>> ingredientSorterStages() {
+	public IConfigValue<List<IngredientSortStage>> ingredientSorterStages() {
 		return ingredientSorterStages;
 	}
 
 	@Override
-	public ConfigValue<Boolean> recipeSortingBookmarksEnabled() {
+	public IConfigValue<Boolean> recipeSortingBookmarksEnabled() {
 		return recipeSortingBookmarksEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> recipeSortingCraftableEnabled() {
+	public IConfigValue<Boolean> recipeSortingCraftableEnabled() {
 		return recipeSortingCraftableEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> tagContentTooltipEnabled() {
+	public IConfigValue<Boolean> tagContentTooltipEnabled() {
 		return tagContentTooltipEnabled;
 	}
 
 	@Override
-	public ConfigValue<Boolean> hideSingleTagContentTooltipEnabled() {
+	public IConfigValue<Boolean> hideSingleTagContentTooltipEnabled() {
 		return hideSingleTagContentTooltipEnabled;
 	}
 

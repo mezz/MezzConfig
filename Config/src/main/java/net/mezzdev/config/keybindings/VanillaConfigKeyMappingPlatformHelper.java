@@ -1,13 +1,10 @@
 package net.mezzdev.config.keybindings;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import net.mezzdev.config.ConfigKeyBinding;
-import net.mezzdev.config.ConfigKeyModifier;
+import net.minecraft.SharedConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.ApiStatus;
 
-@ApiStatus.Internal
 public class VanillaConfigKeyMappingPlatformHelper implements IConfigKeyMappingPlatformHelper {
 	@Override
 	public ConfigKeyBinding getValue(KeyMapping keyMapping) {
@@ -65,5 +62,10 @@ public class VanillaConfigKeyMappingPlatformHelper implements IConfigKeyMappingP
 	@Override
 	public String getModNameForModId(String modId) {
 		return modId;
+	}
+
+	@Override
+	public boolean isInDev() {
+		return SharedConstants.IS_RUNNING_IN_IDE;
 	}
 }

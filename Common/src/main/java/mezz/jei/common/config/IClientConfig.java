@@ -1,6 +1,6 @@
 package mezz.jei.common.config;
 
-import net.mezzdev.config.IConfigValue;
+import net.mezzdev.config.value.IConfigValue;
 
 import java.util.List;
 

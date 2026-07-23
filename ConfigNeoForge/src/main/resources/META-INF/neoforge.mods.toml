@@ -1,0 +1,29 @@
+modLoader="javafml"
+loaderVersion="${neoforgeLoaderVersionRange}"
+issueTrackerURL="${githubUrl}/issues?q=is%3Aissue"
+license="The MIT License (MIT)"
+
+[[mods]]
+modId="${configModId}"
+version="${version}"
+displayName="Mezz Config"
+displayURL="${githubUrl}"
+displayTest="IGNORE_SERVER_VERSION"
+authors="${modAuthor}"
+description='''
+Shared config support for Minecraft mods.
+'''
+
+[[dependencies.${configModId}]]
+    modId="neoforge"
+    type="required"
+    versionRange="${neoforgeVersionRange}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${configModId}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraftVersionRange}"
+    ordering="NONE"
+    side="BOTH"

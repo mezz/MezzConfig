@@ -1,8 +1,9 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.ConfigDisplayCategoryRole;
-import net.mezzdev.config.IConfigDisplayCategory;
-import net.mezzdev.config.IConfigValue;
+import net.mezzdev.config.value.ConfigValueSources;
+import net.mezzdev.config.schema.IConfigDisplayCategory;
+import net.mezzdev.config.value.IConfigValue;
+import net.mezzdev.config.value.IConfigValueSource;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -13,20 +14,14 @@ import java.util.List;
 public record ConfigDisplayCategory(
 	String localizationPath,
 	String name,
-	ConfigDisplayCategoryRole role,
-	List<IConfigValue<?>> configValues
+	List<IConfigValueSource> configValueSources
 ) implements IConfigDisplayCategory {
+	public static ConfigDisplayCategory createWithValues(String localizationPath, String name, List<IConfigValue<?>> configValues) {
+		return new ConfigDisplayCategory(localizationPath, name, List.of(ConfigValueSources.values(configValues)));
+	}
+
 	public ConfigDisplayCategory {
-		configValues = List.copyOf(configValues);
-	}
-
-	public ConfigDisplayCategory(String localizationPath, String name, List<IConfigValue<?>> configValues) {
-		this(localizationPath, name, ConfigDisplayCategoryRole.DEFAULT, configValues);
-	}
-
-	@Override
-	public ConfigDisplayCategoryRole getRole() {
-		return role;
+		configValueSources = List.copyOf(configValueSources);
 	}
 
 	@Override
@@ -45,7 +40,7 @@ public record ConfigDisplayCategory(
 	}
 
 	@Override
-	public List<IConfigValue<?>> getConfigValues() {
-		return configValues;
+	public List<IConfigValueSource> getConfigValueSources() {
+		return configValueSources;
 	}
 }

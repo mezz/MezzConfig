@@ -1,17 +1,13 @@
 package net.mezzdev.config.keybindings;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import net.mezzdev.config.ConfigKeyBinding;
-import net.mezzdev.config.ConfigKeyModifier;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.ApiStatus;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.function.Function;
 
-@ApiStatus.Internal
 public final class ConfigKeyBindingUtil {
 	private ConfigKeyBindingUtil() {
 

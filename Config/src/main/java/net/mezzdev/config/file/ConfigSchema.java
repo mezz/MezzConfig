@@ -1,8 +1,8 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.ConfigValueChange;
-import net.mezzdev.config.ConfigValueUpdateType;
-import net.mezzdev.config.IConfigValue;
+import net.mezzdev.config.value.ConfigValueChange;
+import net.mezzdev.config.value.ConfigValueUpdateType;
+import net.mezzdev.config.value.IConfigValue;
 import net.minecraft.locale.Language;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -30,7 +30,7 @@ public class ConfigSchema implements IConfigSchema {
 		String localizationPath,
 		List<ConfigCategoryBuilder> categoryBuilders,
 		List<ConfigDisplayCategory> displayCategories,
-		IConfigSaveScheduler scheduler
+		net.mezzdev.config.files.IConfigSaveScheduler scheduler
 	) {
 		this.path = path;
 		this.localizationPath = localizationPath;
@@ -50,7 +50,7 @@ public class ConfigSchema implements IConfigSchema {
 			return List.copyOf(displayCategories);
 		}
 		return categories.stream()
-			.map(category -> new ConfigDisplayCategory(
+			.map(category -> ConfigDisplayCategory.createWithValues(
 				localizationPath + "." + category.getName(),
 				category.getName(),
 				List.copyOf(category.getConfigValues())

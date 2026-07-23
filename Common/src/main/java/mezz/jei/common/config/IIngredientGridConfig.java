@@ -1,8 +1,8 @@
 package mezz.jei.common.config;
 
-import net.mezzdev.config.IConfigValue;
-import net.mezzdev.config.alignment.HorizontalConfigAlignment;
-import net.mezzdev.config.alignment.VerticalConfigAlignment;
+import net.mezzdev.config.value.IConfigValue;
+import net.mezzdev.config.alignment.HorizontalAlignment;
+import net.mezzdev.config.alignment.VerticalAlignment;
 
 public interface IIngredientGridConfig {
 	IConfigValue<Integer> maxColumns();
@@ -15,9 +15,9 @@ public interface IIngredientGridConfig {
 
 	IConfigValue<Boolean> drawBackground();
 
-	IConfigValue<HorizontalConfigAlignment> horizontalAlignment();
+	IConfigValue<HorizontalAlignment> horizontalAlignment();
 
-	IConfigValue<VerticalConfigAlignment> verticalAlignment();
+	IConfigValue<VerticalAlignment> verticalAlignment();
 
 	IConfigValue<NavigationVisibility> buttonNavigationVisibility();
 }

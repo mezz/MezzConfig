@@ -1,12 +1,12 @@
 package mezz.jei.common.config;
 
-import net.mezzdev.config.ConfigValueUpdateType;
-import net.mezzdev.config.alignment.AlignmentConfigValue;
-import net.mezzdev.config.alignment.HorizontalConfigAlignment;
-import net.mezzdev.config.alignment.VerticalConfigAlignment;
-import net.mezzdev.config.file.ConfigValue;
-import net.mezzdev.config.file.IConfigCategoryBuilder;
-import net.mezzdev.config.file.IConfigSchemaBuilder;
+import net.mezzdev.config.value.ConfigValueUpdateType;
+import net.mezzdev.config.alignment.Alignment;
+import net.mezzdev.config.alignment.HorizontalAlignment;
+import net.mezzdev.config.alignment.VerticalAlignment;
+import net.mezzdev.config.value.IConfigValue;
+import net.mezzdev.config.schema.IConfigCategoryBuilder;
+import net.mezzdev.config.schema.IConfigSchemaBuilder;
 
 public class IngredientGridConfig implements IIngredientGridConfig {
 	private static final int minNumRows = 1;
@@ -17,23 +17,23 @@ public class IngredientGridConfig implements IIngredientGridConfig {
 	private static final int defaultNumColumns = 9;
 	private static final int largestNumColumns = 100;
 
-	private static final VerticalConfigAlignment defaultVerticalAlignment = VerticalConfigAlignment.TOP;
+	private static final VerticalAlignment defaultVerticalAlignment = VerticalAlignment.TOP;
 	private static final NavigationVisibility defaultButtonNavigationVisibility = NavigationVisibility.ENABLED;
 	private static final boolean defaultDrawBackground = false;
 
-	private final ConfigValue<Integer> maxRows;
-	private final ConfigValue<Integer> maxColumns;
-	private final ConfigValue<HorizontalConfigAlignment> horizontalAlignment;
-	private final ConfigValue<VerticalConfigAlignment> verticalAlignment;
-	private final AlignmentConfigValue alignment;
-	private final ConfigValue<NavigationVisibility> buttonNavigationVisibility;
-	private final ConfigValue<Boolean> drawBackground;
+	private final IConfigValue<Integer> maxRows;
+	private final IConfigValue<Integer> maxColumns;
+	private final IConfigValue<HorizontalAlignment> horizontalAlignment;
+	private final IConfigValue<VerticalAlignment> verticalAlignment;
+	private final IConfigValue<Alignment> alignment;
+	private final IConfigValue<NavigationVisibility> buttonNavigationVisibility;
+	private final IConfigValue<Boolean> drawBackground;
 
 	public IngredientGridConfig(
 		String localizationPath,
 		String categoryName,
 		IConfigSchemaBuilder builder,
-		HorizontalConfigAlignment defaultHorizontalAlignment
+		HorizontalAlignment defaultHorizontalAlignment
 	) {
 		IConfigCategoryBuilder category = builder.addCategory(categoryName);
 		maxRows = category.addInteger(
@@ -68,36 +68,36 @@ public class IngredientGridConfig implements IIngredientGridConfig {
 	}
 
 	@Override
-	public ConfigValue<Integer> maxColumns() {
+	public IConfigValue<Integer> maxColumns() {
 		return maxColumns;
 	}
 
 	@Override
-	public ConfigValue<Integer> maxRows() {
+	public IConfigValue<Integer> maxRows() {
 		return maxRows;
 	}
 
 	@Override
-	public ConfigValue<Boolean> drawBackground() {
+	public IConfigValue<Boolean> drawBackground() {
 		return drawBackground;
 	}
 
 	@Override
-	public ConfigValue<HorizontalConfigAlignment> horizontalAlignment() {
+	public IConfigValue<HorizontalAlignment> horizontalAlignment() {
 		return horizontalAlignment;
 	}
 
 	@Override
-	public ConfigValue<VerticalConfigAlignment> verticalAlignment() {
+	public IConfigValue<VerticalAlignment> verticalAlignment() {
 		return verticalAlignment;
 	}
 
-	public AlignmentConfigValue alignment() {
+	public IConfigValue<Alignment> alignment() {
 		return alignment;
 	}
 
 	@Override
-	public ConfigValue<NavigationVisibility> buttonNavigationVisibility() {
+	public IConfigValue<NavigationVisibility> buttonNavigationVisibility() {
 		return buttonNavigationVisibility;
 	}
 }

@@ -1,6 +1,6 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.IConfigCategory;
+import net.mezzdev.config.schema.IConfigCategory;
 import net.minecraft.network.chat.Component;
 
 import java.util.Collection;

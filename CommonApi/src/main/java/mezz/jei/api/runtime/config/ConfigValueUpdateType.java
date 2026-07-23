@@ -4,7 +4,7 @@ package mezz.jei.api.runtime.config;
  * Describes how a config value should be applied after it is changed.
  *
  * @since 19.39.0
- * @deprecated use {@code net.mezzdev.config.ConfigValueUpdateType}
+ * @deprecated use {@code net.mezzdev.config.value.ConfigValueUpdateType}
  */
 @Deprecated(since = "19.39.0", forRemoval = false)
 public enum ConfigValueUpdateType {

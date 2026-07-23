@@ -1,10 +1,10 @@
 package net.mezzdev.config.test.config.file;
 
-import net.mezzdev.config.ConfigValueUpdateType;
+import net.mezzdev.config.value.ConfigValueUpdateType;
 import net.mezzdev.config.file.ConfigCategoryBuilder;
 import net.mezzdev.config.file.ConfigSchema;
 import net.mezzdev.config.file.ConfigValue;
-import net.mezzdev.config.ConfigValueChange;
+import net.mezzdev.config.value.ConfigValueChange;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;

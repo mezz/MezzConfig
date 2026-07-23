@@ -12,7 +12,7 @@ import java.util.List;
  * and each category has one or more {@link IJeiConfigValue}.
  *
  * @since 12.1.0
- * @deprecated use {@code net.mezzdev.config.IConfigFile}
+ * @deprecated use {@code net.mezzdev.config.files.IConfigFile}
  */
 @Deprecated(since = "19.39.0", forRemoval = false)
 public interface IJeiConfigFile {

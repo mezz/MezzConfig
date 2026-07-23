@@ -1,10 +1,12 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.ConfigValueUpdateType;
-import net.mezzdev.config.IConfigValueSerializer;
-import net.mezzdev.config.file.serializers.BooleanSerializer;
-import net.mezzdev.config.file.serializers.EnumSerializer;
-import net.mezzdev.config.file.serializers.IntegerSerializer;
+import net.mezzdev.config.schema.IConfigCategoryBuilder;
+import net.mezzdev.config.value.ConfigValueUpdateType;
+import net.mezzdev.config.value.IConfigListValueSerializer;
+import net.mezzdev.config.value.IConfigValueSerializer;
+import net.mezzdev.config.serializers.BooleanSerializer;
+import net.mezzdev.config.serializers.EnumSerializer;
+import net.mezzdev.config.serializers.IntegerSerializer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,7 +53,7 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 	}
 
 	@Override
-	public <T> ConfigValue<List<T>> addList(String name, List<T> defaultValue, IConfigValueSerializer<List<T>> listSerializer, ConfigValueUpdateType updateType) {
+	public <T> ConfigValue<List<T>> addList(String name, List<T> defaultValue, IConfigListValueSerializer<T> listSerializer, ConfigValueUpdateType updateType) {
 		return addValue(name, defaultValue, listSerializer, updateType);
 	}
 

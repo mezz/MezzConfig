@@ -1,14 +1,12 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.ConfigValueChange;
-import net.mezzdev.config.ConfigValueUpdateType;
+import net.mezzdev.config.value.ConfigValueChange;
+import net.mezzdev.config.value.ConfigValueUpdateType;
 
 import java.util.List;
 
-public interface IConfigSchema extends net.mezzdev.config.IConfigSchema {
+public interface IConfigSchema extends net.mezzdev.config.schema.IConfigSchema {
 	void register(FileWatcher fileWatcher, IConfigFileRegistrar configFileRegistrar);
-
-	void loadIfNeeded();
 
 	@Override
 	ConfigValueUpdateType getUpdateType(List<ConfigValueChange<?>> changes);
@@ -18,8 +16,4 @@ public interface IConfigSchema extends net.mezzdev.config.IConfigSchema {
 
 	@Override
 	List<ConfigDisplayCategory> getDisplayCategories();
-
-	void markDirty();
-
-	void clearListeners();
 }

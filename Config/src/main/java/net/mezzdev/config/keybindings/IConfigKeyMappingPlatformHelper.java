@@ -1,16 +1,12 @@
 package net.mezzdev.config.keybindings;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import net.mezzdev.config.ConfigKeyBinding;
-import net.mezzdev.config.ConfigKeyModifier;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Platform service for adapting Minecraft key mappings to config key mappings.
  */
-@ApiStatus.Internal
 public interface IConfigKeyMappingPlatformHelper {
 	ConfigKeyBinding getValue(KeyMapping keyMapping);
 
@@ -31,4 +27,6 @@ public interface IConfigKeyMappingPlatformHelper {
 	);
 
 	String getModNameForModId(String modId);
+
+	boolean isInDev();
 }

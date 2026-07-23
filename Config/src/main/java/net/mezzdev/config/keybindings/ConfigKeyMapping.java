@@ -1,24 +1,26 @@
 package net.mezzdev.config.keybindings;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import net.mezzdev.config.ConfigKeyBinding;
-import net.mezzdev.config.ConfigKeyMappingConflict;
-import net.mezzdev.config.ConfigKeyModifier;
-import net.mezzdev.config.IConfigKeyMapping;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 record ConfigKeyMapping(
-	KeyMapping keyMapping,
-	Component localizedContext,
-	Component localizedDescription
+	KeyMapping keyMapping
 ) implements IConfigKeyMapping {
+	private static final Logger LOGGER = LogManager.getLogger();
+	private static final Set<String> MISSING_LOCALIZATION_KEYS = ConcurrentHashMap.newKeySet();
+
 	@Override
 	public String getName() {
 		return keyMapping.getName();
@@ -26,17 +28,17 @@ record ConfigKeyMapping(
 
 	@Override
 	public Component getLocalizedName() {
-		return Component.translatable(keyMapping.getName());
+		return getLocalized(keyMapping.getName(), "name");
 	}
 
 	@Override
 	public Component getLocalizedContext() {
-		return localizedContext;
+		return getLocalized(keyMapping.getName() + ".context", "context");
 	}
 
 	@Override
 	public Component getLocalizedDescription() {
-		return localizedDescription;
+		return getLocalized(keyMapping.getName() + ".description", "description");
 	}
 
 	@Override
@@ -92,11 +94,32 @@ record ConfigKeyMapping(
 		ConfigKeyBinding conflictValue = platformHelper.getValue(conflict);
 		Component conflictInput = platformHelper.getValueName(conflictValue);
 		return new ConfigKeyMappingConflict(
-			Component.translatable(conflict.getName()),
+			getLocalized(conflict, conflict.getName(), "conflict name"),
 			conflictInput,
 			Component.literal(getModName(platformHelper, conflict)),
-			Component.translatable(conflict.getCategory())
+			getLocalized(conflict, conflict.getCategory(), "conflict category")
 		);
+	}
+
+	private Component getLocalized(String key, String description) {
+		return getLocalized(keyMapping, key, description);
+	}
+
+	private static Component getLocalized(KeyMapping keyMapping, String key, String description) {
+		logMissingLocalization(keyMapping, key, description);
+		return Component.translatable(key);
+	}
+
+	private static void logMissingLocalization(KeyMapping keyMapping, String key, String description) {
+		if (!ConfigKeyMappingPlatformServices.PLATFORM_HELPER.isInDev()) {
+			return;
+		}
+		if (Language.getInstance().has(key)) {
+			return;
+		}
+		if (MISSING_LOCALIZATION_KEYS.add(key)) {
+			LOGGER.error("Missing {} localization for key mapping '{}': {}", description, keyMapping.getName(), key);
+		}
 	}
 
 	private static String getModName(IConfigKeyMappingPlatformHelper platformHelper, KeyMapping keyMapping) {

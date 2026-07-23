@@ -1,11 +1,10 @@
 package mezz.jei.common.config;
 
-import net.mezzdev.config.ConfigValueUpdateType;
-import net.mezzdev.config.file.IConfigCategoryBuilder;
-import net.mezzdev.config.file.IConfigSchemaBuilder;
+import net.mezzdev.config.value.ConfigValueUpdateType;
+import net.mezzdev.config.schema.IConfigCategoryBuilder;
+import net.mezzdev.config.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.value.IConfigValue;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.function.Supplier;
 
 public final class DebugConfig {
 	@Nullable
@@ -15,13 +14,13 @@ public final class DebugConfig {
 		instance = new DebugConfig(schema);
 	}
 
-	private final Supplier<Boolean> debugModeEnabled;
-	private final Supplier<Boolean> debugGuisEnabled;
-	private final Supplier<Boolean> debugInputsEnabled;
-	private final Supplier<Boolean> debugInfoTooltipsEnabled;
-	private final Supplier<Boolean> crashingTestIngredientsEnabled;
-	private final Supplier<Boolean> crashingTestRecipesEnabled;
-	private final Supplier<Boolean> logSuffixTreeStats;
+	private final IConfigValue<Boolean> debugModeEnabled;
+	private final IConfigValue<Boolean> debugGuisEnabled;
+	private final IConfigValue<Boolean> debugInputsEnabled;
+	private final IConfigValue<Boolean> debugInfoTooltipsEnabled;
+	private final IConfigValue<Boolean> crashingTestIngredientsEnabled;
+	private final IConfigValue<Boolean> crashingTestRecipesEnabled;
+	private final IConfigValue<Boolean> logSuffixTreeStats;
 
 	private DebugConfig(IConfigSchemaBuilder schema) {
 		IConfigCategoryBuilder advanced = schema.addCategory("debug");
@@ -38,48 +37,48 @@ public final class DebugConfig {
 		if (instance == null) {
 			return false;
 		}
-		return instance.debugModeEnabled.get();
+		return instance.debugModeEnabled.getValue();
 	}
 
 	public static boolean isDebugGuisEnabled() {
 		if (instance == null) {
 			return false;
 		}
-		return instance.debugGuisEnabled.get();
+		return instance.debugGuisEnabled.getValue();
 	}
 
 	public static boolean isDebugInputsEnabled() {
 		if (instance == null) {
 			return false;
 		}
-		return instance.debugInputsEnabled.get();
+		return instance.debugInputsEnabled.getValue();
 	}
 
 	public static boolean isDebugInfoTooltipsEnabled() {
 		if (instance == null) {
 			return false;
 		}
-		return instance.debugInfoTooltipsEnabled.get();
+		return instance.debugInfoTooltipsEnabled.getValue();
 	}
 
 	public static boolean isCrashingTestIngredientsEnabled() {
 		if (instance == null) {
 			return false;
 		}
-		return instance.crashingTestIngredientsEnabled.get();
+		return instance.crashingTestIngredientsEnabled.getValue();
 	}
 
 	public static boolean isCrashingTestRecipesEnabled() {
 		if (instance == null) {
 			return false;
 		}
-		return instance.crashingTestRecipesEnabled.get();
+		return instance.crashingTestRecipesEnabled.getValue();
 	}
 
 	public static boolean isLogSuffixTreeStatsEnabled() {
 		if (instance == null) {
 			return false;
 		}
-		return instance.logSuffixTreeStats.get();
+		return instance.logSuffixTreeStats.getValue();
 	}
 }
