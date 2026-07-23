@@ -1,8 +1,8 @@
 package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.schema.IConfigDisplayCategoryBuilder;
-import net.mezzdev.config.api.util.ErrorUtil;
 import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.util.ErrorUtil;
 
 import java.util.ArrayList;
 import java.util.Collection;

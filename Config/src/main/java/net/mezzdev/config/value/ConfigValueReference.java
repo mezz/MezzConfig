@@ -1,6 +1,6 @@
 package net.mezzdev.config.value;
 
-import net.mezzdev.config.api.util.ErrorUtil;
+import net.mezzdev.config.util.ErrorUtil;
 
 public record ConfigValueReference(
 	String categoryName,

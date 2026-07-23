@@ -2,7 +2,7 @@ package net.mezzdev.config.value;
 
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.api.util.ErrorUtil;
+import net.mezzdev.config.util.ErrorUtil;
 
 import java.util.List;
 import java.util.function.Function;

@@ -1,7 +1,8 @@
 package net.mezzdev.config.api.value;
 
-import net.mezzdev.config.api.util.ErrorUtil;
 import net.minecraft.resources.ResourceLocation;
+
+import java.util.Objects;
 
 /**
  * Identifies the kind of editor a config screen should use for a config value.
@@ -36,7 +37,7 @@ public final class ConfigValueEditorType<T> {
 	private final ResourceLocation uid;
 
 	private ConfigValueEditorType(ResourceLocation uid) {
-		this.uid = ErrorUtil.checkNotNull(uid, "uid");
+		this.uid = Objects.requireNonNull(uid, "uid");
 	}
 
 	/**
