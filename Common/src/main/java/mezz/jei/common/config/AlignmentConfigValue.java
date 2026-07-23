@@ -1,13 +1,12 @@
 package mezz.jei.common.config;
 
+import mezz.jei.api.gui.placement.HorizontalAlignment;
+import mezz.jei.api.gui.placement.VerticalAlignment;
 import net.mezzdev.config.value.ConfigValueEditorType;
 import net.mezzdev.config.value.ConfigValueEditorTypes;
 import net.mezzdev.config.value.ConfigValueUpdateType;
 import net.mezzdev.config.value.IConfigValue;
 import net.mezzdev.config.value.IConfigValueSerializer;
-import net.mezzdev.config.alignment.Alignment;
-import net.mezzdev.config.alignment.HorizontalAlignment;
-import net.mezzdev.config.alignment.VerticalAlignment;
 import mezz.jei.common.config.serializers.DeserializeResult;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
@@ -28,7 +27,7 @@ final class AlignmentConfigValue implements IConfigValue<Alignment> {
 	 *
 	 * @since 19.39.0
 	 */
-	public static final ConfigValueEditorType<Alignment> EDITOR_TYPE = ConfigValueEditorTypes.getAlignment();
+	public static final ConfigValueEditorType<Alignment> EDITOR_TYPE = ConfigValueEditorTypes.getSelection();
 
 	private static final IConfigValueSerializer<Alignment> SERIALIZER = new AlignmentSerializer();
 
@@ -164,7 +163,7 @@ final class AlignmentConfigValue implements IConfigValue<Alignment> {
 		@Override
 		public Component getLocalizedValueName(String configValueLocalizationKey, Alignment value) {
 			return getTranslatedValue(configValueLocalizationKey, value.name(), ".name")
-				.orElseGet(() -> Component.translatable("mezz_config.config.value.Alignment." + value.name() + ".name"));
+				.orElseGet(() -> Component.translatable("jei.config.value.Alignment." + value.name() + ".name"));
 		}
 
 		@Override

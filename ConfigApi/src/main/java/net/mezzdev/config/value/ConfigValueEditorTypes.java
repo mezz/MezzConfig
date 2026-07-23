@@ -15,7 +15,6 @@ public final class ConfigValueEditorTypes {
 
 	private static final ConfigValueEditorType<Object> SELECTION = ConfigValueEditorType.create(CONFIG_ID, "selection");
 	private static final ConfigValueEditorType<List<Object>> LIST = ConfigValueEditorType.create(CONFIG_ID, "list");
-	private static final ConfigValueEditorType<Object> ALIGNMENT = ConfigValueEditorType.create(CONFIG_ID, "alignment");
 	private static final ConfigValueEditorType<Object> KEY_MAPPING = ConfigValueEditorType.create(CONFIG_ID, "key_mapping");
 	private static final ConfigValueEditorType<Object> UNSUPPORTED = ConfigValueEditorType.create(CONFIG_ID, "unsupported");
 
@@ -40,16 +39,6 @@ public final class ConfigValueEditorTypes {
 	@SuppressWarnings("unchecked")
 	public static <T> ConfigValueEditorType<List<T>> getList() {
 		return (ConfigValueEditorType<List<T>>) (Object) LIST;
-	}
-
-	/**
-	 * An editor for horizontal and vertical alignment values.
-	 *
-	 * @since 19.39.0
-	 */
-	@SuppressWarnings("unchecked")
-	public static <T> ConfigValueEditorType<T> getAlignment() {
-		return (ConfigValueEditorType<T>) ALIGNMENT;
 	}
 
 	/**

@@ -1,6 +1,6 @@
 package mezz.jei.common.config;
 
-import net.mezzdev.config.alignment.HorizontalAlignment;
+import mezz.jei.api.gui.placement.HorizontalAlignment;
 import net.mezzdev.config.schema.IConfigDisplayCategoryBuilder;
 import net.mezzdev.config.schema.IConfigEditableSchema;
 import net.mezzdev.config.schema.IConfigSchemaBuilder;

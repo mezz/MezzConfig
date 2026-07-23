@@ -1,9 +1,10 @@
-package net.mezzdev.config.alignment;
+package mezz.jei.common.config;
+
+import mezz.jei.api.gui.placement.HorizontalAlignment;
+import mezz.jei.api.gui.placement.VerticalAlignment;
 
 /**
- * Combined horizontal and vertical alignment for display in config screens.
- *
- * @since 19.39.0
+ * Combined horizontal and vertical alignment for JEI list placement config.
  */
 public enum Alignment {
 	TOP_LEFT(HorizontalAlignment.LEFT, VerticalAlignment.TOP),
@@ -24,29 +25,14 @@ public enum Alignment {
 		this.verticalAlignment = verticalAlignment;
 	}
 
-	/**
-	 * The horizontal part of this alignment.
-	 *
-	 * @since 19.39.0
-	 */
 	public HorizontalAlignment horizontalAlignment() {
 		return horizontalAlignment;
 	}
 
-	/**
-	 * The vertical part of this alignment.
-	 *
-	 * @since 19.39.0
-	 */
 	public VerticalAlignment verticalAlignment() {
 		return verticalAlignment;
 	}
 
-	/**
-	 * Get the combined alignment for the given horizontal and vertical values.
-	 *
-	 * @since 19.39.0
-	 */
 	public static Alignment from(HorizontalAlignment horizontalAlignment, VerticalAlignment verticalAlignment) {
 		for (Alignment alignment : values()) {
 			if (alignment.horizontalAlignment == horizontalAlignment && alignment.verticalAlignment == verticalAlignment) {
