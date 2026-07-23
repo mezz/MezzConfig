@@ -1,28 +1,21 @@
 package net.mezzdev.config.schema;
 
-import net.mezzdev.config.file.ConfigSaveScheduler;
-import org.jetbrains.annotations.Nullable;
+import net.mezzdev.deduplicatingrunner.DeduplicatingRunner;
+import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
 
 import java.time.Duration;
-import java.util.concurrent.Future;
 
 /**
  * Runs delayed config saves, replacing any queued save with the latest one.
  */
 final class ConfigSaveRunner {
-	private final ConfigSaveScheduler scheduler;
-	private final Duration delay;
-	private @Nullable Future<?> future;
+	private final DeduplicatingRunner runner;
 
-	ConfigSaveRunner(Duration delay, ConfigSaveScheduler scheduler) {
-		this.delay = delay;
-		this.scheduler = scheduler;
+	ConfigSaveRunner(Duration delay, DelayedTaskScheduler scheduler) {
+		this.runner = new DeduplicatingRunner(delay, scheduler);
 	}
 
-	public synchronized void run(Runnable runnable) {
-		if (future != null) {
-			future.cancel(false);
-		}
-		future = scheduler.schedule(runnable, delay);
+	public void run(Runnable runnable) {
+		runner.run(runnable);
 	}
 }

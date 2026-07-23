@@ -7,6 +7,7 @@ import net.mezzdev.config.api.screen.IConfigRestartHandler;
 import net.mezzdev.config.api.screen.IConfigScreenConfig;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.screen.ConfigScreenConfig;
+import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
@@ -32,7 +33,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 		this.saveExecutor = new ConfigSaveExecutor("Mezz Config Save Scheduler");
 	}
 
-	public ConfigSaveScheduler getSaveScheduler() {
+	public DelayedTaskScheduler getSaveScheduler() {
 		return saveExecutor;
 	}
 

@@ -34,6 +34,7 @@ val amecsMinecraftVersion: String by extra
 val parchmentMinecraftVersion: String by extra
 val parchmentVersionFabric: String by extra
 val jsr305Version: String by extra
+val deduplicatingRunnerVersion: String by extra
 
 group = configModGroup
 
@@ -49,6 +50,14 @@ val dependencyProjects: List<Project> = listOf(
 
 dependencyProjects.forEach {
     project.evaluationDependsOn(it.path)
+}
+
+val embeddedLibraries: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+configurations.implementation {
+    extendsFrom(embeddedLibraries)
 }
 
 extra["configLanguageDependencyProjects"] = dependencyProjects
@@ -87,6 +96,9 @@ dependencies {
     compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
     dependencyProjects.forEach {
         implementation(it)
+    }
+    embeddedLibraries("net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
+        isTransitive = false
     }
 }
 
@@ -161,7 +173,7 @@ tasks.named<ProcessResources>(sourceSets.main.get().processResourcesTaskName) {
 }
 
 tasks.jar {
-    dependsOn(mergedConfigLanguageResources)
+    dependsOn(mergedConfigLanguageResources, embeddedLibraries)
     from(sourceSets.main.get().output)
     for (p in dependencyProjects) {
         from(p.sourceSets.main.get().output) {
@@ -170,6 +182,7 @@ tasks.jar {
         }
     }
     from(mergedConfigLanguageResources)
+    from(embeddedLibraries.map(::zipTree))
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
@@ -201,7 +214,13 @@ publishing {
                     "artifactId" to it.base.archivesName.get(),
                     "version" to it.version
                 )
-            }
+            } + listOf(
+                mapOf(
+                    "groupId" to "net.mezzdev",
+                    "artifactId" to "deduplicating-runner",
+                    "version" to deduplicatingRunnerVersion
+                )
+            )
 
             pom.withXml {
                 val dependenciesNode = asNode().appendNode("dependencies")

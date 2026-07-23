@@ -20,6 +20,7 @@ val guavaVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
 val log4jVersion: String by extra
 val jsr305Version: String by extra
+val deduplicatingRunnerVersion: String by extra
 
 group = configModGroup
 
@@ -35,6 +36,12 @@ val dependencyProjects: List<Project> = listOf(
 
 dependencyProjects.forEach {
 	project.evaluationDependsOn(it.path)
+}
+
+val embeddedLibraries: Configuration = project(":Config").configurations.detachedConfiguration(
+	project(":Config").dependencies.create("net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion")
+).apply {
+	isTransitive = false
 }
 
 extra["configLanguageDependencyProjects"] = dependencyProjects
@@ -89,6 +96,7 @@ dependencies {
 	compileOnly("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
 	compileOnly("org.apache.logging.log4j:log4j-api:$log4jVersion")
 	compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
+	compileOnly(files(embeddedLibraries))
 	dependencyProjects.forEach {
 		compileOnly(it)
 	}
@@ -137,9 +145,10 @@ tasks.named<ProcessResources>(sourceSets.main.get().processResourcesTaskName) {
 }
 
 tasks.jar {
-	dependsOn(mergedConfigLanguageResources)
+	dependsOn(mergedConfigLanguageResources, embeddedLibraries)
 	from(sourceSets.main.get().output)
 	from(mergedConfigLanguageResources)
+	from(embeddedLibraries.map(::zipTree))
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
@@ -169,7 +178,13 @@ publishing {
 					"artifactId" to it.base.archivesName.get(),
 					"version" to it.version
 				)
-			}
+			} + listOf(
+				mapOf(
+					"groupId" to "net.mezzdev",
+					"artifactId" to "deduplicating-runner",
+					"version" to deduplicatingRunnerVersion
+				)
+			)
 
 			pom.withXml {
 				val dependenciesNode = asNode().appendNode("dependencies")

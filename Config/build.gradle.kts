@@ -16,6 +16,7 @@ val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
 val mixinVersion: String by extra
+val deduplicatingRunnerVersion: String by extra
 val guavaVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
 val log4jVersion: String by extra
@@ -49,6 +50,9 @@ sourceSets {
 
 dependencies {
     compileOnly("org.spongepowered:mixin:$mixinVersion")
+    implementation("net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
+        isTransitive = false
+    }
     implementation("com.google.guava:guava:$guavaVersion")
     implementation("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
     implementation("org.apache.logging.log4j:log4j-api:$log4jVersion")
@@ -95,6 +99,11 @@ publishing {
             artifact(sourcesJarTask.get())
 
             val dependencyInfos = listOf(
+                mapOf(
+                    "groupId" to "net.mezzdev",
+                    "artifactId" to "deduplicating-runner",
+                    "version" to deduplicatingRunnerVersion
+                ),
                 mapOf(
                     "groupId" to "com.google.guava",
                     "artifactId" to "guava",

@@ -14,6 +14,7 @@ val minecraftVersion: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
+val deduplicatingRunnerVersion: String by extra
 
 group = configModGroup
 
@@ -29,6 +30,14 @@ val dependencyProjects: List<Project> = listOf(
 
 dependencyProjects.forEach {
     project.evaluationDependsOn(it.path)
+}
+
+val embeddedLibraries: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+configurations.implementation {
+    extendsFrom(embeddedLibraries)
 }
 
 extra["configLanguageDependencyProjects"] = dependencyProjects
@@ -81,6 +90,9 @@ dependencies {
     dependencyProjects.forEach {
         implementation(it)
     }
+    embeddedLibraries("net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
+        isTransitive = false
+    }
 }
 
 java {
@@ -110,7 +122,7 @@ tasks.named<ProcessResources>(sourceSets.main.get().processResourcesTaskName) {
 }
 
 tasks.jar {
-    dependsOn(mergedConfigLanguageResources)
+    dependsOn(mergedConfigLanguageResources, embeddedLibraries)
     from(sourceSets.main.get().output)
     for (p in dependencyProjects) {
         from(p.sourceSets.main.get().output) {
@@ -118,6 +130,7 @@ tasks.jar {
         }
     }
     from(mergedConfigLanguageResources)
+    from(embeddedLibraries.map(::zipTree))
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
@@ -147,7 +160,13 @@ publishing {
                     "artifactId" to it.base.archivesName.get(),
                     "version" to it.version
                 )
-            }
+            } + listOf(
+                mapOf(
+                    "groupId" to "net.mezzdev",
+                    "artifactId" to "deduplicating-runner",
+                    "version" to deduplicatingRunnerVersion
+                )
+            )
 
             pom.withXml {
                 val dependenciesNode = asNode().appendNode("dependencies")

@@ -3,12 +3,12 @@ package net.mezzdev.config.schema;
 import net.mezzdev.config.api.value.ConfigValueChange;
 import net.mezzdev.config.api.value.ConfigValueUpdateType;
 import net.mezzdev.config.api.value.IConfigValue;
-import net.mezzdev.config.file.ConfigSaveScheduler;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.file.FileWatcher;
 import net.mezzdev.config.file.IConfigFileRegistrar;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
+import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -39,7 +39,7 @@ public class ConfigSchema implements IConfigSchema {
 		List<ConfigCategoryBuilder> categoryBuilders,
 		List<ConfigDisplayCategory> displayCategories,
 		Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> legacyValueMigrations,
-		ConfigSaveScheduler scheduler
+		DelayedTaskScheduler scheduler
 	) {
 		this.path = path;
 		this.categories = categoryBuilders.stream()
