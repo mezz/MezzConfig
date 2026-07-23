@@ -8,11 +8,6 @@ import java.util.List;
  * @since 19.39.0
  */
 public interface IConfigListValueSerializer<T> extends IConfigValueSerializer<List<T>> {
-	@Override
-	default ConfigValueEditorType<List<T>> getEditorType() {
-		return ConfigValueEditorTypes.getList();
-	}
-
 	/**
 	 * Get the serializer for each value in the list.
 	 *

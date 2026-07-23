@@ -1,5 +1,7 @@
 package mezz.jei.common.config.serializers;
 
+import net.mezzdev.config.value.ConfigValueEditorType;
+import net.mezzdev.config.value.ConfigValueEditorTypes;
 import net.mezzdev.config.value.IConfigValueSerializer;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
@@ -54,6 +56,11 @@ public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer
 	@Override
 	public Optional<Collection<T>> getAllValidValues() {
 		return Optional.of(validValues);
+	}
+
+	@Override
+	public ConfigValueEditorType<T> getEditorType() {
+		return ConfigValueEditorTypes.getSelection();
 	}
 
 	@Override

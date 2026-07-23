@@ -89,9 +89,7 @@ public interface IConfigValue<T> {
 	 *
 	 * @since 19.39.0
 	 */
-	default ConfigValueEditorType<T> getEditorType() {
-		return getSerializer().getEditorType();
-	}
+	ConfigValueEditorType<T> getEditorType();
 
 	/**
 	 * Get the helper for serializing values to and from Strings, and validating values.

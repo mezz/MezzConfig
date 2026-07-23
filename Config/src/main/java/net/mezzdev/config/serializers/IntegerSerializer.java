@@ -1,5 +1,7 @@
 package net.mezzdev.config.serializers;
 
+import net.mezzdev.config.value.ConfigValueEditorType;
+import net.mezzdev.config.value.ConfigValueEditorTypes;
 import net.mezzdev.config.value.IConfigIntegerValueSerializer;
 import net.minecraft.network.chat.Component;
 
@@ -81,6 +83,11 @@ public final class IntegerSerializer implements IConfigIntegerValueSerializer {
 			return Optional.of(values);
 		}
 		return Optional.empty();
+	}
+
+	@Override
+	public ConfigValueEditorType<Integer> getEditorType() {
+		return ConfigValueEditorTypes.INTEGER;
 	}
 
 	@Override

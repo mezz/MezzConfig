@@ -56,12 +56,7 @@ public interface IConfigValueSerializer<T> {
 	 *
 	 * @since 19.39.0
 	 */
-	default ConfigValueEditorType<T> getEditorType() {
-		if (getAllValidValues().isPresent()) {
-			return ConfigValueEditorTypes.getSelection();
-		}
-		return ConfigValueEditorTypes.getUnsupported();
-	}
+	ConfigValueEditorType<T> getEditorType();
 
 	/**
 	 * Get the translated name component for a value option serialized by this helper.

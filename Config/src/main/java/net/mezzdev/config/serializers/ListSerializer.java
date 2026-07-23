@@ -1,5 +1,7 @@
 package net.mezzdev.config.serializers;
 
+import net.mezzdev.config.value.ConfigValueEditorType;
+import net.mezzdev.config.value.ConfigValueEditorTypes;
 import net.mezzdev.config.value.IConfigListValueSerializer;
 import net.mezzdev.config.value.IConfigValueSerializer;
 import net.minecraft.network.chat.Component;
@@ -79,6 +81,11 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 	@Override
 	public Optional<Collection<List<T>>> getAllValidValues() {
 		return Optional.empty();
+	}
+
+	@Override
+	public ConfigValueEditorType<List<T>> getEditorType() {
+		return ConfigValueEditorTypes.getList();
 	}
 
 	@Override

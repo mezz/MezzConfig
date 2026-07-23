@@ -19,9 +19,4 @@ public interface IConfigIntegerValueSerializer extends IConfigValueSerializer<In
 	 * @since 19.39.0
 	 */
 	int getMax();
-
-	@Override
-	default ConfigValueEditorType<Integer> getEditorType() {
-		return ConfigValueEditorTypes.INTEGER;
-	}
 }
