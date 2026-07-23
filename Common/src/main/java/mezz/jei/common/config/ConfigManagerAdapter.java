@@ -4,11 +4,8 @@ import net.mezzdev.config.api.files.IConfigFile;
 import net.mezzdev.config.api.files.IConfigManager;
 import net.mezzdev.config.api.schema.IConfigCategory;
 import net.mezzdev.config.api.value.ConfigValueUpdateType;
-import net.mezzdev.config.api.value.IConfigIntegerValueSerializer;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValue;
-import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
-import net.mezzdev.config.api.value.IConfigValueEditorSerializerVisitor;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -49,16 +46,14 @@ public final class ConfigManagerAdapter {
 		return new ConfigValue<>(configValue);
 	}
 
-	@SuppressWarnings("unchecked")
-	private static <T> mezz.jei.api.runtime.config.IJeiConfigValueSerializer<T> createSerializer(IConfigValue<T> configValue) {
-		return (mezz.jei.api.runtime.config.IJeiConfigValueSerializer<T>) configValue.getSerializer()
-			.visitEditor(configValue, new SerializerAdapterVisitor(configValue.getLocalizationKey()));
-	}
-
-	private static <T> mezz.jei.api.runtime.config.IJeiConfigValueSerializer<T> createValueSerializer(
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private static <T> mezz.jei.api.runtime.config.IJeiConfigValueSerializer<T> createSerializer(
 		IConfigValueSerializer<T> serializer,
 		String configValueLocalizationKey
 	) {
+		if (serializer instanceof IConfigListValueSerializer<?> listSerializer) {
+			return new ConfigListValueSerializer((IConfigListValueSerializer) listSerializer, configValueLocalizationKey);
+		}
 		return new ConfigValueSerializer<>(serializer, configValueLocalizationKey);
 	}
 
@@ -163,59 +158,7 @@ public final class ConfigManagerAdapter {
 
 		@Override
 		public mezz.jei.api.runtime.config.IJeiConfigValueSerializer<T> getSerializer() {
-			return createSerializer(delegate);
-		}
-	}
-
-	private record SerializerAdapterVisitor(
-		String configValueLocalizationKey
-	) implements IConfigValueEditorSerializerVisitor<mezz.jei.api.runtime.config.IJeiConfigValueSerializer<?>> {
-		@Override
-		public mezz.jei.api.runtime.config.IJeiConfigValueSerializer<?> visitBoolean(
-			IConfigValue<Boolean> configValue,
-			IConfigValueEditorSerializer<Boolean> serializer
-		) {
-			return createValueSerializer(serializer, configValueLocalizationKey);
-		}
-
-		@Override
-		public mezz.jei.api.runtime.config.IJeiConfigValueSerializer<?> visitInteger(
-			IConfigValue<Integer> configValue,
-			IConfigIntegerValueSerializer serializer
-		) {
-			return createValueSerializer(serializer, configValueLocalizationKey);
-		}
-
-		@Override
-		public <T> mezz.jei.api.runtime.config.IJeiConfigValueSerializer<?> visitText(
-			IConfigValue<T> configValue,
-			IConfigValueEditorSerializer<T> serializer
-		) {
-			return createValueSerializer(serializer, configValueLocalizationKey);
-		}
-
-		@Override
-		public <T> mezz.jei.api.runtime.config.IJeiConfigValueSerializer<?> visitList(
-			IConfigValue<List<T>> configValue,
-			IConfigListValueSerializer<T> serializer
-		) {
-			return new ConfigListValueSerializer<>(serializer, configValueLocalizationKey);
-		}
-
-		@Override
-		public <T> mezz.jei.api.runtime.config.IJeiConfigValueSerializer<?> visitSelection(
-			IConfigValue<T> configValue,
-			IConfigValueEditorSerializer<T> serializer
-		) {
-			return createValueSerializer(serializer, configValueLocalizationKey);
-		}
-
-		@Override
-		public <T> mezz.jei.api.runtime.config.IJeiConfigValueSerializer<?> visitCustom(
-			IConfigValue<T> configValue,
-			IConfigValueEditorSerializer<T> serializer
-		) {
-			return createValueSerializer(serializer, configValueLocalizationKey);
+			return createSerializer(delegate.getSerializer(), delegate.getLocalizationKey());
 		}
 	}
 
@@ -270,7 +213,7 @@ public final class ConfigManagerAdapter {
 	) implements mezz.jei.api.runtime.config.IJeiConfigListValueSerializer<T> {
 		@Override
 		public mezz.jei.api.runtime.config.IJeiConfigValueSerializer<T> getListValueSerializer() {
-			return createValueSerializer(delegate.getListValueSerializer(), configValueLocalizationKey);
+			return createSerializer(delegate.getListValueSerializer(), configValueLocalizationKey);
 		}
 
 		@Override

@@ -2,9 +2,7 @@ package net.mezzdev.config.serializers;
 
 import net.mezzdev.config.api.value.ConfigValueEditorType;
 import net.mezzdev.config.api.value.ConfigValueEditorTypes;
-import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
-import net.mezzdev.config.api.value.IConfigValueEditorSerializerVisitor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
@@ -60,11 +58,6 @@ public final class BooleanSerializer implements IConfigValueEditorSerializer<Boo
 	@Override
 	public ConfigValueEditorType<Boolean> getEditorType() {
 		return ConfigValueEditorTypes.BOOLEAN;
-	}
-
-	@Override
-	public <R> R visitEditor(IConfigValue<Boolean> configValue, IConfigValueEditorSerializerVisitor<R> visitor) {
-		return visitor.visitBoolean(configValue, this);
 	}
 
 	@Override

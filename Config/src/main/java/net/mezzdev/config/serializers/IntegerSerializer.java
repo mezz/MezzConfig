@@ -3,8 +3,6 @@ package net.mezzdev.config.serializers;
 import net.mezzdev.config.api.value.ConfigValueEditorType;
 import net.mezzdev.config.api.value.ConfigValueEditorTypes;
 import net.mezzdev.config.api.value.IConfigIntegerValueSerializer;
-import net.mezzdev.config.api.value.IConfigValue;
-import net.mezzdev.config.api.value.IConfigValueEditorSerializerVisitor;
 import net.minecraft.network.chat.Component;
 
 import java.util.Collection;
@@ -87,11 +85,6 @@ public final class IntegerSerializer implements IConfigIntegerValueSerializer {
 	@Override
 	public ConfigValueEditorType<Integer> getEditorType() {
 		return ConfigValueEditorTypes.INTEGER;
-	}
-
-	@Override
-	public <R> R visitEditor(IConfigValue<Integer> configValue, IConfigValueEditorSerializerVisitor<R> visitor) {
-		return visitor.visitInteger(configValue, this);
 	}
 
 	@Override
