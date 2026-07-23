@@ -4,32 +4,25 @@ issueTrackerURL="${githubUrl}/issues?q=is%3Aissue"
 license="The MIT License (MIT)"
 
 [[mods]]
-modId="${configModId}"
+modId="${configApiModId}"
 version="${version}"
-displayName="Mezz Config"
+displayName="Mezz Config API"
 displayURL="${githubUrl}"
 authors="${modAuthor}"
 description='''
-Shared config support for Minecraft mods.
+Shared config API for Minecraft mods.
 '''
 
-[[dependencies.${configModId}]]
+[[dependencies.${configApiModId}]]
     modId="forge"
     mandatory=true
     versionRange="${forgeVersionRange}"
     ordering="NONE"
     side="BOTH"
 
-[[dependencies.${configModId}]]
+[[dependencies.${configApiModId}]]
     modId="minecraft"
     mandatory=true
     versionRange="${minecraftVersionRange}"
     ordering="NONE"
-    side="BOTH"
-
-[[dependencies.${configModId}]]
-    modId="${configApiModId}"
-    mandatory=true
-    versionRange="[0,)"
-    ordering="AFTER"
     side="BOTH"

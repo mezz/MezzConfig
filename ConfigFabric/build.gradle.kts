@@ -20,6 +20,7 @@ repositories {
 val fabricApiVersion: String by extra
 val fabricLoaderVersion: String by extra
 val minecraftVersion: String by extra
+val configApiModId: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
@@ -37,10 +38,11 @@ base {
 
 val dependencyProjects: List<Project> = listOf(
     project(":Config"),
-    project(":ConfigApi"),
 )
+val configApiProject: Project = project(":ConfigApi")
+val configApiRuntimeProject: Project = project(":ConfigApiFabric")
 
-dependencyProjects.forEach {
+(listOf(configApiProject, configApiRuntimeProject) + dependencyProjects).forEach {
     project.evaluationDependsOn(it.path)
 }
 
@@ -85,6 +87,7 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
     compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
+    compileOnly(configApiProject)
     dependencyProjects.forEach {
         implementation(it)
     }
@@ -95,6 +98,10 @@ dependencies {
 
 loom {
     mods {
+        create(configApiModId) {
+            sourceSet(configApiRuntimeProject.sourceSets.main.get())
+            sourceSet(configApiProject.sourceSets.main.get())
+        }
         create(configModId) {
             sourceSet(sourceSets.main.get())
             for (dependencyProject in dependencyProjects) {
@@ -103,7 +110,7 @@ loom {
         }
     }
     runs {
-        val dependencyJarPaths = dependencyProjects.map {
+        val dependencyJarPaths = (listOf(configApiRuntimeProject) + dependencyProjects).map {
             it.tasks.jar.get().archiveFile.get().asFile
         }
         val classPaths = sourceSets.main.get().output.classesDirs
@@ -144,6 +151,8 @@ loom {
 
 sourceSets {
     named("main") {
+        runtimeClasspath += configApiRuntimeProject.sourceSets.main.get().output
+        runtimeClasspath += configApiProject.sourceSets.main.get().output
         resources {
             for (p in dependencyProjects.filterNot(configLanguageResourceProjects::contains)) {
                 srcDir(p.sourceSets.main.get().resources)
@@ -165,6 +174,7 @@ tasks.named<ProcessResources>(sourceSets.main.get().processResourcesTaskName) {
 
 tasks.jar {
     dependsOn(mergedConfigLanguageResources, embeddedLibraries)
+    exclude("net/mezzdev/config/api/**")
     from(sourceSets.main.get().output)
     for (p in dependencyProjects) {
         from(p.sourceSets.main.get().output) {
@@ -199,7 +209,7 @@ publishing {
             artifact(tasks.remapJar)
             artifact(tasks.remapSourcesJar)
 
-            val dependencyInfos = dependencyProjects.map {
+            val dependencyInfos = (listOf(configApiRuntimeProject) + dependencyProjects).map {
                 mapOf(
                     "groupId" to it.group,
                     "artifactId" to it.base.archivesName.get(),

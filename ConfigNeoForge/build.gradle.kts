@@ -11,6 +11,7 @@ plugins {
 // gradle.properties
 val neoforgeVersion: String by extra
 val minecraftVersion: String by extra
+val configApiModId: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
@@ -25,10 +26,11 @@ base {
 
 val dependencyProjects: List<Project> = listOf(
     project(":Config"),
-    project(":ConfigApi"),
 )
+val configApiProject: Project = project(":ConfigApi")
+val configApiRuntimeProject: Project = project(":ConfigApiNeoForge")
 
-dependencyProjects.forEach {
+(listOf(configApiProject, configApiRuntimeProject) + dependencyProjects).forEach {
     project.evaluationDependsOn(it.path)
 }
 
@@ -51,6 +53,10 @@ neoForge {
     version = neoforgeVersion
 
     mods {
+        create(configApiModId) {
+            sourceSet(configApiRuntimeProject.sourceSets.main.get())
+            sourceSet(configApiProject.sourceSets.main.get())
+        }
         create(configModId) {
             sourceSet(sourceSets.main.get())
             for (dependencyProject in dependencyProjects) {
@@ -60,10 +66,11 @@ neoForge {
     }
 
     runs {
+        val configApiMod = mods.named(configApiModId)
         val configMod = mods.named(configModId)
 
         configureEach {
-            getMods().set(setOf(configMod.get()))
+            getMods().set(setOf(configApiMod.get(), configMod.get()))
         }
         create("client") {
             client()
@@ -87,6 +94,8 @@ sourceSets {
 }
 
 dependencies {
+    compileOnly(configApiProject)
+    runtimeOnly(configApiRuntimeProject)
     dependencyProjects.forEach {
         implementation(it)
     }
@@ -123,6 +132,7 @@ tasks.named<ProcessResources>(sourceSets.main.get().processResourcesTaskName) {
 
 tasks.jar {
     dependsOn(mergedConfigLanguageResources, embeddedLibraries)
+    exclude("net/mezzdev/config/api/**")
     from(sourceSets.main.get().output)
     for (p in dependencyProjects) {
         from(p.sourceSets.main.get().output) {
@@ -154,7 +164,7 @@ publishing {
             artifact(tasks.jar.get())
             artifact(sourcesJarTask.get())
 
-            val dependencyInfos = dependencyProjects.map {
+            val dependencyInfos = (listOf(configApiRuntimeProject) + dependencyProjects).map {
                 mapOf(
                     "groupId" to it.group,
                     "artifactId" to it.base.archivesName.get(),

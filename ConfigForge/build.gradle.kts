@@ -12,6 +12,7 @@ plugins {
 // gradle.properties
 val forgeVersion: String by extra
 val minecraftVersion: String by extra
+val configApiModId: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
@@ -31,10 +32,11 @@ base {
 
 val dependencyProjects: List<Project> = listOf(
 	project(":Config"),
-	project(":ConfigApi"),
 )
+val configApiProject: Project = project(":ConfigApi")
+val configApiRuntimeProject: Project = project(":ConfigApiForge")
 
-dependencyProjects.forEach {
+(listOf(configApiProject, configApiRuntimeProject) + dependencyProjects).forEach {
 	project.evaluationDependsOn(it.path)
 }
 
@@ -97,6 +99,8 @@ dependencies {
 	compileOnly("org.apache.logging.log4j:log4j-api:$log4jVersion")
 	compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
 	compileOnly(files(embeddedLibraries))
+	compileOnly(configApiProject)
+	runtimeOnly(configApiRuntimeProject)
 	dependencyProjects.forEach {
 		compileOnly(it)
 	}
@@ -116,6 +120,10 @@ minecraft {
 			property("forge.logging.console.level", "debug")
 			workingDirectory(file("run/client/Dev"))
 			mods {
+				create(configApiModId) {
+					source(configApiRuntimeProject.sourceSets.main.get())
+					source(configApiProject.sourceSets.main.get())
+				}
 				create(configModId) {
 					source(sourceSets.main.get())
 				}
@@ -126,6 +134,10 @@ minecraft {
 			property("forge.logging.console.level", "debug")
 			workingDirectory(file("run/server"))
 			mods {
+				create(configApiModId) {
+					source(configApiRuntimeProject.sourceSets.main.get())
+					source(configApiProject.sourceSets.main.get())
+				}
 				create(configModId) {
 					source(sourceSets.main.get())
 				}
@@ -146,6 +158,7 @@ tasks.named<ProcessResources>(sourceSets.main.get().processResourcesTaskName) {
 
 tasks.jar {
 	dependsOn(mergedConfigLanguageResources, embeddedLibraries)
+	exclude("net/mezzdev/config/api/**")
 	from(sourceSets.main.get().output)
 	from(mergedConfigLanguageResources)
 	from(embeddedLibraries.map(::zipTree))
@@ -172,7 +185,7 @@ publishing {
 			artifact(tasks.jar.get())
 			artifact(sourcesJarTask.get())
 
-			val dependencyInfos = dependencyProjects.map {
+			val dependencyInfos = (listOf(configApiRuntimeProject) + dependencyProjects).map {
 				mapOf(
 					"groupId" to it.group,
 					"artifactId" to it.base.archivesName.get(),

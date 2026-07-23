@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "id": "${configModId}",
+  "id": "${configApiModId}",
   "version": "${version}",
 
-  "name": "Mezz Config",
-  "description": "Shared config support for Minecraft mods.",
+  "name": "Mezz Config API",
+  "description": "Shared config API for Minecraft mods.",
   "authors": [
     "${modAuthor}"
   ],
@@ -15,16 +15,10 @@
   "license": "The MIT License (MIT)",
 
   "environment": "*",
-  "entrypoints": {
-    "client": [
-      "net.mezzdev.config.fabric.ConfigFabricClient"
-    ]
-  },
 
   "depends": {
     "fabricloader": "${fabricLoaderVersionRange}",
     "fabric-api": "${fabricApiVersionRange}",
-    "${configApiModId}": "*",
     "java": ">=${modJavaVersion}"
   }
 }
