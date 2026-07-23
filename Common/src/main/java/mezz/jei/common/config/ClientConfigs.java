@@ -5,11 +5,8 @@ import net.mezzdev.config.api.schema.IConfigDisplayCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigEditableSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.value.IConfigValue;
-import net.minecraft.client.KeyMapping;
 
-import java.util.Collection;
 import java.util.List;
-import java.util.function.Supplier;
 
 public class ClientConfigs implements IClientConfigs {
 	private final IClientConfig clientConfig;
@@ -22,14 +19,13 @@ public class ClientConfigs implements IClientConfigs {
 	public ClientConfigs(
 		IConfigSchemaBuilder builder,
 		String localizationPath,
-		boolean isDev,
-		Supplier<? extends Collection<? extends KeyMapping>> keyMappingsSupplier
+		boolean isDev
 	) {
 		ClientConfig clientConfig = new ClientConfig(builder, isDev);
 		IngredientFilterConfig ingredientFilterConfig = new IngredientFilterConfig(builder);
 		IngredientGridConfig ingredientListConfig = new IngredientGridConfig(localizationPath, "ingredientList", builder, HorizontalAlignment.RIGHT);
 		IngredientGridConfig bookmarkListConfig = new IngredientGridConfig(localizationPath, "bookmarkList", builder, HorizontalAlignment.LEFT);
-		addDisplayCategories(builder, clientConfig, ingredientFilterConfig, ingredientListConfig, bookmarkListConfig, keyMappingsSupplier);
+		addDisplayCategories(builder, clientConfig, ingredientFilterConfig, ingredientListConfig, bookmarkListConfig);
 
 		this.clientConfig = clientConfig;
 		this.ingredientFilterConfig = ingredientFilterConfig;
@@ -43,8 +39,7 @@ public class ClientConfigs implements IClientConfigs {
 		IClientConfig clientConfig,
 		IIngredientFilterConfig ingredientFilterConfig,
 		IngredientGridConfig ingredientListConfig,
-		IngredientGridConfig bookmarkListConfig,
-		Supplier<? extends Collection<? extends KeyMapping>> keyMappingsSupplier
+		IngredientGridConfig bookmarkListConfig
 	) {
 		addDisplayCategory(builder, "search", List.of(
 			ingredientFilterConfig.modNameSearchMode(),
@@ -84,8 +79,7 @@ public class ClientConfigs implements IClientConfigs {
 		addDisplayCategory(builder, "input", List.of(
 			clientConfig.dragDelayMs(),
 			clientConfig.smoothScrollRate()
-		))
-			.addKeyMappings(keyMappingsSupplier);
+		));
 		addDisplayCategory(builder, "recipes", List.of(
 			clientConfig.showTagRecipesEnabled(),
 			clientConfig.maxRecipeGuiHeight(),

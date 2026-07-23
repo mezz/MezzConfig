@@ -1,6 +1,6 @@
 package net.mezzdev.config.api.schema;
 
-import net.mezzdev.config.api.value.IConfigValueSource;
+import net.mezzdev.config.api.value.IConfigValue;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -34,10 +34,10 @@ public interface IConfigDisplayCategory {
 	Component getLocalizedDescription();
 
 	/**
-	 * Sources of config values for this category.
+	 * Config values to display in this category.
 	 *
 	 * @since 19.39.0
 	 */
 	@Unmodifiable
-	Collection<? extends IConfigValueSource> getConfigValueSources();
+	Collection<? extends IConfigValue<?>> getConfigValues();
 }
