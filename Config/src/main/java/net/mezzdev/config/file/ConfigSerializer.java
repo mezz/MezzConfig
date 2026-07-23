@@ -5,6 +5,7 @@ import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -25,6 +26,10 @@ import java.util.regex.Pattern;
 
 public final class ConfigSerializer {
 	private static final Logger LOGGER = LogManager.getLogger();
+	private static final String CONFIG_NAME_KEY = "mezz_config.config.name";
+	private static final String CONFIG_DESCRIPTION_KEY = "mezz_config.config.description";
+	private static final String CONFIG_VALUE_VALUES_KEY = "mezz_config.config.valueValues";
+	private static final String CONFIG_DEFAULT_VALUE_KEY = "mezz_config.config.defaultValue";
 	private static final Pattern commentRegex = Pattern.compile("\\s*#.*");
 	private static final Pattern categoryRegex = Pattern.compile("\\[(?<category>\\w+)]\\s*");
 	private static final Pattern keyValueRegex = Pattern.compile("\\s*(?<key>\\w+)\\s*=\\s*(?<value>.*)");
@@ -194,6 +199,14 @@ public final class ConfigSerializer {
 		saveTimes.put(path, lastModifiedTime);
 	}
 
+	public static boolean canLocalizeComments() {
+		Language language = Language.getInstance();
+		return language.has(CONFIG_NAME_KEY) &&
+			language.has(CONFIG_DESCRIPTION_KEY) &&
+			language.has(CONFIG_VALUE_VALUES_KEY) &&
+			language.has(CONFIG_DEFAULT_VALUE_KEY);
+	}
+
 	private static void serializeCategory(List<String> serialized, ConfigCategory category) {
 		serialized.add("[%s]".formatted(category.getName()));
 		for (ConfigValue<?> value : category.getConfigValues()) {
@@ -206,18 +219,18 @@ public final class ConfigSerializer {
 		String name = configValue.getName();
 		IConfigValueSerializer<T> serializer = configValue.getSerializer();
 
-		String localizedName = Component.translatable("mezz_config.config.name", configValue.getLocalizedName().getString()).getString();
+		String localizedName = Component.translatable(CONFIG_NAME_KEY, configValue.getLocalizedName().getString()).getString();
 		addCommentedStrings(serialized, localizedName);
 
-		String description = Component.translatable("mezz_config.config.description", configValue.getLocalizedDescription().getString()).getString();
+		String description = Component.translatable(CONFIG_DESCRIPTION_KEY, configValue.getLocalizedDescription().getString()).getString();
 		addCommentedStrings(serialized, description);
 
-		String validValues = Component.translatable("mezz_config.config.valueValues", serializer.getValidValuesDescription()).getString();
+		String validValues = Component.translatable(CONFIG_VALUE_VALUES_KEY, serializer.getValidValuesDescription()).getString();
 		addCommentedStrings(serialized, validValues);
 
 		T defaultValue = configValue.getDefaultValue();
 		String defaultValueSerialized = serializer.serialize(defaultValue);
-		String defaultValueString = Component.translatable("mezz_config.config.defaultValue", defaultValueSerialized).getString();
+		String defaultValueString = Component.translatable(CONFIG_DEFAULT_VALUE_KEY, defaultValueSerialized).getString();
 		addCommentedStrings(serialized, defaultValueString);
 
 		T value = configValue.getValue();

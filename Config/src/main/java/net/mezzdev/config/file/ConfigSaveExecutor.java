@@ -8,6 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -51,19 +52,39 @@ final class ConfigSaveExecutor implements ConfigSaveScheduler {
 
 	@Override
 	public Future<?> schedule(Runnable command, Duration delay) {
+		if (isShutdown()) {
+			return runImmediately(command);
+		}
 		ScheduledTask scheduledTask = new ScheduledTask(command);
 		scheduledTasks.add(scheduledTask);
 		try {
 			Future<?> future = service.schedule(scheduledTask, delay.toMillis(), TimeUnit.MILLISECONDS);
 			scheduledTask.setFuture(future);
 			return new TrackedFuture<>(future, scheduledTask);
+		} catch (RejectedExecutionException e) {
+			scheduledTasks.remove(scheduledTask);
+			if (isShutdown()) {
+				return runImmediately(command);
+			}
+			throw e;
 		} catch (RuntimeException e) {
 			scheduledTasks.remove(scheduledTask);
 			throw e;
 		}
 	}
 
-	private void shutdown() {
+	private static Future<?> runImmediately(Runnable command) {
+		CompletableFuture<Void> future = new CompletableFuture<>();
+		try {
+			command.run();
+			future.complete(null);
+		} catch (RuntimeException | LinkageError e) {
+			future.completeExceptionally(e);
+		}
+		return future;
+	}
+
+	void shutdown() {
 		if (!shutdown.compareAndSet(false, true)) {
 			return;
 		}
@@ -79,6 +100,10 @@ final class ConfigSaveExecutor implements ConfigSaveScheduler {
 		}
 	}
 
+	private boolean isShutdown() {
+		return shutdown.get() || service.isShutdown();
+	}
+
 	private void runScheduledTasksImmediately() {
 		for (ScheduledTask scheduledTask : scheduledTasks) {
 			scheduledTasks.remove(scheduledTask);
@@ -86,7 +111,7 @@ final class ConfigSaveExecutor implements ConfigSaveScheduler {
 				try {
 					service.execute(() -> runScheduledTaskDuringShutdown(scheduledTask));
 				} catch (RejectedExecutionException e) {
-					LOGGER.error("Failed to execute delayed config save during shutdown.", e);
+					runScheduledTaskDuringShutdown(scheduledTask);
 				}
 			}
 		}

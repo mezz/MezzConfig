@@ -9,7 +9,6 @@ import net.mezzdev.config.file.FileWatcher;
 import net.mezzdev.config.file.IConfigFileRegistrar;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
-import net.minecraft.locale.Language;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -28,7 +27,6 @@ public class ConfigSchema implements IConfigSchema {
 	private static final int LOCALIZATION_SAVE_RETRY_LIMIT = 30;
 
 	private final Path path;
-	private final String localizationPath;
 	private final List<ConfigCategory> categories;
 	private final List<ConfigDisplayCategory> displayCategories;
 	private final Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> legacyValueMigrations;
@@ -44,7 +42,6 @@ public class ConfigSchema implements IConfigSchema {
 		ConfigSaveScheduler scheduler
 	) {
 		this.path = path;
-		this.localizationPath = localizationPath;
 		this.categories = categoryBuilders.stream()
 			.map(b -> b.build(this))
 			.toList();
@@ -149,7 +146,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private void saveAfterLocalizationLoads(int attempt) {
-		if (save()) {
+		if (save(attempt == 0)) {
 			return;
 		}
 		if (attempt < LOCALIZATION_SAVE_RETRY_LIMIT) {
@@ -159,9 +156,11 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
-	private boolean save() {
-		if (!Language.getInstance().has(localizationPath)) {
-			LOGGER.debug("Localization has not loaded yet, waiting to save the config file: {}", path);
+	private boolean save(boolean logMissingLocalization) {
+		if (!ConfigSerializer.canLocalizeComments()) {
+			if (logMissingLocalization) {
+				LOGGER.debug("Localization has not loaded yet, waiting to save the config file: {}", path);
+			}
 			return false;
 		}
 		try {
