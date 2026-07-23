@@ -25,8 +25,5 @@
     "fabricloader": "${fabricLoaderVersionRange}",
     "fabric-api": "${fabricApiVersionRange}",
     "java": ">=${modJavaVersion}"
-  },
-  "suggests": {
-    "amecsapi": "*"
   }
 }

@@ -14,12 +14,6 @@ repositories {
     exclusiveMaven("https://maven.parchmentmc.org") {
         includeGroupByRegex("org\\.parchmentmc.*")
     }
-    maven("https://maven.siphalor.de/") {
-        // for optional AMECS integration
-        content {
-            includeGroup("de.siphalor")
-        }
-    }
 }
 
 // gradle.properties
@@ -29,8 +23,6 @@ val minecraftVersion: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
-val amecsVersionFabric: String by extra
-val amecsMinecraftVersion: String by extra
 val parchmentMinecraftVersion: String by extra
 val parchmentVersionFabric: String by extra
 val jsr305Version: String by extra
@@ -92,7 +84,6 @@ dependencies {
     })
     modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
-    modCompileOnly("de.siphalor:amecsapi-${amecsMinecraftVersion}:$amecsVersionFabric")
     compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
     dependencyProjects.forEach {
         implementation(it)
