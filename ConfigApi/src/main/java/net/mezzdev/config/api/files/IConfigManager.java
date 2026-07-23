@@ -1,6 +1,5 @@
 package net.mezzdev.config.api.files;
 
-import net.mezzdev.config.api.screen.IConfigScreenConfig;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Collection;
@@ -20,13 +19,4 @@ public interface IConfigManager {
 	 */
 	@Unmodifiable
 	Collection<? extends IConfigFile> getConfigFiles();
-
-	/**
-	 * @return all registered config screens.
-	 * @see IConfigScreenConfig
-	 *
-	 * @since 19.39.0
-	 */
-	@Unmodifiable
-	Collection<? extends IConfigScreenConfig> getConfigScreenConfigs();
 }

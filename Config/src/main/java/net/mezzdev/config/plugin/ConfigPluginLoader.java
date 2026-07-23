@@ -3,14 +3,11 @@ package net.mezzdev.config.plugin;
 import net.mezzdev.config.api.files.IConfigManager;
 import net.mezzdev.config.api.plugin.IConfigPlugin;
 import net.mezzdev.config.api.plugin.IConfigRegistration;
-import net.mezzdev.config.api.schema.IConfigEditableSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
-import net.mezzdev.config.api.screen.IConfigRestartHandler;
 import net.mezzdev.config.api.util.ErrorUtil;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.file.ConfigManagers;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
-import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -89,14 +86,6 @@ public final class ConfigPluginLoader {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path configFile = resolveConfigFile(pluginConfigDir, configFileName);
 			return new ConfigSchemaBuilder(configFile, localizationPath, configManager);
-		}
-
-		@Override
-		public void registerConfigScreen(Component title, IConfigEditableSchema schema, IConfigRestartHandler restartHandler) {
-			title = ErrorUtil.checkNotNull(title, "title");
-			schema = ErrorUtil.checkNotNull(schema, "schema");
-			restartHandler = ErrorUtil.checkNotNull(restartHandler, "restartHandler");
-			configManager.registerConfigScreen(modId, title, schema, restartHandler);
 		}
 
 		@Override

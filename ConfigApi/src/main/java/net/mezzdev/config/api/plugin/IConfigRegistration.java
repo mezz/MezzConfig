@@ -1,11 +1,7 @@
 package net.mezzdev.config.api.plugin;
 
 import net.mezzdev.config.api.files.IConfigManager;
-import net.mezzdev.config.api.schema.IConfigEditableSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
-import net.mezzdev.config.api.screen.ConfigRestartResult;
-import net.mezzdev.config.api.screen.IConfigRestartHandler;
-import net.minecraft.network.chat.Component;
 
 /**
  * Registration for config files provided by one config plugin.
@@ -23,20 +19,6 @@ public interface IConfigRegistration {
 	 * @since 19.39.0
 	 */
 	IConfigSchemaBuilder createSchemaBuilder(String configFileName, String localizationPath);
-
-	/**
-	 * Register a config screen.
-	 * The restart handler is called when applying saved changes requires the owner mod to restart or reload.
-	 * Return {@link ConfigRestartResult#NEXT_GAME_START} when the mod cannot apply the saved changes until the game
-	 * starts again.
-	 *
-	 * @param title the title shown at the top of the config screen
-	 * @param schema config schema to display
-	 * @param restartHandler handles and reports saved changes that require the owner mod to restart or reload
-	 *
-	 * @since 19.39.0
-	 */
-	void registerConfigScreen(Component title, IConfigEditableSchema schema, IConfigRestartHandler restartHandler);
 
 	/**
 	 * Get the config manager that is receiving registered files.
