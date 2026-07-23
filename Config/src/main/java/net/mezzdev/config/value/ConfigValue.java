@@ -2,6 +2,7 @@ package net.mezzdev.config.value;
 
 import net.mezzdev.config.api.value.ConfigValueUpdateType;
 import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.schema.IConfigSchema;
 import net.minecraft.network.chat.Component;
@@ -22,7 +23,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	private final Component localizedName;
 	private final Component description;
 	private final T defaultValue;
-	private final IConfigValueSerializer<T> serializer;
+	private final IConfigValueEditorSerializer<T> serializer;
 	private final ConfigValueUpdateType updateType;
 	private @Nullable List<Consumer<T>> listeners;
 	private volatile T currentValue;
@@ -33,7 +34,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		String localizationPath,
 		String name,
 		T defaultValue,
-		IConfigValueSerializer<T> serializer,
+		IConfigValueEditorSerializer<T> serializer,
 		ConfigValueUpdateType updateType
 	) {
 		this.name = name;
@@ -91,7 +92,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	@Override
-	public IConfigValueSerializer<T> getSerializer() {
+	public IConfigValueEditorSerializer<T> getSerializer() {
 		return serializer;
 	}
 

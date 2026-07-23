@@ -2,7 +2,7 @@ package net.mezzdev.config.serializers;
 
 import net.mezzdev.config.api.value.ConfigValueEditorType;
 import net.mezzdev.config.api.value.ConfigValueEditorTypes;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
@@ -13,7 +13,7 @@ import java.util.Optional;
 /**
  * Serializer for boolean config values.
  */
-public final class BooleanSerializer implements IConfigValueSerializer<Boolean> {
+public final class BooleanSerializer implements IConfigValueEditorSerializer<Boolean> {
 	/**
 	 * Shared boolean serializer instance.
 	 */

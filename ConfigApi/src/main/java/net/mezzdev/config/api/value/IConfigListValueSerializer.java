@@ -7,7 +7,7 @@ import java.util.List;
  *
  * @since 19.39.0
  */
-public interface IConfigListValueSerializer<T> extends IConfigValueSerializer<List<T>> {
+public interface IConfigListValueSerializer<T> extends IConfigValueEditorSerializer<List<T>> {
 	/**
 	 * Get the serializer for each value in the list.
 	 *

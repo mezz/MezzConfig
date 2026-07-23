@@ -5,7 +5,7 @@ package net.mezzdev.config.api.value;
  *
  * @since 19.39.0
  */
-public interface IConfigIntegerValueSerializer extends IConfigValueSerializer<Integer> {
+public interface IConfigIntegerValueSerializer extends IConfigValueEditorSerializer<Integer> {
 	/**
 	 * The smallest valid value.
 	 *

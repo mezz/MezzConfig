@@ -85,5 +85,5 @@ public interface IConfigValue<T> {
 	 *
 	 * @since 19.39.0
 	 */
-	IConfigValueSerializer<T> getSerializer();
+	IConfigValueEditorSerializer<T> getSerializer();
 }

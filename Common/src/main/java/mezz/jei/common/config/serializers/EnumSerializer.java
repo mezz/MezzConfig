@@ -2,7 +2,7 @@ package mezz.jei.common.config.serializers;
 
 import net.mezzdev.config.api.value.ConfigValueEditorType;
 import net.mezzdev.config.api.value.ConfigValueEditorTypes;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 
@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer<T> {
+public class EnumSerializer<T extends Enum<T>> implements IConfigValueEditorSerializer<T> {
 	private final Class<T> enumClass;
 	private final Collection<T> validValues;
 

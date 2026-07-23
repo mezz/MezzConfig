@@ -3,7 +3,7 @@ package net.mezzdev.config.schema;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.value.ConfigValueUpdateType;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.EnumSerializer;
 import net.mezzdev.config.serializers.IntegerSerializer;
@@ -32,7 +32,7 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 	}
 
 	@Override
-	public <T> ConfigValue<T> addValue(String name, T defaultValue, IConfigValueSerializer<T> serializer, ConfigValueUpdateType updateType) {
+	public <T> ConfigValue<T> addValue(String name, T defaultValue, IConfigValueEditorSerializer<T> serializer, ConfigValueUpdateType updateType) {
 		return addValue(new ConfigValue<>(localizationPath, name, defaultValue, serializer, updateType));
 	}
 

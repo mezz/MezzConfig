@@ -5,7 +5,7 @@ import mezz.jei.api.gui.placement.VerticalAlignment;
 import net.mezzdev.config.api.value.ConfigValueEditorType;
 import net.mezzdev.config.api.value.ConfigValueUpdateType;
 import net.mezzdev.config.api.value.IConfigValue;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
 import mezz.jei.common.config.serializers.DeserializeResult;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
@@ -28,7 +28,7 @@ final class AlignmentConfigValue implements IConfigValue<Alignment> {
 	 */
 	public static final ConfigValueEditorType<Alignment> EDITOR_TYPE = JeiConfigValueEditorTypes.ALIGNMENT;
 
-	private static final IConfigValueSerializer<Alignment> SERIALIZER = new AlignmentSerializer();
+	private static final IConfigValueEditorSerializer<Alignment> SERIALIZER = new AlignmentSerializer();
 
 	private final IConfigValue<HorizontalAlignment> horizontalAlignment;
 	private final IConfigValue<VerticalAlignment> verticalAlignment;
@@ -119,11 +119,11 @@ final class AlignmentConfigValue implements IConfigValue<Alignment> {
 	}
 
 	@Override
-	public IConfigValueSerializer<Alignment> getSerializer() {
+	public IConfigValueEditorSerializer<Alignment> getSerializer() {
 		return SERIALIZER;
 	}
 
-	private static final class AlignmentSerializer implements IConfigValueSerializer<Alignment> {
+	private static final class AlignmentSerializer implements IConfigValueEditorSerializer<Alignment> {
 		private static final Collection<Alignment> VALID_VALUES = List.of(Alignment.values());
 
 		@Override

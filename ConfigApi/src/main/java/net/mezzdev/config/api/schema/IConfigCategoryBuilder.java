@@ -1,9 +1,9 @@
 package net.mezzdev.config.api.schema;
 
 import net.mezzdev.config.api.value.ConfigValueUpdateType;
+import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValue;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
 
 import java.util.List;
 
@@ -23,7 +23,7 @@ public interface IConfigCategoryBuilder {
 	 *
 	 * @since 19.39.0
 	 */
-	<T> IConfigValue<T> addValue(String name, T defaultValue, IConfigValueSerializer<T> serializer, ConfigValueUpdateType updateType);
+	<T> IConfigValue<T> addValue(String name, T defaultValue, IConfigValueEditorSerializer<T> serializer, ConfigValueUpdateType updateType);
 
 	/**
 	 * Add a boolean config value.

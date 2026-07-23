@@ -10,10 +10,9 @@ import java.util.Optional;
 
 /**
  * Serialization and validation helper for config values.
- * Get an instance from {@link IConfigValue#getSerializer()}
  *
- * Note that if this value is a {@link List}
- * it should implement {@link IConfigListValueSerializer} as well.
+ * Note that if this value is displayed in a config screen,
+ * it should implement {@link IConfigValueEditorSerializer} as well.
  *
  * @since 19.39.0
  */
@@ -50,13 +49,6 @@ public interface IConfigValueSerializer<T> {
 	 */
 	@Unmodifiable
 	Optional<Collection<T>> getAllValidValues();
-
-	/**
-	 * Get the kind of editor that config screens should use for values serialized by this helper.
-	 *
-	 * @since 19.39.0
-	 */
-	ConfigValueEditorType<T> getEditorType();
 
 	/**
 	 * Get the translated name component for a value option serialized by this helper.
