@@ -174,7 +174,6 @@ tasks.named<ProcessResources>(sourceSets.main.get().processResourcesTaskName) {
 
 tasks.jar {
     dependsOn(mergedConfigLanguageResources, embeddedLibraries)
-    exclude("net/mezzdev/config/api/**")
     from(sourceSets.main.get().output)
     for (p in dependencyProjects) {
         from(p.sourceSets.main.get().output) {
