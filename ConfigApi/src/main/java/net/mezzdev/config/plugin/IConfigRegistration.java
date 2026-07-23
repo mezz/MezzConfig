@@ -23,19 +23,6 @@ public interface IConfigRegistration {
 	IConfigSchemaBuilder createSchemaBuilder(String configFileName, String localizationPath);
 
 	/**
-	 * Register a config screen with the default config screen title.
-	 * The restart handler is called when applying saved changes requires the owner mod to restart or reload.
-	 *
-	 * @param schema config schema to display
-	 * @param restartHandler handles saved changes that require the owner mod to restart or reload
-	 *
-	 * @since 19.39.0
-	 */
-	default void registerConfigScreen(IConfigEditableSchema schema, Runnable restartHandler) {
-		registerConfigScreen(Component.translatable("mezz_config.config.screen.title"), schema, restartHandler);
-	}
-
-	/**
 	 * Register a config screen.
 	 * The restart handler is called when applying saved changes requires the owner mod to restart or reload.
 	 *
