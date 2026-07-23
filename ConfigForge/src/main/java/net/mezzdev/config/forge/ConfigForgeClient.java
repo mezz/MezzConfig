@@ -1,18 +1,22 @@
 package net.mezzdev.config.forge;
 
 import net.mezzdev.config.file.ConfigPluginLoader;
-import net.mezzdev.config.files.IConfigFileManager;
+import net.mezzdev.config.files.IConfigManager;
+import net.minecraftforge.fml.loading.FMLPaths;
 import org.jetbrains.annotations.Nullable;
+
+import java.nio.file.Path;
 
 public final class ConfigForgeClient {
 	@Nullable
-	private static IConfigFileManager configFileManager;
+	private static IConfigManager configManager;
 
 	private ConfigForgeClient() {
 
 	}
 
 	public static void register() {
-		configFileManager = ConfigPluginLoader.createConfigManager("Mezz Config File Watcher", ConfigForgePluginFinder.getPlugins());
+		Path configRootDir = FMLPaths.CONFIGDIR.get();
+		configManager = ConfigPluginLoader.createConfigManager("Mezz Config File Watcher", configRootDir, ConfigForgePluginFinder.getPlugins());
 	}
 }

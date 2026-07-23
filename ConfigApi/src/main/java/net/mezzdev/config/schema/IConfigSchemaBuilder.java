@@ -27,9 +27,10 @@ public interface IConfigSchemaBuilder {
 	IConfigDisplayCategoryBuilder addDisplayCategory(String name);
 
 	/**
-	 * Build the config schema.
+	 * Build and register the config schema.
+	 * A builder may only be built once.
 	 *
 	 * @since 19.39.0
 	 */
-	IConfigSchema build();
+	IConfigEditableSchema build();
 }

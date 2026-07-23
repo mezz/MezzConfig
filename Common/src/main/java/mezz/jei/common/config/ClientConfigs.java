@@ -2,7 +2,7 @@ package mezz.jei.common.config;
 
 import net.mezzdev.config.alignment.HorizontalAlignment;
 import net.mezzdev.config.schema.IConfigDisplayCategoryBuilder;
-import net.mezzdev.config.schema.IConfigSchema;
+import net.mezzdev.config.schema.IConfigEditableSchema;
 import net.mezzdev.config.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.value.IConfigValue;
 import net.minecraft.client.KeyMapping;
@@ -17,7 +17,7 @@ public class ClientConfigs implements IClientConfigs {
 	private final IIngredientGridConfig ingredientListConfig;
 	private final IIngredientGridConfig bookmarkListConfig;
 
-	private final IConfigSchema schema;
+	private final IConfigEditableSchema schema;
 
 	public ClientConfigs(
 		IConfigSchemaBuilder builder,
@@ -130,7 +130,7 @@ public class ClientConfigs implements IClientConfigs {
 			.addValues(values);
 	}
 
-	public IConfigSchema getSchema() {
+	public IConfigEditableSchema getSchema() {
 		return schema;
 	}
 

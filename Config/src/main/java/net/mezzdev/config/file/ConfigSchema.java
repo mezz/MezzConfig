@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class ConfigSchema implements IConfigSchema {
 	private static final Logger LOGGER = LogManager.getLogger();
 	private static final Duration SAVE_DELAY_TIME = Duration.ofSeconds(2);
+	private static final int LOCALIZATION_SAVE_RETRY_LIMIT = 30;
 
 	private final Path path;
 	private final String localizationPath;
@@ -30,7 +31,7 @@ public class ConfigSchema implements IConfigSchema {
 		String localizationPath,
 		List<ConfigCategoryBuilder> categoryBuilders,
 		List<ConfigDisplayCategory> displayCategories,
-		net.mezzdev.config.files.IConfigSaveScheduler scheduler
+		ConfigSaveScheduler scheduler
 	) {
 		this.path = path;
 		this.localizationPath = localizationPath;
@@ -122,27 +123,39 @@ public class ConfigSchema implements IConfigSchema {
 		if (Files.exists(path)) {
 			loadIfNeeded();
 		}
-		save();
+		saveAfterLocalizationLoads(0);
 
 		fileWatcher.addCallback(path, this::onFileChanged);
-		configFileRegistrar.registerConfigFile(this);
+		configFileRegistrar.addConfigFile(this);
 	}
 
-	private void save() {
+	private void saveAfterLocalizationLoads(int attempt) {
+		if (save()) {
+			return;
+		}
+		if (attempt < LOCALIZATION_SAVE_RETRY_LIMIT) {
+			delayedSave.run(() -> saveAfterLocalizationLoads(attempt + 1));
+		} else {
+			LOGGER.debug("Localization did not load before the config save retry limit for: {}", path);
+		}
+	}
+
+	private boolean save() {
 		if (!Language.getInstance().has(localizationPath)) {
 			LOGGER.debug("Localization has not loaded yet, waiting to save the config file: {}", path);
-			return;
+			return false;
 		}
 		try {
 			ConfigSerializer.save(path, categories);
 		} catch (IOException e) {
 			LOGGER.error("Failed to save config file: '{}'", path, e);
 		}
+		return true;
 	}
 
 	@Override
 	public void markDirty() {
-		delayedSave.run(this::save);
+		delayedSave.run(() -> saveAfterLocalizationLoads(0));
 	}
 
 	@Override

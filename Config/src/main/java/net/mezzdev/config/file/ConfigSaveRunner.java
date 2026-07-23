@@ -9,11 +9,11 @@ import java.util.concurrent.Future;
  * Runs delayed config saves, replacing any queued save with the latest one.
  */
 final class ConfigSaveRunner {
-	private final net.mezzdev.config.files.IConfigSaveScheduler scheduler;
+	private final ConfigSaveScheduler scheduler;
 	private final Duration delay;
 	private @Nullable Future<?> future;
 
-	ConfigSaveRunner(Duration delay, net.mezzdev.config.files.IConfigSaveScheduler scheduler) {
+	ConfigSaveRunner(Duration delay, ConfigSaveScheduler scheduler) {
 		this.delay = delay;
 		this.scheduler = scheduler;
 	}

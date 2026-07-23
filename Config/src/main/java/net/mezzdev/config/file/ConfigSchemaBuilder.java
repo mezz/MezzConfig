@@ -16,12 +16,13 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private final List<ConfigDisplayCategoryBuilder> displayCategoryBuilders = new ArrayList<>();
 	private final Path configFile;
 	private final String localizationPath;
-	private final net.mezzdev.config.files.IConfigSaveScheduler scheduler;
+	private final ConfigManager configManager;
+	private boolean built;
 
-	public ConfigSchemaBuilder(Path configFile, String localizationPath, net.mezzdev.config.files.IConfigSaveScheduler scheduler) {
+	public ConfigSchemaBuilder(Path configFile, String localizationPath, ConfigManager configManager) {
 		this.configFile = configFile;
 		this.localizationPath = localizationPath;
-		this.scheduler = scheduler;
+		this.configManager = configManager;
 	}
 
 	@Override
@@ -46,9 +47,15 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 
 	@Override
 	public ConfigSchema build() {
+		if (built) {
+			throw new IllegalStateException("Config schema has already been built: " + configFile);
+		}
+		built = true;
 		List<ConfigDisplayCategory> displayCategories = displayCategoryBuilders.stream()
 			.map(ConfigDisplayCategoryBuilder::build)
 			.toList();
-		return new ConfigSchema(configFile, localizationPath, categoryBuilders, displayCategories, scheduler);
+		ConfigSchema schema = new ConfigSchema(configFile, localizationPath, categoryBuilders, displayCategories, configManager.getSaveExecutor());
+		configManager.registerSchema(schema);
+		return schema;
 	}
 }

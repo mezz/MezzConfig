@@ -85,13 +85,6 @@ public interface IConfigValue<T> {
 	}
 
 	/**
-	 * Get the kind of editor that config screens should use for this config value.
-	 *
-	 * @since 19.39.0
-	 */
-	ConfigValueEditorType<T> getEditorType();
-
-	/**
 	 * Get the helper for serializing values to and from Strings, and validating values.
 	 *
 	 * @since 19.39.0

@@ -1,6 +1,5 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.value.ConfigValueEditorType;
 import net.mezzdev.config.value.ConfigValueUpdateType;
 import net.mezzdev.config.value.IConfigValue;
 import net.mezzdev.config.value.IConfigValueSerializer;
@@ -98,11 +97,6 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	@Override
 	public ConfigValueUpdateType getUpdateType() {
 		return updateType;
-	}
-
-	@Override
-	public ConfigValueEditorType<T> getEditorType() {
-		return serializer.getEditorType();
 	}
 
 	public List<String> setFromSerializedValue(String value) {

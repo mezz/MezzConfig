@@ -1,15 +1,15 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.files.IConfigFileManager;
+import net.mezzdev.config.files.IConfigManager;
 import net.mezzdev.config.plugin.IConfigPlugin;
 import net.mezzdev.config.plugin.IConfigRegistration;
-import net.mezzdev.config.files.IConfigSaveScheduler;
-import net.mezzdev.config.schema.IConfigSchema;
 import net.mezzdev.config.schema.IConfigSchemaBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
@@ -25,26 +25,28 @@ public final class ConfigPluginLoader {
 
 	}
 
-	public static IConfigFileManager createConfigManager(String fileWatcherThreadName, List<? extends IConfigPlugin> plugins) {
+	public static IConfigManager createConfigManager(String fileWatcherThreadName, Path configRootDir, List<? extends IConfigPlugin> plugins) {
 		ConfigManager configManager = new ConfigManager(fileWatcherThreadName);
 		Set<String> modIds = new HashSet<>();
 		for (IConfigPlugin plugin : plugins) {
-			addPlugin(configManager, modIds, plugin);
+			addPlugin(configManager, configRootDir, modIds, plugin);
 		}
 		configManager.startWatching();
 		return configManager;
 	}
 
-	private static void addPlugin(ConfigManager configManager, Set<String> modIds, IConfigPlugin plugin) {
+	private static void addPlugin(ConfigManager configManager, Path configRootDir, Set<String> modIds, IConfigPlugin plugin) {
 		try {
 			String modId = validateModId(plugin.getModId());
 			if (!modIds.add(modId)) {
 				LOGGER.error("Duplicate config plugin for mod id: {}", modId);
 				return;
 			}
-			ConfigRegistration registration = new ConfigRegistration(configManager);
+			Path pluginConfigDir = configRootDir.resolve(modId);
+			Files.createDirectories(pluginConfigDir);
+			ConfigRegistration registration = new ConfigRegistration(configManager, pluginConfigDir);
 			plugin.registerConfigFiles(registration);
-		} catch (RuntimeException | LinkageError e) {
+		} catch (IOException | RuntimeException | LinkageError e) {
 			LOGGER.error("Failed to load config plugin: {}", plugin.getClass(), e);
 		}
 	}
@@ -59,33 +61,35 @@ public final class ConfigPluginLoader {
 		return modId;
 	}
 
+	private static Path resolveConfigFile(Path pluginConfigDir, String configFileName) {
+		if (configFileName == null) {
+			throw new NullPointerException("configFileName must not be null.");
+		}
+		if (configFileName.isBlank()) {
+			throw new IllegalArgumentException("configFileName must not be blank.");
+		}
+		Path relativeConfigFile = Path.of(configFileName).normalize();
+		if (relativeConfigFile.isAbsolute() || relativeConfigFile.startsWith("..")) {
+			throw new IllegalArgumentException("configFileName must be a relative path inside the plugin config directory: " + configFileName);
+		}
+		return pluginConfigDir.resolve(relativeConfigFile).normalize();
+	}
+
 	private record ConfigRegistration(
-		IConfigFileManager configManager
+		ConfigManager configManager,
+		Path pluginConfigDir
 	) implements IConfigRegistration {
 		@Override
-		public IConfigSchemaBuilder createSchemaBuilder(Path configFile, String localizationPath, IConfigSaveScheduler scheduler) {
-			if (configFile == null) {
-				throw new NullPointerException("configFile must not be null.");
-			}
+		public IConfigSchemaBuilder createSchemaBuilder(String configFileName, String localizationPath) {
 			if (localizationPath == null) {
 				throw new NullPointerException("localizationPath must not be null.");
 			}
-			if (scheduler == null) {
-				throw new NullPointerException("scheduler must not be null.");
-			}
-			return new ConfigSchemaBuilder(configFile, localizationPath, scheduler);
+			Path configFile = resolveConfigFile(pluginConfigDir, configFileName);
+			return new ConfigSchemaBuilder(configFile, localizationPath, configManager);
 		}
 
 		@Override
-		public void registerConfigFile(IConfigSchema configFile) {
-			if (configFile == null) {
-				throw new NullPointerException("configFile must not be null.");
-			}
-			configManager.registerConfigFile(configFile);
-		}
-
-		@Override
-		public IConfigFileManager getConfigManager() {
+		public IConfigManager getConfigManager() {
 			return configManager;
 		}
 	}

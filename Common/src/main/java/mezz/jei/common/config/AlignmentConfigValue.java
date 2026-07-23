@@ -103,11 +103,6 @@ final class AlignmentConfigValue implements IConfigValue<Alignment> {
 		return max(horizontalAlignment.getUpdateType(), verticalAlignment.getUpdateType());
 	}
 
-	@Override
-	public ConfigValueEditorType<Alignment> getEditorType() {
-		return EDITOR_TYPE;
-	}
-
 	private static ConfigValueUpdateType max(ConfigValueUpdateType first, ConfigValueUpdateType second) {
 		if (first == ConfigValueUpdateType.RESTART || second == ConfigValueUpdateType.RESTART) {
 			return ConfigValueUpdateType.RESTART;
