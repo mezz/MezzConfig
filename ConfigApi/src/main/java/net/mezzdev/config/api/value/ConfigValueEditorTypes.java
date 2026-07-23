@@ -13,11 +13,22 @@ public final class ConfigValueEditorTypes {
 	public static final ConfigValueEditorType<Boolean> BOOLEAN = ConfigValueEditorType.create(CONFIG_ID, "boolean");
 	public static final ConfigValueEditorType<Integer> INTEGER = ConfigValueEditorType.create(CONFIG_ID, "integer");
 
+	private static final ConfigValueEditorType<Object> TEXT = ConfigValueEditorType.create(CONFIG_ID, "text");
 	private static final ConfigValueEditorType<Object> SELECTION = ConfigValueEditorType.create(CONFIG_ID, "selection");
 	private static final ConfigValueEditorType<List<Object>> LIST = ConfigValueEditorType.create(CONFIG_ID, "list");
 	private static final ConfigValueEditorType<Object> KEY_MAPPING = ConfigValueEditorType.create(CONFIG_ID, "key_mapping");
 
 	private ConfigValueEditorTypes() {
+	}
+
+	/**
+	 * An editor for values that are best edited as serialized text.
+	 *
+	 * @since 19.39.0
+	 */
+	@SuppressWarnings("unchecked")
+	public static <T> ConfigValueEditorType<T> getText() {
+		return (ConfigValueEditorType<T>) TEXT;
 	}
 
 	/**

@@ -31,6 +31,17 @@ public interface IConfigValueEditorSerializerVisitor<R> {
 	R visitInteger(IConfigValue<Integer> configValue, IConfigIntegerValueSerializer serializer);
 
 	/**
+	 * Visit a config value serializer that should be edited as serialized text.
+	 *
+	 * @param configValue config value being edited
+	 * @param serializer serializer for the config value
+	 * @param <T> value type of the config value
+	 *
+	 * @since 19.39.0
+	 */
+	<T> R visitText(IConfigValue<T> configValue, IConfigValueEditorSerializer<T> serializer);
+
+	/**
 	 * Visit a list config value serializer.
 	 *
 	 * @param configValue config value being edited
