@@ -10,7 +10,7 @@ import java.util.Collection;
  * An {@link IJeiConfigFile} can contain one or more categories.
  *
  * @since 12.1.0
- * @deprecated use {@code net.mezzdev.config.schema.IConfigCategory}
+ * @deprecated use {@code net.mezzdev.config.api.schema.IConfigCategory}
  */
 @Deprecated(since = "19.39.0", forRemoval = false)
 public interface IJeiConfigCategory {

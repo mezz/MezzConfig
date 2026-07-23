@@ -1,6 +1,6 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jetbrains.annotations.Nullable;
 

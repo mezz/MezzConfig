@@ -1,6 +1,6 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.files.IConfigManager;
+import net.mezzdev.config.api.files.IConfigManager;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Optional;
@@ -20,7 +20,7 @@ public final class ConfigManagers {
 		return Optional.ofNullable(configManager);
 	}
 
-	static void setConfigManager(IConfigManager configManager) {
+	public static void setConfigManager(IConfigManager configManager) {
 		ConfigManagers.configManager = configManager;
 	}
 }

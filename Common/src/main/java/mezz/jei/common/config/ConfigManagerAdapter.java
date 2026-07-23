@@ -1,12 +1,12 @@
 package mezz.jei.common.config;
 
-import net.mezzdev.config.value.ConfigValueUpdateType;
-import net.mezzdev.config.schema.IConfigCategory;
-import net.mezzdev.config.files.IConfigFile;
-import net.mezzdev.config.value.IConfigListValueSerializer;
-import net.mezzdev.config.files.IConfigManager;
-import net.mezzdev.config.value.IConfigValue;
-import net.mezzdev.config.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.ConfigValueUpdateType;
+import net.mezzdev.config.api.schema.IConfigCategory;
+import net.mezzdev.config.api.files.IConfigFile;
+import net.mezzdev.config.api.value.IConfigListValueSerializer;
+import net.mezzdev.config.api.files.IConfigManager;
+import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Unmodifiable;

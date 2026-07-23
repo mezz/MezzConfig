@@ -1,7 +1,7 @@
 package net.mezzdev.config.neoforge;
 
-import net.mezzdev.config.file.ConfigPluginLoader;
-import net.mezzdev.config.files.IConfigManager;
+import net.mezzdev.config.plugin.ConfigPluginLoader;
+import net.mezzdev.config.api.files.IConfigManager;
 import net.neoforged.fml.loading.FMLPaths;
 import org.jetbrains.annotations.Nullable;
 

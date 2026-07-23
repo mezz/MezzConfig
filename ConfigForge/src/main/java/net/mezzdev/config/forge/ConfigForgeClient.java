@@ -1,7 +1,7 @@
 package net.mezzdev.config.forge;
 
-import net.mezzdev.config.file.ConfigPluginLoader;
-import net.mezzdev.config.files.IConfigManager;
+import net.mezzdev.config.plugin.ConfigPluginLoader;
+import net.mezzdev.config.api.files.IConfigManager;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.jetbrains.annotations.Nullable;
 

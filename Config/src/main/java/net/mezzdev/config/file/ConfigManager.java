@@ -1,9 +1,11 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.files.IConfigFile;
-import net.mezzdev.config.files.IConfigManager;
-import net.mezzdev.config.schema.IConfigEditableSchema;
-import net.mezzdev.config.screen.IConfigScreenConfig;
+import net.mezzdev.config.api.files.IConfigFile;
+import net.mezzdev.config.api.files.IConfigManager;
+import net.mezzdev.config.api.schema.IConfigEditableSchema;
+import net.mezzdev.config.api.screen.IConfigScreenConfig;
+import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.screen.ConfigScreenConfig;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
@@ -29,11 +31,11 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 		this.saveExecutor = new ConfigSaveExecutor("Mezz Config Save Scheduler");
 	}
 
-	ConfigSaveScheduler getSaveExecutor() {
+	public ConfigSaveScheduler getSaveScheduler() {
 		return saveExecutor;
 	}
 
-	void registerSchema(ConfigSchema configFile) {
+	public void registerSchema(ConfigSchema configFile) {
 		configFile.register(fileWatcher, this);
 	}
 
@@ -42,7 +44,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 		this.configFiles.put(configFile.getPath(), configFile);
 	}
 
-	void registerConfigScreen(
+	public void registerConfigScreen(
 		String modId,
 		Component title,
 		IConfigEditableSchema schema,
@@ -55,7 +57,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 		}
 	}
 
-	void startWatching() {
+	public void startWatching() {
 		fileWatcher.start();
 	}
 

@@ -1,7 +1,7 @@
 package net.mezzdev.config.neoforge;
 
-import net.mezzdev.config.plugin.ConfigPlugin;
-import net.mezzdev.config.plugin.IConfigPlugin;
+import net.mezzdev.config.api.plugin.ConfigPlugin;
+import net.mezzdev.config.api.plugin.IConfigPlugin;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforgespi.language.ModFileScanData;
 import org.apache.logging.log4j.LogManager;

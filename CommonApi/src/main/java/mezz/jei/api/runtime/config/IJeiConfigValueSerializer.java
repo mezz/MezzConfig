@@ -15,7 +15,7 @@ import java.util.Optional;
  * it should implement {@link IJeiConfigListValueSerializer} as well.
  *
  * @since 12.1.1
- * @deprecated use {@code net.mezzdev.config.value.IConfigValueSerializer}
+ * @deprecated use {@code net.mezzdev.config.api.value.IConfigValueSerializer}
  */
 @Deprecated(since = "19.39.0", forRemoval = false)
 public interface IJeiConfigValueSerializer<T> {

@@ -1,6 +1,10 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.schema.ConfigCategory;
+import net.mezzdev.config.value.ConfigValue;
+import net.mezzdev.config.value.ConfigValueMigration;
+import net.mezzdev.config.value.ConfigValueReference;
 import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

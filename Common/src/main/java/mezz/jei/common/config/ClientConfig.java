@@ -1,10 +1,10 @@
 package mezz.jei.common.config;
 
 import com.google.common.base.Preconditions;
-import net.mezzdev.config.value.ConfigValueUpdateType;
-import net.mezzdev.config.value.IConfigValue;
-import net.mezzdev.config.schema.IConfigCategoryBuilder;
-import net.mezzdev.config.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.value.ConfigValueUpdateType;
+import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
+import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import mezz.jei.common.config.serializers.EnumSerializer;
 import mezz.jei.common.config.serializers.EnumSerializerWithAliases;
 import mezz.jei.common.config.serializers.ListSerializer;

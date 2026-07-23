@@ -1,6 +1,6 @@
 package mezz.jei.common.config;
 
-import net.mezzdev.config.value.IConfigValue;
+import net.mezzdev.config.api.value.IConfigValue;
 
 public interface IIngredientFilterConfig {
 	IConfigValue<SearchMode> modNameSearchMode();

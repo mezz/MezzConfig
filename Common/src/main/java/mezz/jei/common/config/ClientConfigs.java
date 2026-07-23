@@ -1,10 +1,10 @@
 package mezz.jei.common.config;
 
 import mezz.jei.api.gui.placement.HorizontalAlignment;
-import net.mezzdev.config.schema.IConfigDisplayCategoryBuilder;
-import net.mezzdev.config.schema.IConfigEditableSchema;
-import net.mezzdev.config.schema.IConfigSchemaBuilder;
-import net.mezzdev.config.value.IConfigValue;
+import net.mezzdev.config.api.schema.IConfigDisplayCategoryBuilder;
+import net.mezzdev.config.api.schema.IConfigEditableSchema;
+import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.value.IConfigValue;
 import net.minecraft.client.KeyMapping;
 
 import java.util.Collection;

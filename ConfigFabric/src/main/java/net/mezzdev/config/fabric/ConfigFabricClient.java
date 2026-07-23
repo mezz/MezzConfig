@@ -2,8 +2,8 @@ package net.mezzdev.config.fabric;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
-import net.mezzdev.config.file.ConfigPluginLoader;
-import net.mezzdev.config.files.IConfigManager;
+import net.mezzdev.config.plugin.ConfigPluginLoader;
+import net.mezzdev.config.api.files.IConfigManager;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;

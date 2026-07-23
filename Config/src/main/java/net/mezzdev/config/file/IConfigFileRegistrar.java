@@ -1,5 +1,7 @@
 package net.mezzdev.config.file;
 
-interface IConfigFileRegistrar {
+import net.mezzdev.config.schema.ConfigSchema;
+
+public interface IConfigFileRegistrar {
 	void addConfigFile(ConfigSchema configFile);
 }

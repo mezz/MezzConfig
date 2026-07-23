@@ -1,7 +1,7 @@
 package net.mezzdev.config.forge;
 
-import net.mezzdev.config.plugin.ConfigPlugin;
-import net.mezzdev.config.plugin.IConfigPlugin;
+import net.mezzdev.config.api.plugin.ConfigPlugin;
+import net.mezzdev.config.api.plugin.IConfigPlugin;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.forgespi.language.ModFileScanData;
 import org.apache.logging.log4j.LogManager;

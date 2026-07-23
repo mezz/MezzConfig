@@ -13,7 +13,7 @@ import java.util.function.Consumer;
  * and using {@link #set} will automatically update the file.
  *
  * @since 12.1.0
- * @deprecated use {@code net.mezzdev.config.value.IConfigValue}
+ * @deprecated use {@code net.mezzdev.config.api.value.IConfigValue}
  */
 @Deprecated(since = "19.39.0", forRemoval = false)
 public interface IJeiConfigValue<T> {

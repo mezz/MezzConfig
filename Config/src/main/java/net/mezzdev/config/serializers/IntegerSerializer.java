@@ -1,8 +1,8 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.value.ConfigValueEditorType;
-import net.mezzdev.config.value.ConfigValueEditorTypes;
-import net.mezzdev.config.value.IConfigIntegerValueSerializer;
+import net.mezzdev.config.api.value.ConfigValueEditorType;
+import net.mezzdev.config.api.value.ConfigValueEditorTypes;
+import net.mezzdev.config.api.value.IConfigIntegerValueSerializer;
 import net.minecraft.network.chat.Component;
 
 import java.util.Collection;

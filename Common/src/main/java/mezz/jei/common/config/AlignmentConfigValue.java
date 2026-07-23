@@ -2,11 +2,10 @@ package mezz.jei.common.config;
 
 import mezz.jei.api.gui.placement.HorizontalAlignment;
 import mezz.jei.api.gui.placement.VerticalAlignment;
-import net.mezzdev.config.value.ConfigValueEditorType;
-import net.mezzdev.config.value.ConfigValueEditorTypes;
-import net.mezzdev.config.value.ConfigValueUpdateType;
-import net.mezzdev.config.value.IConfigValue;
-import net.mezzdev.config.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.ConfigValueEditorType;
+import net.mezzdev.config.api.value.ConfigValueUpdateType;
+import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 import mezz.jei.common.config.serializers.DeserializeResult;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
@@ -27,7 +26,7 @@ final class AlignmentConfigValue implements IConfigValue<Alignment> {
 	 *
 	 * @since 19.39.0
 	 */
-	public static final ConfigValueEditorType<Alignment> EDITOR_TYPE = ConfigValueEditorTypes.getSelection();
+	public static final ConfigValueEditorType<Alignment> EDITOR_TYPE = JeiConfigValueEditorTypes.ALIGNMENT;
 
 	private static final IConfigValueSerializer<Alignment> SERIALIZER = new AlignmentSerializer();
 

@@ -12,7 +12,7 @@ import java.util.Collection;
  * Get an instance from {@link IJeiRuntime#getConfigManager()}
  *
  * @since 12.1.0
- * @deprecated use {@code net.mezzdev.config.files.IConfigManager}
+ * @deprecated use {@code net.mezzdev.config.api.files.IConfigManager}
  */
 @Deprecated(since = "19.39.0", forRemoval = false)
 public interface IJeiConfigManager {
