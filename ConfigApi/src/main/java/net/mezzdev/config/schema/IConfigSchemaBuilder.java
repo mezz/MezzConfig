@@ -1,8 +1,9 @@
 package net.mezzdev.config.schema;
 
+import net.mezzdev.config.value.IConfigValue;
 import net.mezzdev.config.value.IConfigValueSerializer;
 
-import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Builds one config schema.
@@ -33,18 +34,19 @@ public interface IConfigSchemaBuilder {
 	/**
 	 * Add a migration for a value that used to be stored under a different category and name.
 	 *
-	 * @param categoryName old stable storage name for the category
-	 * @param valueName old stable storage name for the value
-	 * @param serializer serializer for the old value
-	 * @param migration receives the old value and updates current config values
-	 *
+	 * @param legacyCategoryName old stable storage name for the category
+	 * @param legacyValueName    old stable storage name for the value
+	 * @param legacySerializer   serializer for the old value
+	 * @param migration          converts the old value into the current value
+	 * @param newConfigValue     current config value to update
 	 * @since 19.39.0
 	 */
-	<T> void addLegacyValueMigration(
-		String categoryName,
-		String valueName,
-		IConfigValueSerializer<T> serializer,
-		Consumer<T> migration
+	<T, R> void addLegacyValueMigration(
+		String legacyCategoryName,
+		String legacyValueName,
+		IConfigValueSerializer<T> legacySerializer,
+		Function<T, R> migration,
+		IConfigValue<R> newConfigValue
 	);
 
 	/**

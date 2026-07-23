@@ -1,15 +1,20 @@
 package net.mezzdev.config.file;
 
+import net.mezzdev.config.value.IConfigValue;
 import net.mezzdev.config.value.IConfigValueSerializer;
 
 import java.util.List;
-import java.util.function.Consumer;
+import java.util.function.Function;
 
-record ConfigValueMigration<T>(
+record ConfigValueMigration<T, R>(
+	IConfigValue<R> configValue,
 	IConfigValueSerializer<T> serializer,
-	Consumer<T> migration
+	Function<T, R> migration
 ) {
 	ConfigValueMigration {
+		if (configValue == null) {
+			throw new NullPointerException("configValue must not be null.");
+		}
 		if (serializer == null) {
 			throw new NullPointerException("serializer must not be null.");
 		}
@@ -21,7 +26,7 @@ record ConfigValueMigration<T>(
 	public List<String> migrate(String value) {
 		IConfigValueSerializer.IDeserializeResult<T> deserializeResult = serializer.deserialize(value);
 		deserializeResult.getResult()
-			.ifPresent(migration);
+			.ifPresent(oldValue -> configValue.set(migration.apply(oldValue)));
 		return deserializeResult.getErrors();
 	}
 }

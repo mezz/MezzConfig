@@ -176,30 +176,45 @@ public final class ClientConfig implements IClientConfig {
 			"cheating",
 			"showTagRecipesEnabled",
 			showTagRecipesEnabled.getSerializer(),
-			showTagRecipesEnabled::set
+			value -> value,
+			showTagRecipesEnabled
+		);
+
+		ListSerializer<BookmarkTooltipFeature> bookmarkTooltipFeaturesSerializer = new ListSerializer<>(
+			new EnumSerializer<>(BookmarkTooltipFeature.class)
 		);
 		schema.addLegacyValueMigration(
 			"tooltips",
 			"bookmarkTooltipFeatures",
-			new ListSerializer<>(new EnumSerializer<>(BookmarkTooltipFeature.class)),
-			this::migrateBookmarkTooltipFeatures
+			bookmarkTooltipFeaturesSerializer,
+			features -> features.contains(BookmarkTooltipFeature.PREVIEW),
+			bookmarkTooltipPreviewEnabled
+		);
+		schema.addLegacyValueMigration(
+			"tooltips",
+			"bookmarkTooltipFeatures",
+			bookmarkTooltipFeaturesSerializer,
+			features -> features.contains(BookmarkTooltipFeature.INGREDIENTS),
+			bookmarkTooltipIngredientsEnabled
+		);
+
+		ListSerializer<RecipeSorterStage> recipeSorterStagesSerializer = new ListSerializer<>(
+			new EnumSerializer<>(RecipeSorterStage.class)
 		);
 		schema.addLegacyValueMigration(
 			"sorting",
 			"recipeSorterStages",
-			new ListSerializer<>(new EnumSerializer<>(RecipeSorterStage.class)),
-			this::migrateRecipeSorterStages
+			recipeSorterStagesSerializer,
+			stages -> stages.contains(RecipeSorterStage.BOOKMARKED),
+			recipeSortingBookmarksEnabled
 		);
-	}
-
-	private void migrateBookmarkTooltipFeatures(List<BookmarkTooltipFeature> features) {
-		bookmarkTooltipPreviewEnabled.set(features.contains(BookmarkTooltipFeature.PREVIEW));
-		bookmarkTooltipIngredientsEnabled.set(features.contains(BookmarkTooltipFeature.INGREDIENTS));
-	}
-
-	private void migrateRecipeSorterStages(List<RecipeSorterStage> stages) {
-		recipeSortingBookmarksEnabled.set(stages.contains(RecipeSorterStage.BOOKMARKED));
-		recipeSortingCraftableEnabled.set(stages.contains(RecipeSorterStage.CRAFTABLE));
+		schema.addLegacyValueMigration(
+			"sorting",
+			"recipeSorterStages",
+			recipeSorterStagesSerializer,
+			stages -> stages.contains(RecipeSorterStage.CRAFTABLE),
+			recipeSortingCraftableEnabled
+		);
 	}
 
 	/**

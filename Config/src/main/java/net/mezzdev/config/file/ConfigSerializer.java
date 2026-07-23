@@ -36,7 +36,7 @@ public final class ConfigSerializer {
 	public static void load(
 		Path path,
 		List<ConfigCategory> categories,
-		Map<ConfigValueReference, ConfigValueMigration<?>> legacyValueMigrations
+		Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> legacyValueMigrations
 	) throws IOException {
 		FileTime lastModifiedTime = Files.getLastModifiedTime(path);
 		FileTime savedTime = saveTimes.get(path);
@@ -94,11 +94,12 @@ public final class ConfigSerializer {
 				Optional<ConfigValue<?>> configValue = getConfigValue(category, key);
 				if (configValue.isEmpty()) {
 					ConfigValueReference legacyValueReference = new ConfigValueReference(categoryName, key);
-					@Nullable ConfigValueMigration<?> migration = legacyValueMigrations.get(legacyValueReference);
-					if (migration == null) {
+					@Nullable List<ConfigValueMigration<?, ?>> migrations = legacyValueMigrations.get(legacyValueReference);
+					if (migrations == null) {
 						logUnknownConfigValue(path, lineNumber, line, category, categoryName, key);
 					} else {
-						List<String> errors = migration.migrate(value);
+						List<String> errors = new ArrayList<>();
+						migrations.forEach(migration -> errors.addAll(migration.migrate(value)));
 						if (!errors.isEmpty()) {
 							logDeserializeErrors(path, lineNumber, line, value, errors);
 						}
@@ -129,7 +130,7 @@ public final class ConfigSerializer {
 		return category.getConfigValue(key);
 	}
 
-	private static boolean hasLegacyValues(String categoryName, Map<ConfigValueReference, ConfigValueMigration<?>> legacyValueMigrations) {
+	private static boolean hasLegacyValues(String categoryName, Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> legacyValueMigrations) {
 		return legacyValueMigrations.keySet()
 			.stream()
 			.anyMatch(reference -> reference.categoryName().equals(categoryName));

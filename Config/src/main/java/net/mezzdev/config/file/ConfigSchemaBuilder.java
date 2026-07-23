@@ -2,8 +2,8 @@ package net.mezzdev.config.file;
 
 import net.mezzdev.config.schema.IConfigDisplayCategoryBuilder;
 import net.mezzdev.config.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.value.IConfigValue;
 import net.mezzdev.config.value.IConfigValueSerializer;
-import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -12,14 +12,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Consumer;
+import java.util.function.Function;
 
 public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private final Set<String> categoryNames = new HashSet<>();
 	private final Set<String> displayCategoryNames = new HashSet<>();
 	private final List<ConfigCategoryBuilder> categoryBuilders = new ArrayList<>();
 	private final List<ConfigDisplayCategoryBuilder> displayCategoryBuilders = new ArrayList<>();
-	private final Map<ConfigValueReference, ConfigValueMigration<?>> legacyValueMigrations = new LinkedHashMap<>();
+	private final Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> legacyValueMigrations = new LinkedHashMap<>();
 	private final Path configFile;
 	private final String localizationPath;
 	private final ConfigManager configManager;
@@ -52,18 +52,15 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	}
 
 	@Override
-	public <T> void addLegacyValueMigration(
-		String categoryName,
-		String valueName,
-		IConfigValueSerializer<T> serializer,
-		Consumer<T> migration
+	public <T, R> void addLegacyValueMigration(
+		String legacyCategoryName,
+		String legacyValueName,
+		IConfigValueSerializer<T> legacySerializer, Function<T, R> migration, IConfigValue<R> newConfigValue
 	) {
-		ConfigValueReference reference = new ConfigValueReference(categoryName, valueName);
-		ConfigValueMigration<T> valueMigration = new ConfigValueMigration<>(serializer, migration);
-		@Nullable ConfigValueMigration<?> previous = legacyValueMigrations.putIfAbsent(reference, valueMigration);
-		if (previous != null) {
-			throw new IllegalArgumentException("There is already a legacy value named: " + categoryName + "." + valueName);
-		}
+		ConfigValueReference reference = new ConfigValueReference(legacyCategoryName, legacyValueName);
+		ConfigValueMigration<T, R> valueMigration = new ConfigValueMigration<>(newConfigValue, legacySerializer, migration);
+		legacyValueMigrations.computeIfAbsent(reference, key -> new ArrayList<>())
+			.add(valueMigration);
 	}
 
 	@Override

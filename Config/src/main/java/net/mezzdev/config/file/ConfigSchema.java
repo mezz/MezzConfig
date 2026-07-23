@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -24,7 +25,7 @@ public class ConfigSchema implements IConfigSchema {
 	private final String localizationPath;
 	private final List<ConfigCategory> categories;
 	private final List<ConfigDisplayCategory> displayCategories;
-	private final Map<ConfigValueReference, ConfigValueMigration<?>> legacyValueMigrations;
+	private final Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> legacyValueMigrations;
 	private final AtomicBoolean needsLoad = new AtomicBoolean(true);
 	private final ConfigSaveRunner delayedSave;
 
@@ -33,7 +34,7 @@ public class ConfigSchema implements IConfigSchema {
 		String localizationPath,
 		List<ConfigCategoryBuilder> categoryBuilders,
 		List<ConfigDisplayCategory> displayCategories,
-		Map<ConfigValueReference, ConfigValueMigration<?>> legacyValueMigrations,
+		Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> legacyValueMigrations,
 		ConfigSaveScheduler scheduler
 	) {
 		this.path = path;
@@ -42,8 +43,16 @@ public class ConfigSchema implements IConfigSchema {
 			.map(b -> b.build(this))
 			.toList();
 		this.displayCategories = createDisplayCategories(localizationPath, displayCategories, categories);
-		this.legacyValueMigrations = Map.copyOf(legacyValueMigrations);
+		this.legacyValueMigrations = copyLegacyValueMigrations(legacyValueMigrations);
 		this.delayedSave = new ConfigSaveRunner(SAVE_DELAY_TIME, scheduler);
+	}
+
+	private static Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> copyLegacyValueMigrations(
+		Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> legacyValueMigrations
+	) {
+		Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> copy = new LinkedHashMap<>();
+		legacyValueMigrations.forEach((key, value) -> copy.put(key, List.copyOf(value)));
+		return Map.copyOf(copy);
 	}
 
 	private static List<ConfigDisplayCategory> createDisplayCategories(
