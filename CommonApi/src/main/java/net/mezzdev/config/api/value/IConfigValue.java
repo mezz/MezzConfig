@@ -3,7 +3,9 @@ package net.mezzdev.config.api.value;
 import net.mezzdev.config.api.schema.IConfigCategory;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Unmodifiable;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -49,6 +51,26 @@ public interface IConfigValue<T> {
 	 * @since 0.1.0
 	 */
 	T getDefaultValue();
+
+	/**
+	 * Get the edit mode hint for this value.
+	 * <p>
+	 * Config editors can use this to decide when changes should be saved.
+	 *
+	 * @since 0.1.0
+	 */
+	ConfigValueEditMode getEditMode();
+
+	/**
+	 * Get the category names where config editors should show this value.
+	 * <p>
+	 * If this is empty, config editors can show the value in its storage category. Values may be shown in multiple
+	 * editor categories.
+	 *
+	 * @since 0.1.0
+	 */
+	@Unmodifiable
+	List<String> getEditorCategoryNames();
 
 	/**
 	 * Set the config value to the given value.

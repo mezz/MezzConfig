@@ -1,6 +1,7 @@
 package net.mezzdev.config.value;
 
 import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IConfigValueChangeListener;
@@ -13,7 +14,9 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -24,6 +27,8 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	private final String localizationKey;
 	private final T defaultValue;
 	private final IConfigValueSerializer<T> serializer;
+	private final ConfigValueEditMode editMode;
+	private final List<String> editorCategoryNames;
 	private @Nullable List<IConfigValueChangeListener<T>> listeners;
 	private @Nullable List<IConfigValueBatchChangeListener> batchListeners;
 	private volatile T currentValue;
@@ -36,16 +41,41 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		T defaultValue,
 		IConfigValueSerializer<T> serializer
 	) {
+		this(localizationPath, name, defaultValue, serializer, ConfigValueEditMode.BATCH, List.of());
+	}
+
+	public ConfigValue(
+		String localizationPath,
+		String name,
+		T defaultValue,
+		IConfigValueSerializer<T> serializer,
+		ConfigValueEditMode editMode,
+		Iterable<String> editorCategoryNames
+	) {
 		this.name = ConfigNameUtil.validateConfigName(name, "configValueName");
 
 		localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 		this.localizationKey = localizationPath + "." + this.name;
 		this.defaultValue = ErrorUtil.checkNotNull(defaultValue, "defaultValue");
 		this.serializer = ErrorUtil.checkNotNull(serializer, "serializer");
+		this.editMode = ErrorUtil.checkNotNull(editMode, "editMode");
+		this.editorCategoryNames = getEditorCategoryNames(editorCategoryNames);
 		if (!this.serializer.isValid(this.defaultValue)) {
 			throw new IllegalArgumentException("Default value for '%s' is invalid: %s".formatted(this.name, this.defaultValue));
 		}
 		this.currentValue = this.defaultValue;
+	}
+
+	private static List<String> getEditorCategoryNames(Iterable<String> editorCategoryNames) {
+		ErrorUtil.checkNotNull(editorCategoryNames, "editorCategoryNames");
+		Set<String> categoryNames = new LinkedHashSet<>();
+		for (String categoryName : editorCategoryNames) {
+			categoryName = ConfigNameUtil.validateConfigName(categoryName, "editorCategoryName");
+			if (!categoryNames.add(categoryName)) {
+				throw new IllegalArgumentException("There is already an editor category name: " + categoryName);
+			}
+		}
+		return List.copyOf(categoryNames);
 	}
 
 	public void setSchema(ConfigSchema schema) {
@@ -65,6 +95,16 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	@Override
 	public T getDefaultValue() {
 		return defaultValue;
+	}
+
+	@Override
+	public ConfigValueEditMode getEditMode() {
+		return editMode;
+	}
+
+	@Override
+	public List<String> getEditorCategoryNames() {
+		return editorCategoryNames;
 	}
 
 	@Override

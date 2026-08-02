@@ -52,6 +52,20 @@ general.addEnum("mode", Mode.STANDARD)
 Use category and value legacy names when storage names change. If serialized
 text also changed, add a legacy value migration function.
 
+Values can also declare editor hints for integrations such as MezzConfigGui:
+
+```java
+general.addBoolean("enabled", true)
+	.setEditMode(ConfigValueEditMode.IMMEDIATE)
+	.addEditorCategory("quick")
+	.addEditorCategory("advanced")
+	.build();
+```
+
+Editor categories are presentation hints only. The value is still stored in its
+schema category. Use {@code ConfigValueEditMode.RESTART} only for values whose
+saved changes require a full game restart.
+
 Use a batch updater when several config values should change together:
 
 ```java

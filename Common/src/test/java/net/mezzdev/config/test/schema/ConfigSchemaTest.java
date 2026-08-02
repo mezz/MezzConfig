@@ -1,6 +1,7 @@
 package net.mezzdev.config.test.schema;
 
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
+import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
@@ -195,6 +196,52 @@ public class ConfigSchemaTest {
 			.addLegacyValueMigration(Boolean::parseBoolean);
 
 		assertThrows(IllegalStateException.class, () -> valueBuilder.addLegacyValueMigration(Boolean::parseBoolean));
+	}
+
+	@Test
+	public void configValueBuilderDefaultsToBatchEditingWithStorageCategory() {
+		// Setup: no editor hints are declared for this value.
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+
+		// Operation: build the value with only its mandatory storage information.
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+
+		// Assertions: editors can batch by default and use the value's storage category when no editor category is set.
+		assertEquals(ConfigValueEditMode.BATCH, enabled.getEditMode());
+		assertEquals(List.of(), enabled.getEditorCategoryNames());
+	}
+
+	@Test
+	public void configValueBuilderStoresEditorHints() {
+		// Setup: values can declare when editors should save them and where editors should show them.
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+
+		// Operation: declare presentation hints on the value builder before building the value.
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.setEditMode(ConfigValueEditMode.IMMEDIATE)
+			.addEditorCategory("quick")
+			.addEditorCategory("advanced")
+			.build();
+		ConfigValue<Boolean> requiresRestart = builder.addBoolean("requiresRestart", false)
+			.setEditMode(ConfigValueEditMode.RESTART)
+			.build();
+
+		// Assertions: the config value exposes the hints for config editor integrations.
+		assertEquals(ConfigValueEditMode.IMMEDIATE, enabled.getEditMode());
+		assertEquals(List.of("quick", "advanced"), enabled.getEditorCategoryNames());
+		assertEquals(ConfigValueEditMode.RESTART, requiresRestart.getEditMode());
+	}
+
+	@Test
+	public void configValueBuilderRejectsDuplicateEditorCategories() {
+		// Setup: a value builder already has one editor category.
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		var valueBuilder = builder.addBoolean("enabled", true)
+			.addEditorCategory("quick");
+
+		// Operation and assertions: duplicate editor categories are rejected early instead of producing duplicate GUI rows.
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addEditorCategory("quick"));
 	}
 
 	@Test

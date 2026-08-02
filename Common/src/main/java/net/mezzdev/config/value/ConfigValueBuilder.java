@@ -1,6 +1,7 @@
 package net.mezzdev.config.value;
 
 import net.mezzdev.config.api.value.IConfigValueBuilder;
+import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.util.ConfigNameUtil;
@@ -18,7 +19,9 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 	private final T defaultValue;
 	private final IConfigValueSerializer<T> serializer;
 	private final Set<String> legacyNames = new LinkedHashSet<>();
+	private final Set<String> editorCategoryNames = new LinkedHashSet<>();
 	private @Nullable Function<String, T> legacyValueMigration;
+	private ConfigValueEditMode editMode = ConfigValueEditMode.BATCH;
 	private @Nullable ConfigValue<T> configValue;
 
 	public ConfigValueBuilder(
@@ -70,9 +73,33 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 	}
 
 	@Override
+	public ConfigValueBuilder<T> setEditMode(ConfigValueEditMode editMode) {
+		checkNotBuilt();
+		this.editMode = ErrorUtil.checkNotNull(editMode, "editMode");
+		return this;
+	}
+
+	@Override
+	public ConfigValueBuilder<T> addEditorCategory(String categoryName) {
+		checkNotBuilt();
+		categoryName = ConfigNameUtil.validateConfigName(categoryName, "editorCategoryName");
+		if (!editorCategoryNames.add(categoryName)) {
+			throw new IllegalArgumentException("There is already an editor category name: " + categoryName);
+		}
+		return this;
+	}
+
+	@Override
 	public ConfigValue<T> build() {
 		checkNotBuilt();
-		ConfigValue<T> value = new ConfigValue<>(localizationPath, name, defaultValue, serializer);
+		ConfigValue<T> value = new ConfigValue<>(
+			localizationPath,
+			name,
+			defaultValue,
+			serializer,
+			editMode,
+			editorCategoryNames
+		);
 		this.configValue = categoryBuilder.addValue(value, legacyNames, legacyValueMigration);
 		return this.configValue;
 	}

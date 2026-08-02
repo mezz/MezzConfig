@@ -40,6 +40,32 @@ public interface IConfigValueBuilder<T> {
 	IConfigValueBuilder<T> addLegacyValueMigration(Function<String, T> migration);
 
 	/**
+	 * Set the edit mode hint for this value.
+	 * <p>
+	 * Config editors can use this to decide when changes should be saved. If this is not called, values use
+	 * {@link ConfigValueEditMode#BATCH}.
+	 *
+	 * @param editMode edit mode hint for config editors
+	 * @return this builder
+	 *
+	 * @since 0.1.0
+	 */
+	IConfigValueBuilder<T> setEditMode(ConfigValueEditMode editMode);
+
+	/**
+	 * Add a category name where config editors should show this value.
+	 * <p>
+	 * If no editor categories are added, config editors can show the value in its storage category.
+	 * Values may be added to multiple editor categories.
+	 *
+	 * @param categoryName stable editor category name
+	 * @return this builder
+	 *
+	 * @since 0.1.0
+	 */
+	IConfigValueBuilder<T> addEditorCategory(String categoryName);
+
+	/**
 	 * Build and add the config value to its category.
 	 * A value builder may only be built once.
 	 *
