@@ -1,19 +1,30 @@
 package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.schema.IConfigSchema;
+import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
+import net.mezzdev.config.api.value.IAppliedConfigValueChange;
+import net.mezzdev.config.api.value.IPendingConfigValueUpdate;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.file.IConfigFileRegistrar;
+import net.mezzdev.config.util.ErrorUtil;
+import net.mezzdev.config.value.ConfigValue;
+import net.mezzdev.config.value.AppliedConfigValueChange;
+import net.mezzdev.config.value.PendingConfigValueUpdate;
 import net.mezzdev.deduplicatingrunner.DeduplicatingRunner;
 import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
 import net.mezzdev.filewatcher.FileWatcher;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ConfigSchema implements IConfigSchema {
@@ -25,6 +36,7 @@ public class ConfigSchema implements IConfigSchema {
 	private final List<ConfigCategory> categories;
 	private final AtomicBoolean needsLoad = new AtomicBoolean(true);
 	private final DeduplicatingRunner delayedSave;
+	private @Nullable List<IConfigValueBatchChangeListener> listeners;
 
 	public ConfigSchema(
 		Path path,
@@ -45,7 +57,8 @@ public class ConfigSchema implements IConfigSchema {
 
 		if (Files.exists(path)) {
 			try {
-				ConfigSerializer.load(path, categories);
+				List<AppliedConfigValueChange<?>> changes = ConfigSerializer.load(path, categories);
+				notifyListeners(changes);
 			} catch (IOException e) {
 				LOGGER.error("Failed to load config schema for: {}", path, e);
 			}
@@ -95,7 +108,82 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
+	public List<? extends IAppliedConfigValueChange<?>> applyUpdates(List<? extends IPendingConfigValueUpdate<?>> updates) {
+		ErrorUtil.checkNotNull(updates, "updates");
+		if (updates.isEmpty()) {
+			return List.of();
+		}
+
+		loadIfNeeded();
+		List<PendingConfigValueUpdate<?>> configValueUpdates = getConfigValueUpdates(updates);
+		validateUpdates(configValueUpdates);
+
+		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
+		for (PendingConfigValueUpdate<?> update : configValueUpdates) {
+			AppliedConfigValueChange<?> change = update.apply();
+			if (change != null) {
+				changes.add(change);
+			}
+		}
+		if (changes.isEmpty()) {
+			return List.of();
+		}
+
+		List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
+		notifyListeners(immutableChanges);
+		markDirty();
+		return immutableChanges;
+	}
+
+	private List<PendingConfigValueUpdate<?>> getConfigValueUpdates(List<? extends IPendingConfigValueUpdate<?>> updates) {
+		List<PendingConfigValueUpdate<?>> configValueUpdates = new ArrayList<>();
+		for (IPendingConfigValueUpdate<?> update : updates) {
+			if (update instanceof PendingConfigValueUpdate<?> configValueUpdate) {
+				configValueUpdates.add(configValueUpdate);
+			} else {
+				throw new IllegalArgumentException("Config value update was not created by MezzConfig. Use IConfigValue.createUpdate(...).");
+			}
+		}
+		return configValueUpdates;
+	}
+
+	private void validateUpdates(List<PendingConfigValueUpdate<?>> updates) {
+		Set<ConfigValue<?>> updatedValues = new HashSet<>();
+		for (PendingConfigValueUpdate<?> update : updates) {
+			ConfigValue<?> configValue = update.configValue();
+			if (!containsConfigValue(configValue)) {
+				throw new IllegalArgumentException("Config value does not belong to this schema: " + configValue.getName());
+			}
+			if (!updatedValues.add(configValue)) {
+				throw new IllegalArgumentException("Config value cannot be updated more than once in one batch: " + configValue.getName());
+			}
+			update.validate();
+		}
+	}
+
+	private boolean containsConfigValue(ConfigValue<?> configValue) {
+		return categories.stream()
+			.flatMap(category -> category.getConfigValues().stream())
+			.anyMatch(value -> value == configValue);
+	}
+
+	@Override
+	public void addListener(IConfigValueBatchChangeListener listener) {
+		if (this.listeners == null) {
+			this.listeners = new ArrayList<>();
+		}
+		this.listeners.add(listener);
+	}
+
+	private void notifyListeners(List<? extends IAppliedConfigValueChange<?>> changes) {
+		if (listeners != null && !changes.isEmpty()) {
+			listeners.forEach(listener -> listener.onChange(changes));
+		}
+	}
+
+	@Override
 	public void clearListeners() {
+		this.listeners = null;
 		for (ConfigCategory configCategory : categories) {
 			configCategory.clearListeners();
 		}

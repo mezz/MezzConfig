@@ -1,5 +1,6 @@
 package net.mezzdev.config.test.file;
 
+import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.serializers.BooleanSerializer;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -54,6 +56,55 @@ public class ConfigSerializerLoadSaveTest {
 
 		assertTrue(enabled.getValue());
 		assertEquals(1, count.getValue());
+	}
+
+	@Test
+	public void loadDoesNotNotifyWhenValueIsEqual(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[current]",
+			"count = 1"
+		));
+		ConfigValue<Integer> count = createIntegerValue(1);
+		ConfigCategory category = createCategory(count);
+		List<String> regularChanges = new ArrayList<>();
+		List<String> batchChanges = new ArrayList<>();
+		count.addListener((oldValue, newValue) -> regularChanges.add("%s -> %s".formatted(oldValue, newValue)));
+		count.addBatchListener(changes -> batchChanges.add(formatBatch(changes, true, count.getValue())));
+
+		List<? extends IAppliedConfigValueChange<?>> changes = ConfigSerializer.load(path, List.of(category));
+
+		assertEquals(List.of(), changes);
+		assertEquals(1, count.getValue());
+		assertEquals(List.of(), regularChanges);
+		assertEquals(List.of(), batchChanges);
+	}
+
+	@Test
+	public void loadNotifiesListenersAfterAllValuesUpdate(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[current]",
+			"enabled = false",
+			"count = 7"
+		));
+		ConfigValue<Boolean> enabled = createBooleanValue(true);
+		ConfigValue<Integer> count = createIntegerValue(1);
+		ConfigCategory category = createCategory(enabled, count);
+		List<String> regularChanges = new ArrayList<>();
+		List<String> enabledBatches = new ArrayList<>();
+		List<String> countBatches = new ArrayList<>();
+		enabled.addListener((oldValue, newValue) -> regularChanges.add("%s -> %s, count = %s".formatted(oldValue, newValue, count.getValue())));
+		enabled.addBatchListener(changes -> enabledBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
+		count.addBatchListener(changes -> countBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertFalse(enabled.getValue());
+		assertEquals(7, count.getValue());
+		assertEquals(List.of("true -> false, count = 7"), regularChanges);
+		assertEquals(List.of("enabled: true -> false, count: 1 -> 7; enabled = false; count = 7"), enabledBatches);
+		assertEquals(List.of("enabled: true -> false, count: 1 -> 7; enabled = false; count = 7"), countBatches);
 	}
 
 	@Test
@@ -101,6 +152,21 @@ public class ConfigSerializerLoadSaveTest {
 			LOCALIZATION_PATH,
 			"current",
 			List.of(values)
+		);
+	}
+
+	private static String formatBatch(
+		List<? extends IAppliedConfigValueChange<?>> changes,
+		boolean enabled,
+		int count
+	) {
+		String formattedChanges = String.join(", ", changes.stream()
+			.map(change -> "%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()))
+			.toList());
+		return "%s; enabled = %s; count = %s".formatted(
+			formattedChanges,
+			enabled,
+			count
 		);
 	}
 }

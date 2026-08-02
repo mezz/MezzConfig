@@ -3,6 +3,7 @@ package net.mezzdev.config.file;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.value.ConfigValue;
+import net.mezzdev.config.value.AppliedConfigValueChange;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
 import net.minecraft.locale.Language;
@@ -42,7 +43,7 @@ public final class ConfigSerializer {
 			Line #%s: "%s\"""".formatted(errorMessage, path, lineNumber, line);
 	}
 
-	public static void load(
+	public static List<AppliedConfigValueChange<?>> load(
 		Path path,
 		List<ConfigCategory> categories
 	) throws IOException {
@@ -50,7 +51,7 @@ public final class ConfigSerializer {
 		FileTime savedTime = saveTimes.get(path);
 		if (savedTime != null && savedTime.compareTo(lastModifiedTime) >= 0) {
 			LOGGER.debug("Skipping loading config file, it was just saved by us: {}", path);
-			return;
+			return List.of();
 		}
 
 		LOGGER.debug("Loading config file: {}", path);
@@ -61,6 +62,7 @@ public final class ConfigSerializer {
 			categoriesMap.put(category.getName(), category);
 		}
 
+		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
 		String categoryName = "";
 		ConfigCategory category = null;
 		for (int i = 0; i < lines.size(); i++) {
@@ -107,13 +109,14 @@ public final class ConfigSerializer {
 						logUnknownConfigValue(path, lineNumber, line, category, categoryName, key);
 					} else {
 						List<String> errors = new ArrayList<>();
-						migrations.forEach(migration -> errors.addAll(migration.migrate(value)));
+						migrations.forEach(migration -> errors.addAll(migration.migrate(value, changes)));
 						if (!errors.isEmpty()) {
 							logDeserializeErrors(path, lineNumber, line, value, errors);
 						}
 					}
 				} else {
-					List<String> errors = configValue.get().setFromSerializedValue(value);
+					List<String> errors = configValue.get()
+						.setFromSerializedValue(value, changes);
 					if (!errors.isEmpty()) {
 						ConfigValueReference legacyValueReference = new ConfigValueReference(categoryName, key);
 						List<ConfigValueMigration<?>> migrations = getMovedValueMigrations(categories, legacyValueReference);
@@ -121,7 +124,7 @@ public final class ConfigSerializer {
 							logDeserializeErrors(path, lineNumber, line, value, errors);
 						} else {
 							List<String> migrationErrors = new ArrayList<>();
-							migrations.forEach(migration -> migrationErrors.addAll(migration.migrate(value)));
+							migrations.forEach(migration -> migrationErrors.addAll(migration.migrate(value, changes)));
 							if (!migrationErrors.isEmpty()) {
 								logDeserializeErrors(path, lineNumber, line, value, migrationErrors);
 							}
@@ -139,6 +142,7 @@ public final class ConfigSerializer {
 				));
 			}
 		}
+		return ConfigValue.notifyChangedValues(changes);
 	}
 
 	private static Optional<ConfigValue<?>> getConfigValue(@Nullable ConfigCategory category, String key) {

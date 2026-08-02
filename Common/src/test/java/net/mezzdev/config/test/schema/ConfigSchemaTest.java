@@ -1,14 +1,24 @@
 package net.mezzdev.config.test.schema;
 
+import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
+import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigSchemaTest {
 	@Test
@@ -154,6 +164,112 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void applyUpdatesNotifiesListenersAfterAllValuesUpdate() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		List<String> valueChanges = new ArrayList<>();
+		List<String> valueBatches = new ArrayList<>();
+		List<String> schemaBatches = new ArrayList<>();
+		enabled.addListener((oldValue, newValue) -> valueChanges.add("%s -> %s, count = %s".formatted(oldValue, newValue, count.getValue())));
+		enabled.addBatchListener(changes -> valueBatches.add("value batch: %s, count = %s".formatted(changes.size(), count.getValue())));
+		schema.addListener(changes -> schemaBatches.add("schema batch: %s, enabled = %s, count = %s".formatted(
+			changes.size(),
+			enabled.getValue(),
+			count.getValue()
+		)));
+
+		List<? extends IAppliedConfigValueChange<?>> changes = schema.applyUpdates(List.of(
+			enabled.createUpdate(false),
+			count.createUpdate(3)
+		));
+
+		assertEquals(2, changes.size());
+		assertFalse(enabled.getValue());
+		assertEquals(3, count.getValue());
+		assertEquals(List.of("true -> false, count = 3"), valueChanges);
+		assertEquals(List.of("value batch: 2, count = 3"), valueBatches);
+		assertEquals(List.of("schema batch: 2, enabled = false, count = 3"), schemaBatches);
+	}
+
+	@Test
+	public void applyUpdatesValidatesAllUpdatesBeforeChangingValues() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+
+		assertThrows(IllegalArgumentException.class, () -> schema.applyUpdates(List.of(
+			enabled.createUpdate(false),
+			count.createUpdate(11)
+		)));
+
+		assertTrue(enabled.getValue());
+		assertEquals(1, count.getValue());
+	}
+
+	@Test
+	public void applyUpdatesRejectsDuplicateValueUpdates() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+
+		assertThrows(IllegalArgumentException.class, () -> schema.applyUpdates(List.of(
+			enabled.createUpdate(false),
+			enabled.createUpdate(true)
+		)));
+
+		assertTrue(enabled.getValue());
+	}
+
+	@Test
+	public void setNotifiesSchemaBatchListeners() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		List<String> schemaBatches = new ArrayList<>();
+		schema.addListener(changes -> {
+			IAppliedConfigValueChange<?> change = changes.get(0);
+			schemaBatches.add("%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()));
+		});
+
+		assertTrue(enabled.set(false));
+
+		assertEquals(List.of("enabled: true -> false"), schemaBatches);
+	}
+
+	@Test
+	public void loadIfNeededNotifiesSchemaBatchListenersAfterAllValuesUpdate(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[category]",
+			"enabled = false",
+			"count = 3"
+		));
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
+			.build();
+		ConfigSchema schema = createSchema(path, builder);
+		List<String> schemaBatches = new ArrayList<>();
+		schema.addListener(changes -> schemaBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
+
+		schema.loadIfNeeded();
+
+		assertFalse(enabled.getValue());
+		assertEquals(3, count.getValue());
+		assertEquals(List.of("enabled: true -> false, count: 1 -> 3; enabled = false; count = 3"), schemaBatches);
+	}
+
+	@Test
 	public void buildCategoryRequiresValuesToBeBuilt() {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		builder.addBoolean("enabled", true);
@@ -198,5 +314,32 @@ public class ConfigSchemaTest {
 	private enum TestMode {
 		STANDARD,
 		ADVANCED
+	}
+
+	private static ConfigSchema createSchema(ConfigCategoryBuilder builder) {
+		return createSchema(Path.of("test.ini"), builder);
+	}
+
+	private static ConfigSchema createSchema(Path path, ConfigCategoryBuilder builder) {
+		return new ConfigSchema(
+			path,
+			List.of(builder),
+			(command, delay) -> CompletableFuture.completedFuture(null)
+		);
+	}
+
+	private static String formatBatch(
+		List<? extends IAppliedConfigValueChange<?>> changes,
+		boolean enabled,
+		int count
+	) {
+		String formattedChanges = String.join(", ", changes.stream()
+			.map(change -> "%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()))
+			.toList());
+		return "%s; enabled = %s; count = %s".formatted(
+			formattedChanges,
+			enabled,
+			count
+		);
 	}
 }

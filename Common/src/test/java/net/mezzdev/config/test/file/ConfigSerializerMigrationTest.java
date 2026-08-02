@@ -1,5 +1,6 @@
 package net.mezzdev.config.test.file;
 
+import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
@@ -13,9 +14,11 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -149,10 +152,34 @@ public class ConfigSerializerMigrationTest {
 			List.of(first, second),
 			Map.of(legacyValue, List.of(firstMigration, secondMigration))
 		);
+		List<String> regularChanges = new ArrayList<>();
+		List<String> firstBatches = new ArrayList<>();
+		List<String> secondBatches = new ArrayList<>();
+		first.addListener((oldValue, newValue) -> regularChanges.add("%s -> %s, second = %s".formatted(oldValue, newValue, second.getValue())));
+		first.addBatchListener(changes -> firstBatches.add(formatBatch(changes, first.getValue(), second.getValue())));
+		second.addBatchListener(changes -> secondBatches.add(formatBatch(changes, first.getValue(), second.getValue())));
 
 		ConfigSerializer.load(path, List.of(category));
 
 		assertTrue(first.getValue());
 		assertFalse(second.getValue());
+		assertEquals(List.of("false -> true, second = false"), regularChanges);
+		assertEquals(List.of("first: false -> true, second: true -> false; first = true; second = false"), firstBatches);
+		assertEquals(List.of("first: false -> true, second: true -> false; first = true; second = false"), secondBatches);
+	}
+
+	private static String formatBatch(
+		List<? extends IAppliedConfigValueChange<?>> changes,
+		boolean first,
+		boolean second
+	) {
+		String formattedChanges = String.join(", ", changes.stream()
+			.map(change -> "%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()))
+			.toList());
+		return "%s; first = %s; second = %s".formatted(
+			formattedChanges,
+			first,
+			second
+		);
 	}
 }

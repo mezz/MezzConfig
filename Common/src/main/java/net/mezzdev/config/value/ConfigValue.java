@@ -2,11 +2,13 @@ package net.mezzdev.config.value;
 
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IConfigValueChangeListener;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IPendingConfigValueUpdate;
+import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.util.ConfigNameUtil;
 import net.mezzdev.config.util.ErrorUtil;
-import net.mezzdev.config.schema.ConfigSchema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -24,6 +26,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	private final T defaultValue;
 	private final IConfigValueSerializer<T> serializer;
 	private @Nullable List<IConfigValueChangeListener<T>> listeners;
+	private @Nullable List<IConfigValueBatchChangeListener> batchListeners;
 	private volatile T currentValue;
 	@Nullable
 	private ConfigSchema schema;
@@ -83,14 +86,14 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		return serializer;
 	}
 
-	public List<String> setFromSerializedValue(String value) {
+	public List<String> setFromSerializedValue(String value, List<AppliedConfigValueChange<?>> changes) {
+		ErrorUtil.checkNotNull(changes, "changes");
 		IDeserializeResult<T> deserializeResult = serializer.deserialize(value);
 		deserializeResult.getResult()
 			.ifPresent(t -> {
-				if (!currentValue.equals(t)) {
-					T oldValue = currentValue;
-					currentValue = t;
-					notifyListeners(oldValue, currentValue);
+				AppliedConfigValueChange<T> change = setWithoutNotifying(t);
+				if (change != null) {
+					changes.add(change);
 				}
 			});
 		return deserializeResult.getErrors();
@@ -98,33 +101,88 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 
 	@Override
 	public boolean set(T value) {
-		T oldValue = currentValue;
-		if (setWithoutNotifying(value)) {
-			notifyListeners(oldValue, currentValue);
-			markDirty();
-			return true;
+		if (!canSet(value)) {
+			return false;
 		}
-		return false;
+		if (schema != null) {
+			return !schema.applyUpdates(List.of(createUpdate(value)))
+				.isEmpty();
+		}
+		AppliedConfigValueChange<T> change = setWithoutNotifying(value);
+		if (change == null) {
+			return false;
+		}
+		notifyListeners(change);
+		markDirty();
+		return true;
 	}
 
-	boolean setWithoutNotifying(T value) {
+	@Override
+	public IPendingConfigValueUpdate<T> createUpdate(T value) {
+		return new PendingConfigValueUpdate<>(this, value);
+	}
+
+	private boolean canSet(T value) {
 		value = ErrorUtil.checkNotNull(value, "value");
 		if (!serializer.isValid(value)) {
 			LOGGER.error("Tried to set invalid value : {}\n{}", value, serializer.getValidValuesDescription());
 			return false;
 		}
-		if (!currentValue.equals(value)) {
-			currentValue = value;
-			return true;
-		}
-		return false;
+		return true;
 	}
 
-	void notifyListeners(T oldValue, T newValue) {
-		// TODO: support batched config updates so listeners can observe the final state across multiple changed values.
-		if (listeners != null) {
-			listeners.forEach(listener -> listener.onChange(oldValue, newValue));
+	void validateUpdateValue(T value) {
+		value = ErrorUtil.checkNotNull(value, "value");
+		if (!serializer.isValid(value)) {
+			throw new IllegalArgumentException("Invalid value for '%s': %s\n%s".formatted(name, value, serializer.getValidValuesDescription()));
 		}
+	}
+
+	@Nullable
+	AppliedConfigValueChange<T> setWithoutNotifying(T value) {
+		validateUpdateValue(value);
+		if (!currentValue.equals(value)) {
+			T oldValue = currentValue;
+			currentValue = value;
+			return new AppliedConfigValueChange<>(this, oldValue, currentValue);
+		}
+		return null;
+	}
+
+	void notifyListeners(AppliedConfigValueChange<T> change) {
+		notifyChangedValues(List.of(change));
+	}
+
+	public static List<AppliedConfigValueChange<?>> notifyChangedValues(List<? extends AppliedConfigValueChange<?>> changes) {
+		if (changes.isEmpty()) {
+			return List.of();
+		}
+		List<AppliedConfigValueChange<?>> immutableChanges = List.copyOf(changes);
+		for (AppliedConfigValueChange<?> change : immutableChanges) {
+			change.configValue()
+				.notifyListeners(immutableChanges);
+		}
+		return immutableChanges;
+	}
+
+	public void notifyListeners(List<? extends AppliedConfigValueChange<?>> changes) {
+		AppliedConfigValueChange<T> change = getChange(changes);
+		if (listeners != null) {
+			listeners.forEach(listener -> listener.onChange(change.oldValue(), change.newValue()));
+		}
+		if (batchListeners != null) {
+			batchListeners.forEach(listener -> listener.onChange(changes));
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private AppliedConfigValueChange<T> getChange(List<? extends AppliedConfigValueChange<?>> changes) {
+		for (AppliedConfigValueChange<?> change : changes) {
+			if (change.configValue() == this) {
+				return (AppliedConfigValueChange<T>) change;
+			}
+		}
+		throw new IllegalArgumentException("Changes do not contain this config value: " + name);
 	}
 
 	void markDirty() {
@@ -146,9 +204,20 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		this.listeners.add(listener);
 	}
 
+	@Override
+	public void addBatchListener(IConfigValueBatchChangeListener listener) {
+		if (this.batchListeners == null) {
+			this.batchListeners = new ArrayList<>();
+		}
+		this.batchListeners.add(listener);
+	}
+
 	public void clearListeners() {
 		if (this.listeners != null) {
 			this.listeners = null;
+		}
+		if (this.batchListeners != null) {
+			this.batchListeners = null;
 		}
 	}
 }
