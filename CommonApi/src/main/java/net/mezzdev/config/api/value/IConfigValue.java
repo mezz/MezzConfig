@@ -4,7 +4,6 @@ import net.mezzdev.config.api.schema.IConfigCategory;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import org.jetbrains.annotations.ApiStatus;
 
-import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -55,22 +54,12 @@ public interface IConfigValue<T> {
 	 * Set the config value to the given value.
 	 * This will automatically mark the config file as dirty so that it will save the new values.
 	 * <p>
-	 * Use {@link #createUpdate(Object)} with {@link net.mezzdev.config.api.schema.IConfigSchema#applyUpdates(List)}
-	 * to update several config values together.
+	 * Use {@link net.mezzdev.config.api.schema.IConfigSchema#batchUpdate(java.util.function.Consumer)} to update
+	 * several config values together.
 	 *
 	 * @since 0.1.0
 	 */
 	boolean set(T value);
-
-	/**
-	 * Create a pending update for this config value.
-	 * <p>
-	 * Pass one or more updates to {@link net.mezzdev.config.api.schema.IConfigSchema#applyUpdates(List)} to apply
-	 * them together and notify listeners after every value has updated.
-	 *
-	 * @since 0.1.0
-	 */
-	IPendingConfigValueUpdate<T> createUpdate(T value);
 
 	/**
 	 * Add a listener that is called with the new value when this config value changes.

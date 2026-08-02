@@ -1,5 +1,6 @@
 package net.mezzdev.config.test.schema;
 
+import net.mezzdev.config.api.schema.IConfigBatchUpdater;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
@@ -16,6 +17,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -180,7 +182,7 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
-	public void applyUpdatesNotifiesListenersAfterAllValuesUpdate() {
+	public void batchUpdaterNotifiesListenersAfterAllValuesUpdate() {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
@@ -198,10 +200,15 @@ public class ConfigSchemaTest {
 			count.getValue()
 		)));
 
-		List<? extends IAppliedConfigValueChange<?>> changes = schema.applyUpdates(List.of(
-			enabled.createUpdate(false),
-			count.createUpdate(3)
-		));
+		List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(updater -> {
+			updater.set(enabled, false);
+			updater.set(count, 3);
+			assertTrue(enabled.getValue());
+			assertEquals(1, count.getValue());
+			assertEquals(List.of(), valueChanges);
+			assertEquals(List.of(), valueBatches);
+			assertEquals(List.of(), schemaBatches);
+		});
 
 		assertEquals(2, changes.size());
 		assertFalse(enabled.getValue());
@@ -212,7 +219,7 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
-	public void applyUpdatesValidatesAllUpdatesBeforeChangingValues() {
+	public void batchUpdaterValidatesAllUpdatesBeforeChangingValues() {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
@@ -220,27 +227,45 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createSchema(builder);
 
-		assertThrows(IllegalArgumentException.class, () -> schema.applyUpdates(List.of(
-			enabled.createUpdate(false),
-			count.createUpdate(11)
-		)));
+		assertThrows(IllegalArgumentException.class, () -> schema.batchUpdate(updater -> {
+			updater.set(enabled, false);
+			updater.set(count, 11);
+		}));
 
 		assertTrue(enabled.getValue());
 		assertEquals(1, count.getValue());
 	}
 
 	@Test
-	public void applyUpdatesRejectsDuplicateValueUpdates() {
+	public void batchUpdaterUsesLastValueForRepeatedUpdates() {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
 		ConfigSchema schema = createSchema(builder);
 
-		assertThrows(IllegalArgumentException.class, () -> schema.applyUpdates(List.of(
-			enabled.createUpdate(false),
-			enabled.createUpdate(true)
-		)));
+		List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(updater -> {
+			updater.set(enabled, true);
+			updater.set(enabled, false);
+		});
 
+		assertEquals(1, changes.size());
+		assertFalse(enabled.getValue());
+		assertEquals(true, changes.getFirst().oldValue());
+		assertEquals(false, changes.getFirst().newValue());
+	}
+
+	@Test
+	public void batchUpdaterRejectsUpdatesAfterCallbackReturns() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		AtomicReference<IConfigBatchUpdater> retainedUpdater = new AtomicReference<>();
+
+		List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(updater -> retainedUpdater.set(updater));
+
+		assertEquals(List.of(), changes);
+		assertThrows(IllegalStateException.class, () -> retainedUpdater.get().set(enabled, false));
 		assertTrue(enabled.getValue());
 	}
 

@@ -1,15 +1,15 @@
 package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.schema.IConfigSchema;
+import net.mezzdev.config.api.schema.IConfigBatchUpdater;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
-import net.mezzdev.config.api.value.IPendingConfigValueUpdate;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.file.IConfigFileRegistrar;
 import net.mezzdev.config.util.ErrorUtil;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.AppliedConfigValueChange;
-import net.mezzdev.config.value.PendingConfigValueUpdate;
+import net.mezzdev.config.value.ConfigValueUpdate;
 import net.mezzdev.deduplicatingrunner.DeduplicatingRunner;
 import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
 import net.mezzdev.filewatcher.FileWatcher;
@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 public class ConfigSchema implements IConfigSchema {
 	private static final Logger LOGGER = LogManager.getLogger();
@@ -108,18 +109,28 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public List<? extends IAppliedConfigValueChange<?>> applyUpdates(List<? extends IPendingConfigValueUpdate<?>> updates) {
+	public List<? extends IAppliedConfigValueChange<?>> batchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
+		ErrorUtil.checkNotNull(updateBatch, "updateBatch");
+		ConfigBatchUpdater updater = new ConfigBatchUpdater();
+		try {
+			updateBatch.accept(updater);
+		} finally {
+			updater.close();
+		}
+		return applyBatchUpdates(updater.getUpdates());
+	}
+
+	List<AppliedConfigValueChange<?>> applyBatchUpdates(List<? extends ConfigValueUpdate<?>> updates) {
 		ErrorUtil.checkNotNull(updates, "updates");
 		if (updates.isEmpty()) {
 			return List.of();
 		}
 
 		loadIfNeeded();
-		List<PendingConfigValueUpdate<?>> configValueUpdates = getConfigValueUpdates(updates);
-		validateUpdates(configValueUpdates);
+		validateUpdates(updates);
 
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
-		for (PendingConfigValueUpdate<?> update : configValueUpdates) {
+		for (ConfigValueUpdate<?> update : updates) {
 			AppliedConfigValueChange<?> change = update.apply();
 			if (change != null) {
 				changes.add(change);
@@ -135,21 +146,9 @@ public class ConfigSchema implements IConfigSchema {
 		return immutableChanges;
 	}
 
-	private List<PendingConfigValueUpdate<?>> getConfigValueUpdates(List<? extends IPendingConfigValueUpdate<?>> updates) {
-		List<PendingConfigValueUpdate<?>> configValueUpdates = new ArrayList<>();
-		for (IPendingConfigValueUpdate<?> update : updates) {
-			if (update instanceof PendingConfigValueUpdate<?> configValueUpdate) {
-				configValueUpdates.add(configValueUpdate);
-			} else {
-				throw new IllegalArgumentException("Config value update was not created by MezzConfig. Use IConfigValue.createUpdate(...).");
-			}
-		}
-		return configValueUpdates;
-	}
-
-	private void validateUpdates(List<PendingConfigValueUpdate<?>> updates) {
+	private void validateUpdates(List<? extends ConfigValueUpdate<?>> updates) {
 		Set<ConfigValue<?>> updatedValues = new HashSet<>();
-		for (PendingConfigValueUpdate<?> update : updates) {
+		for (ConfigValueUpdate<?> update : updates) {
 			ConfigValue<?> configValue = update.configValue();
 			if (!containsConfigValue(configValue)) {
 				throw new IllegalArgumentException("Config value does not belong to this schema: " + configValue.getName());

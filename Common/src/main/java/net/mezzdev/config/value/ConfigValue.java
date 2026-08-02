@@ -5,7 +5,6 @@ import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IConfigValueChangeListener;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.api.value.IPendingConfigValueUpdate;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.util.ConfigNameUtil;
 import net.mezzdev.config.util.ErrorUtil;
@@ -105,7 +104,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 			return false;
 		}
 		if (schema != null) {
-			return !schema.applyUpdates(List.of(createUpdate(value)))
+			return !schema.batchUpdate(updater -> updater.set(this, value))
 				.isEmpty();
 		}
 		AppliedConfigValueChange<T> change = setWithoutNotifying(value);
@@ -115,11 +114,6 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		notifyListeners(change);
 		markDirty();
 		return true;
-	}
-
-	@Override
-	public IPendingConfigValueUpdate<T> createUpdate(T value) {
-		return new PendingConfigValueUpdate<>(this, value);
 	}
 
 	private boolean canSet(T value) {

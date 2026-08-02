@@ -1,15 +1,15 @@
 package net.mezzdev.config.api.schema;
 
 import net.mezzdev.config.api.files.IConfigManager;
-import net.mezzdev.config.api.value.IConfigValue;
-import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
-import net.mezzdev.config.api.value.IPendingConfigValueUpdate;
+import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
+import net.mezzdev.config.api.value.IConfigValue;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Represents one registered config schema and its backing file.
@@ -48,17 +48,17 @@ public interface IConfigSchema {
 	/**
 	 * Apply several config value updates together.
 	 * <p>
-	 * Updates are validated before any values are changed. If validation succeeds, every changed value is updated
-	 * before listeners are notified.
-	 * All updates must belong to this schema and each config value may only be updated once in a batch.
+	 * Queue updates inside the callback. Queued values are validated before any values are changed. If validation
+	 * succeeds, every changed value is updated before listeners are notified. If the callback throws, no queued updates
+	 * are applied.
 	 *
-	 * @param updates pending updates to apply
+	 * @param updateBatch callback that queues updates
 	 * @return changes that were applied
 	 *
 	 * @since 0.1.0
 	 */
 	@Unmodifiable
-	List<? extends IAppliedConfigValueChange<?>> applyUpdates(List<? extends IPendingConfigValueUpdate<?>> updates);
+	List<? extends IAppliedConfigValueChange<?>> batchUpdate(Consumer<IConfigBatchUpdater> updateBatch);
 
 	/**
 	 * Add a listener that is called with every batch of changes applied to this schema.

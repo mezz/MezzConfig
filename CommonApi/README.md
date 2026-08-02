@@ -52,6 +52,18 @@ general.addEnum("mode", Mode.STANDARD)
 Use category and value legacy names when storage names change. If serialized
 text also changed, add a legacy value migration function.
 
+Use a batch updater when several config values should change together:
+
+```java
+List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(updater -> {
+	updater.set(enabled, false);
+	updater.set(mode, Mode.ADVANCED);
+});
+```
+
+The batch is validated before any values are changed, and listeners are notified
+after all changed values have updated.
+
 The core API exposes serialization, validation, storage names, and localization
 keys. GUI/editor metadata and immediate versus staged editing behavior are
 expected to live in a GUI integration layer.
