@@ -1,60 +1,52 @@
 package net.mezzdev.config.api.value;
 
-import net.minecraft.network.chat.Component;
+import net.mezzdev.config.api.schema.IConfigCategory;
+import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.function.Consumer;
 
 /**
  * Represents a config value.
- * Config values can be read or updated by mods that display in-game config files to players.
+ * Config values can be read or updated by mods.
  *
  * These config values are automatically synced with the config file.
  * {@link #getValue()} will automatically update based on changes to the file,
  * and using {@link #set} will automatically update the file.
+ * <p>
+ * Add a value to your category with the add methods on {@link IConfigCategoryBuilder}.
+ * Get registered values here: {@link IConfigCategory#getConfigValues()}.
  *
- * @since 19.39.0
+ * @since 0.1.0
  */
+@ApiStatus.NonExtendable
 public interface IConfigValue<T> {
 	/**
 	 * Get the name of this config value.
 	 *
-	 * @since 19.39.0
+	 * @since 0.1.0
 	 */
 	String getName();
 
 	/**
 	 * Get the translation key used for this config value's name.
 	 *
-	 * @since 19.39.0
+	 * @since 0.1.0
 	 */
 	String getLocalizationKey();
-
-	/**
-	 * Get the translated name component of this config value.
-	 *
-	 * @since 19.39.0
-	 */
-	Component getLocalizedName();
-
-	/**
-	 * Get the translated description component of this config value.
-	 *
-	 * @since 19.39.0
-	 */
-	Component getLocalizedDescription();
 
 	/**
 	 * Get the current value.
 	 * This will automatically update and load from the config file if there are changes.
 	 *
-	 * @since 19.39.0
+	 * @since 0.1.0
 	 */
 	T getValue();
 
 	/**
 	 * Get the default value.
 	 *
-	 * @since 19.39.0
+	 * @since 0.1.0
 	 */
 	T getDefaultValue();
 
@@ -62,28 +54,32 @@ public interface IConfigValue<T> {
 	 * Set the config value to the given value.
 	 * This will automatically mark the config file as dirty so that it will save the new values.
 	 *
-	 * @since 19.39.0
+	 * @since 0.1.0
 	 */
 	boolean set(T value);
 
 	/**
-	 * Add a listener that is called when this config value changes.
+	 * Add a listener that is called with the new value when this config value changes.
 	 *
-	 * @since 19.39.0
+	 * @since 0.1.0
 	 */
 	void addListener(Consumer<T> listener);
 
 	/**
-	 * Get the kind of update needed for this config value to take effect.
+	 * Add a listener that is called with the old and new values when this config value changes.
 	 *
-	 * @since 19.39.0
+	 * @param listener callback accepting the old value and new value
+	 *
+	 * @since 0.1.0
 	 */
-	ConfigValueUpdateType getUpdateType();
+	default void addListener(IConfigValueChangeListener<T> listener) {
+		addListener(newValue -> listener.onChange(newValue, newValue));
+	}
 
 	/**
 	 * Get the helper for serializing values to and from Strings, and validating values.
 	 *
-	 * @since 19.39.0
+	 * @since 0.1.0
 	 */
-	IConfigValueEditorSerializer<T> getSerializer();
+	IConfigValueSerializer<T> getSerializer();
 }

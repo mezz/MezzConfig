@@ -1,0 +1,12 @@
+{
+  "mezz_config_test.fabric.general": "Fabric Test",
+  "mezz_config_test.fabric.general.description": "Fabric-only test config values.",
+  "mezz_config_test.fabric.general.enabled": "Enabled",
+  "mezz_config_test.fabric.general.enabled.description": "Boolean value registered by the Fabric test config plugin.",
+  "mezz_config_test.fabric.general.maxEntries": "Max Entries",
+  "mezz_config_test.fabric.general.maxEntries.description": "Integer value registered by the Fabric test config plugin.",
+  "mezz_config_test.fabric.general.mode": "Mode",
+  "mezz_config_test.fabric.general.mode.description": "Enum value registered by the Fabric test config plugin.",
+  "mezz_config_test.fabric.general.modes": "Modes",
+  "mezz_config_test.fabric.general.modes.description": "Enum list value registered by the Fabric test config plugin."
+}

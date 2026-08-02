@@ -6,11 +6,11 @@ license="The MIT License (MIT)"
 [[mods]]
 modId="${configModId}"
 version="${version}"
-displayName="Mezz Config"
+displayName="MezzConfig"
 displayURL="${githubUrl}"
 authors="${modAuthor}"
 description='''
-Shared config support for Minecraft mods.
+Lightweight client-side config support for Minecraft mods.
 '''
 
 [[dependencies.${configModId}]]
@@ -25,11 +25,4 @@ Shared config support for Minecraft mods.
     mandatory=true
     versionRange="${minecraftVersionRange}"
     ordering="NONE"
-    side="BOTH"
-
-[[dependencies.${configModId}]]
-    modId="${configApiModId}"
-    mandatory=true
-    versionRange="[0,)"
-    ordering="AFTER"
     side="BOTH"

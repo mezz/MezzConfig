@@ -13,8 +13,13 @@ final class ConfigFileUtil {
 	}
 
 	public static void writeUsingTempFile(Path path, Iterable<? extends CharSequence> lines) throws IOException {
-		Files.createDirectories(path.getParent());
-		Path tempFile = Files.createTempFile(path.getParent(), null, null);
+		Path parent = path.getParent();
+		Path tempFileDirectory = Path.of(".");
+		if (parent != null) {
+			Files.createDirectories(parent);
+			tempFileDirectory = parent;
+		}
+		Path tempFile = Files.createTempFile(tempFileDirectory, null, null);
 		try {
 			Files.write(tempFile, lines);
 			moveAtomicReplace(tempFile, path);

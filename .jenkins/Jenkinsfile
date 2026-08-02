@@ -1,0 +1,91 @@
+def getMavenDeployDir() {
+    if (env.MAVEN_DEPLOY_DIR?.trim()) {
+        return env.MAVEN_DEPLOY_DIR.trim()
+    }
+    if (env.local_maven_url?.trim()) {
+        return env.local_maven_url.trim()
+    }
+    if (env.local_maven?.trim()) {
+        return env.local_maven.trim()
+    }
+    return ''
+}
+
+def getReleaseVersion() {
+    if (!env.TAG_NAME?.trim()) {
+        error 'TAG_NAME is not set; refusing to publish without a tag version.'
+    }
+    def tagName = env.TAG_NAME.trim()
+    if (tagName.startsWith('refs/tags/')) {
+        tagName = tagName.substring('refs/tags/'.length())
+    }
+    if (tagName.startsWith('v')) {
+        tagName = tagName.substring(1)
+    }
+    if (!tagName) {
+        error "Could not determine release version from TAG_NAME='${env.TAG_NAME}'."
+    }
+    return tagName
+}
+
+def shellQuote(String value) {
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+}
+
+def getReleaseGradleArgs() {
+    if (env.TAG_NAME?.trim()) {
+        return "-PRELEASE_VERSION=${shellQuote(getReleaseVersion())}"
+    }
+    return ''
+}
+
+pipeline {
+    agent any
+    tools {
+        jdk "jdk-21"
+    }
+
+    environment {
+        ORG_GRADLE_PROJECT_BUILD_NUMBER = "${env.BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh "chmod +x gradlew"
+            }
+        }
+
+        stage('Validate') {
+            steps {
+                script {
+                    sh "./gradlew clean spotlessCheck build javadoc ${getReleaseGradleArgs()} --no-daemon"
+                }
+            }
+        }
+
+        stage('Archive') {
+            steps {
+                junit allowEmptyResults: true, testResults: '*/build/test-results/**/*.xml'
+                archiveArtifacts allowEmptyArchive: true, artifacts: '*/build/libs/*.jar'
+            }
+        }
+
+        stage('Publish Maven') {
+            when {
+                buildingTag()
+            }
+            steps {
+                script {
+                    def releaseVersion = getReleaseVersion()
+                    def deployDir = getMavenDeployDir()
+                    if (!deployDir) {
+                        error 'Jared Maven environment is not set; expected MAVEN_DEPLOY_DIR, local_maven_url, or local_maven.'
+                    }
+                    sh "./gradlew validateReleaseVersion publish -PDEPLOY_DIR=${shellQuote(deployDir)} -PRELEASE_VERSION=${shellQuote(releaseVersion)} --no-daemon"
+                }
+            }
+        }
+    }
+}

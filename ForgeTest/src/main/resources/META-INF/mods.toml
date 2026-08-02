@@ -1,0 +1,35 @@
+modLoader="javafml"
+loaderVersion="${forgeLoaderVersionRange}"
+issueTrackerURL="${githubUrl}/issues?q=is%3Aissue"
+license="The MIT License (MIT)"
+
+[[mods]]
+modId="${forgeTestModId}"
+version="${version}"
+displayName="MezzConfig Forge Test"
+displayURL="${githubUrl}"
+authors="${modAuthor}"
+description='''
+In-game test config registrations for MezzConfig on Forge.
+'''
+
+[[dependencies.${forgeTestModId}]]
+    modId="forge"
+    mandatory=true
+    versionRange="${forgeVersionRange}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${forgeTestModId}]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="${minecraftVersionRange}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${forgeTestModId}]]
+    modId="${configModId}"
+    mandatory=true
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"

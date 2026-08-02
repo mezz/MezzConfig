@@ -2,11 +2,5 @@
   "mezz_config.config.name": "Name: %s",
   "mezz_config.config.description": "Description: %s",
   "mezz_config.config.valueValues": "Valid Values: %s",
-  "mezz_config.config.defaultValue": "Default Value: %s",
-  "mezz_config.config.value.boolean.true": "Enabled",
-  "mezz_config.config.value.boolean.true.description": "This setting is enabled.",
-  "mezz_config.config.value.boolean.false": "Disabled",
-  "mezz_config.config.value.boolean.false.description": "This setting is disabled.",
-  "mezz_config.config.value.boolean.clickTo": "Click to: %s",
-  "mezz_config.config.value.list.empty": "Empty"
+  "mezz_config.config.defaultValue": "Default Value: %s"
 }

@@ -1,9 +1,9 @@
 package net.mezzdev.config.test.file;
 
 import net.mezzdev.config.file.ConfigSerializer;
-import net.mezzdev.config.serializers.BooleanSerializer;
-import net.mezzdev.config.api.value.ConfigValueUpdateType;
 import net.mezzdev.config.schema.ConfigCategory;
+import net.mezzdev.config.schema.ConfigCategoryBuilder;
+import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
@@ -21,6 +21,80 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigSerializerMigrationTest {
 	@Test
+	public void loadMigratesLegacyCategoryName(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[legacy]",
+			"enabled = false"
+		));
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general")
+			.addLegacyName("legacy");
+		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", true)
+			.build();
+		ConfigCategory category = categoryBuilder.build(null);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertFalse(enabled.getValue());
+	}
+
+	@Test
+	public void loadMigratesLegacyValueName(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[general]",
+			"oldEnabled = false"
+		));
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", true)
+			.addLegacyName("oldEnabled")
+			.build();
+		ConfigCategory category = categoryBuilder.build(null);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertFalse(enabled.getValue());
+	}
+
+	@Test
+	public void loadMigratesCurrentValueNameWithLegacyValueMigration(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[general]",
+			"enabled = yes"
+		));
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", false)
+			.addLegacyValueMigration(legacyValue -> "yes".equalsIgnoreCase(legacyValue))
+			.build();
+		ConfigCategory category = categoryBuilder.build(null);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertTrue(enabled.getValue());
+	}
+
+	@Test
+	public void loadMigratesLegacyCategoryAndValueNamesWithLegacyValueMigration(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[legacy]",
+			"disabled = true"
+		));
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general")
+			.addLegacyName("legacy");
+		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", true)
+			.addLegacyName("disabled")
+			.addLegacyValueMigration(legacyValue -> !Boolean.parseBoolean(legacyValue))
+			.build();
+		ConfigCategory category = categoryBuilder.build(null);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertFalse(enabled.getValue());
+	}
+
+	@Test
 	public void loadMigratesLegacyValueFromUnknownCategory(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
@@ -31,22 +105,18 @@ public class ConfigSerializerMigrationTest {
 			"mezz_config.config.test.current",
 			"value",
 			true,
-			BooleanSerializer.INSTANCE,
-			ConfigValueUpdateType.IMMEDIATE
+			BooleanSerializer.INSTANCE
 		);
+		ConfigValueReference legacyValue = new ConfigValueReference("legacy", "value");
+		ConfigValueMigration<Boolean> migration = ConfigValueMigration.migrate(value, Boolean::parseBoolean);
 		ConfigCategory category = new ConfigCategory(
 			"mezz_config.config.test.current",
 			"current",
-			List.of(value)
-		);
-		ConfigValueReference legacyValue = new ConfigValueReference("legacy", "value");
-		ConfigValueMigration<Boolean, Boolean> migration = new ConfigValueMigration<>(
-			value,
-			BooleanSerializer.INSTANCE,
-			oldValue -> oldValue
+			List.of(value),
+			Map.of(legacyValue, List.of(migration))
 		);
 
-		ConfigSerializer.load(path, List.of(category), Map.of(legacyValue, List.of(migration)));
+		ConfigSerializer.load(path, List.of(category));
 
 		assertFalse(value.getValue());
 	}
@@ -62,38 +132,25 @@ public class ConfigSerializerMigrationTest {
 			"mezz_config.config.test.current",
 			"first",
 			false,
-			BooleanSerializer.INSTANCE,
-			ConfigValueUpdateType.IMMEDIATE
+			BooleanSerializer.INSTANCE
 		);
 		ConfigValue<Boolean> second = new ConfigValue<>(
 			"mezz_config.config.test.current",
 			"second",
 			true,
-			BooleanSerializer.INSTANCE,
-			ConfigValueUpdateType.IMMEDIATE
+			BooleanSerializer.INSTANCE
 		);
+		ConfigValueReference legacyValue = new ConfigValueReference("legacy", "value");
+		ConfigValueMigration<Boolean> firstMigration = ConfigValueMigration.migrate(first, Boolean::parseBoolean);
+		ConfigValueMigration<Boolean> secondMigration = ConfigValueMigration.migrate(second, oldValue -> !Boolean.parseBoolean(oldValue));
 		ConfigCategory category = new ConfigCategory(
 			"mezz_config.config.test.current",
 			"current",
-			List.of(first, second)
-		);
-		ConfigValueReference legacyValue = new ConfigValueReference("legacy", "value");
-		ConfigValueMigration<Boolean, Boolean> firstMigration = new ConfigValueMigration<>(
-			first,
-			BooleanSerializer.INSTANCE,
-			oldValue -> oldValue
-		);
-		ConfigValueMigration<Boolean, Boolean> secondMigration = new ConfigValueMigration<>(
-			second,
-			BooleanSerializer.INSTANCE,
-			oldValue -> !oldValue
-		);
-
-		ConfigSerializer.load(
-			path,
-			List.of(category),
+			List.of(first, second),
 			Map.of(legacyValue, List.of(firstMigration, secondMigration))
 		);
+
+		ConfigSerializer.load(path, List.of(category));
 
 		assertTrue(first.getValue());
 		assertFalse(second.getValue());

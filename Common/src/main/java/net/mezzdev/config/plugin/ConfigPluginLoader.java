@@ -4,9 +4,11 @@ import net.mezzdev.config.api.files.IConfigManager;
 import net.mezzdev.config.api.plugin.IConfigPlugin;
 import net.mezzdev.config.api.plugin.IConfigRegistration;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.sorting.ISortingConfig;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.file.ConfigManagers;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
+import net.mezzdev.config.sorting.SortingConfig;
 import net.mezzdev.config.util.ErrorUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -15,9 +17,8 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashSet;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Loads discovered config plugins into one config manager.
@@ -31,22 +32,17 @@ public final class ConfigPluginLoader {
 
 	public static IConfigManager createConfigManager(String fileWatcherThreadName, Path configRootDir, List<? extends IConfigPlugin> plugins) {
 		ConfigManager configManager = new ConfigManager(fileWatcherThreadName);
-		Set<String> modIds = new HashSet<>();
 		for (IConfigPlugin plugin : plugins) {
-			addPlugin(configManager, configRootDir, modIds, plugin);
+			addPlugin(configManager, configRootDir, plugin);
 		}
 		configManager.startWatching();
 		ConfigManagers.setConfigManager(configManager);
 		return configManager;
 	}
 
-	private static void addPlugin(ConfigManager configManager, Path configRootDir, Set<String> modIds, IConfigPlugin plugin) {
+	private static void addPlugin(ConfigManager configManager, Path configRootDir, IConfigPlugin plugin) {
 		try {
 			String modId = validateModId(plugin.getModId());
-			if (!modIds.add(modId)) {
-				LOGGER.error("Duplicate config plugin for mod id: {}", modId);
-				return;
-			}
 			Path pluginConfigDir = configRootDir.resolve(modId);
 			Files.createDirectories(pluginConfigDir);
 			ConfigRegistration registration = new ConfigRegistration(modId, configManager, pluginConfigDir);
@@ -86,6 +82,16 @@ public final class ConfigPluginLoader {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path configFile = resolveConfigFile(pluginConfigDir, configFileName);
 			return new ConfigSchemaBuilder(configFile, localizationPath, configManager);
+		}
+
+		@Override
+		public ISortingConfig<String> createSortingConfig(
+			String configFileName,
+			Comparator<String> defaultSortOrder,
+			boolean allowsRemovingValues
+		) {
+			Path configFile = resolveConfigFile(pluginConfigDir, configFileName);
+			return new SortingConfig(configFile, defaultSortOrder, allowsRemovingValues);
 		}
 
 		@Override

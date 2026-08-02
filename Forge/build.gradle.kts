@@ -12,16 +12,13 @@ plugins {
 // gradle.properties
 val forgeVersion: String by extra
 val minecraftVersion: String by extra
-val configApiModId: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
+val forgeTestModId: String by extra
 val modJavaVersion: String by extra
-val mixinVersion: String by extra
-val guavaVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
 val log4jVersion: String by extra
 val jsr305Version: String by extra
-val deduplicatingRunnerVersion: String by extra
 
 group = configModGroup
 
@@ -30,28 +27,21 @@ base {
 	archivesName.set(baseArchivesName)
 }
 
+val commonProject: Project = project(":Common")
 val dependencyProjects: List<Project> = listOf(
-	project(":Config"),
+	commonProject,
 )
-val configApiProject: Project = project(":ConfigApi")
-val configApiRuntimeProject: Project = project(":ConfigApiForge")
+val configApiProject: Project = project(":CommonApi")
+val testModProject: Project = project(":ForgeTest")
 
-(listOf(configApiProject, configApiRuntimeProject) + dependencyProjects).forEach {
+(listOf(configApiProject, testModProject) + dependencyProjects).forEach {
 	project.evaluationDependsOn(it.path)
 }
-
-val embeddedLibraries: Configuration = project(":Config").configurations.detachedConfiguration(
-	project(":Config").dependencies.create("net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion")
-).apply {
-	isTransitive = false
-}
-
-extra["configLanguageDependencyProjects"] = dependencyProjects
-apply(from = rootProject.file("buildtools/ConfigLanguageResources.gradle.kts"))
-
-@Suppress("UNCHECKED_CAST")
-val configLanguageResourceProjects = extra["configLanguageResourceProjects"] as List<Project>
-val mergedConfigLanguageResources = tasks.named("mergeConfigLanguageResources")
+val testModSourceSet = testModProject.sourceSets.main.get()
+val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
+val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
+fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
+	zipTree(archiveTask.flatMap { it.archiveFile })
 
 sourceSets {
 	named("test") {
@@ -76,12 +66,6 @@ tasks.withType<JavaCompile>().configureEach {
 	}
 }
 
-tasks.named<JavaCompile>(sourceSets.main.get().compileJavaTaskName) {
-	dependencyProjects.forEach {
-		source(it.sourceSets.main.get().allSource)
-	}
-}
-
 // Hack fix: FG can't resolve deps like lwjgl-freetype-3.3.3-natives-macos-patch.jar without this
 repositories {
 	maven("https://libraries.minecraft.net")
@@ -93,14 +77,15 @@ dependencies {
 		name = "forge",
 		version = "${minecraftVersion}-${forgeVersion}"
 	)
-	compileOnly("org.spongepowered:mixin:$mixinVersion")
-	compileOnly("com.google.guava:guava:$guavaVersion")
 	compileOnly("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
 	compileOnly("org.apache.logging.log4j:log4j-api:$log4jVersion")
 	compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
-	compileOnly(files(embeddedLibraries))
+	runtimeOnly(project(commonProject.path)) {
+		attributes {
+			attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.SHADOWED))
+		}
+	}
 	compileOnly(configApiProject)
-	runtimeOnly(configApiRuntimeProject)
 	dependencyProjects.forEach {
 		compileOnly(it)
 	}
@@ -120,12 +105,12 @@ minecraft {
 			property("forge.logging.console.level", "debug")
 			workingDirectory(file("run/client/Dev"))
 			mods {
-				create(configApiModId) {
-					source(configApiRuntimeProject.sourceSets.main.get())
-					source(configApiProject.sourceSets.main.get())
-				}
 				create(configModId) {
 					source(sourceSets.main.get())
+					source(configApiProject.sourceSets.main.get())
+				}
+				create(forgeTestModId) {
+					source(testModSourceSet)
 				}
 			}
 		}
@@ -134,40 +119,38 @@ minecraft {
 			property("forge.logging.console.level", "debug")
 			workingDirectory(file("run/server"))
 			mods {
-				create(configApiModId) {
-					source(configApiRuntimeProject.sourceSets.main.get())
-					source(configApiProject.sourceSets.main.get())
-				}
 				create(configModId) {
 					source(sourceSets.main.get())
+					source(configApiProject.sourceSets.main.get())
+				}
+				create(forgeTestModId) {
+					source(testModSourceSet)
 				}
 			}
 		}
 	}
 }
 
-tasks.named<ProcessResources>(sourceSets.main.get().processResourcesTaskName) {
-	dependsOn(mergedConfigLanguageResources)
-	for (p in configLanguageResourceProjects) {
-		from(p.sourceSets.main.get().resources) {
-			exclude("assets/mezz_config/lang/*.json")
-		}
-	}
-	from(mergedConfigLanguageResources)
+val testModClassesTask = testModProject.tasks.named(testModSourceSet.classesTaskName)
+val testModRunTasks = setOf("runClientDev", "Server")
+tasks.matching { it.name in testModRunTasks }.configureEach {
+	dependsOn(testModClassesTask)
 }
 
 tasks.jar {
-	dependsOn(mergedConfigLanguageResources, embeddedLibraries)
+	dependsOn(commonModShadeJarTask)
+	from(configApiProject.sourceSets.main.get().output)
 	from(sourceSets.main.get().output)
-	from(mergedConfigLanguageResources)
-	from(embeddedLibraries.map(::zipTree))
+	from(zipTreeArchive(commonModShadeJarTask))
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 val sourcesJarTask = tasks.named<Jar>("sourcesJar") {
+	dependsOn(commonModShadeSourcesJarTask)
+	from(configApiProject.sourceSets.main.get().allJava)
 	from(sourceSets.main.get().allJava)
-	for (p in dependencyProjects) {
-		from(p.sourceSets.main.get().allJava)
+	from(zipTreeArchive(commonModShadeSourcesJarTask)) {
+		exclude("META-INF/MANIFEST.MF", "MANIFEST.MF")
 	}
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 	archiveClassifier.set("sources")
@@ -184,19 +167,13 @@ publishing {
 			artifact(tasks.jar.get())
 			artifact(sourcesJarTask.get())
 
-			val dependencyInfos = (listOf(configApiRuntimeProject) + dependencyProjects).map {
+			val dependencyInfos = (listOf(configApiProject) + dependencyProjects).map {
 				mapOf(
 					"groupId" to it.group,
 					"artifactId" to it.base.archivesName.get(),
 					"version" to it.version
 				)
-			} + listOf(
-				mapOf(
-					"groupId" to "net.mezzdev",
-					"artifactId" to "deduplicating-runner",
-					"version" to deduplicatingRunnerVersion
-				)
-			)
+			}
 
 			pom.withXml {
 				val dependenciesNode = asNode().appendNode("dependencies")

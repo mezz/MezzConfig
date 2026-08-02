@@ -1,10 +1,6 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.api.value.ConfigValueEditorType;
-import net.mezzdev.config.api.value.ConfigValueEditorTypes;
-import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 
 import java.util.Collection;
 import java.util.List;
@@ -13,13 +9,11 @@ import java.util.Optional;
 /**
  * Serializer for boolean config values.
  */
-public final class BooleanSerializer implements IConfigValueEditorSerializer<Boolean> {
+public final class BooleanSerializer implements IConfigValueSerializer<Boolean> {
 	/**
 	 * Shared boolean serializer instance.
 	 */
 	public static final BooleanSerializer INSTANCE = new BooleanSerializer();
-	private static final ResourceLocation ENABLED_ICON = ResourceLocation.withDefaultNamespace("container/beacon/confirm");
-	private static final ResourceLocation DISABLED_ICON = ResourceLocation.withDefaultNamespace("container/beacon/cancel");
 
 	private BooleanSerializer() {}
 
@@ -47,7 +41,7 @@ public final class BooleanSerializer implements IConfigValueEditorSerializer<Boo
 
 	@Override
 	public boolean isValid(Boolean value) {
-		return true;
+		return value != null;
 	}
 
 	@Override
@@ -55,28 +49,4 @@ public final class BooleanSerializer implements IConfigValueEditorSerializer<Boo
 		return Optional.of(List.of(true, false));
 	}
 
-	@Override
-	public ConfigValueEditorType<Boolean> getEditorType() {
-		return ConfigValueEditorTypes.BOOLEAN;
-	}
-
-	@Override
-	public Component getLocalizedValueName(String configValueLocalizationKey, Boolean value) {
-		return Component.translatable(value ? "mezz_config.config.value.boolean.true" : "mezz_config.config.value.boolean.false");
-	}
-
-	@Override
-	public Optional<Component> getLocalizedValueDescription(String configValueLocalizationKey, Boolean value) {
-		return Optional.of(ConfigValueSerializerUtil.getTranslatedValue(configValueLocalizationKey, String.valueOf(value), ".description")
-			.orElseGet(() -> getGenericValueDescription(value)));
-	}
-
-	@Override
-	public Optional<ResourceLocation> getValueIcon(Boolean value) {
-		return Optional.of(value ? ENABLED_ICON : DISABLED_ICON);
-	}
-
-	private static Component getGenericValueDescription(boolean value) {
-		return Component.translatable(value ? "mezz_config.config.value.boolean.true.description" : "mezz_config.config.value.boolean.false.description");
-	}
 }

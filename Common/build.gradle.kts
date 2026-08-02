@@ -6,6 +6,11 @@ plugins {
     id("java")
     id("net.neoforged.moddev")
     id("maven-publish")
+    id("net.mezzdev.modshade")
+}
+
+repositories {
+    mavenCentral()
 }
 
 // gradle.properties
@@ -15,9 +20,8 @@ val neoformTimestamp: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
-val mixinVersion: String by extra
 val deduplicatingRunnerVersion: String by extra
-val guavaVersion: String by extra
+val fileWatcherVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
 val log4jVersion: String by extra
 
@@ -29,7 +33,7 @@ base {
 }
 
 val dependencyProjects: List<Project> = listOf(
-    project(":ConfigApi"),
+    project(":CommonApi"),
 )
 
 dependencyProjects.forEach {
@@ -49,11 +53,12 @@ sourceSets {
 }
 
 dependencies {
-    compileOnly("org.spongepowered:mixin:$mixinVersion")
-    implementation("net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
+    modShadeImplementation("net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
         isTransitive = false
     }
-    implementation("com.google.guava:guava:$guavaVersion")
+    modShadeImplementation("net.mezzdev:filewatcher:$fileWatcherVersion") {
+        isTransitive = false
+    }
     implementation("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
     implementation("org.apache.logging.log4j:log4j-api:$log4jVersion")
     dependencyProjects.forEach {
@@ -65,7 +70,10 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    include("net/mezzdev/config/test/**")
+    include(
+        "net/mezzdev/config/test/**",
+        "net/mezzdev/config/file/**"
+    )
     outputs.upToDateWhen { false }
     testLogging {
         events = setOf(TestLogEvent.FAILED)
@@ -80,7 +88,10 @@ java {
     withSourcesJar()
 }
 
-val sourcesJarTask = tasks.named<Jar>("sourcesJar")
+modShade {
+    shadeJar()
+    shadeSourcesJar()
+}
 
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
@@ -95,20 +106,9 @@ publishing {
     publications {
         register<MavenPublication>("configJar") {
             artifactId = baseArchivesName
-            artifact(tasks.jar.get())
-            artifact(sourcesJarTask.get())
+            from(components["modShade"])
 
             val dependencyInfos = listOf(
-                mapOf(
-                    "groupId" to "net.mezzdev",
-                    "artifactId" to "deduplicating-runner",
-                    "version" to deduplicatingRunnerVersion
-                ),
-                mapOf(
-                    "groupId" to "com.google.guava",
-                    "artifactId" to "guava",
-                    "version" to guavaVersion
-                ),
                 mapOf(
                     "groupId" to "org.jetbrains",
                     "artifactId" to "annotations",

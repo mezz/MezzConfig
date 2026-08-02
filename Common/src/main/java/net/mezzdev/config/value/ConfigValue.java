@@ -1,11 +1,12 @@
 package net.mezzdev.config.value;
 
-import net.mezzdev.config.api.value.ConfigValueUpdateType;
+import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigValue;
-import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
+import net.mezzdev.config.api.value.IConfigValueChangeListener;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.schema.IConfigSchema;
-import net.minecraft.network.chat.Component;
+import net.mezzdev.config.util.ConfigNameUtil;
+import net.mezzdev.config.util.ErrorUtil;
+import net.mezzdev.config.schema.ConfigSchema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -20,36 +21,32 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 
 	private final String name;
 	private final String localizationKey;
-	private final Component localizedName;
-	private final Component description;
 	private final T defaultValue;
-	private final IConfigValueEditorSerializer<T> serializer;
-	private final ConfigValueUpdateType updateType;
-	private @Nullable List<Consumer<T>> listeners;
+	private final IConfigValueSerializer<T> serializer;
+	private @Nullable List<IConfigValueChangeListener<T>> listeners;
 	private volatile T currentValue;
 	@Nullable
-	private IConfigSchema schema;
+	private ConfigSchema schema;
 
 	public ConfigValue(
 		String localizationPath,
 		String name,
 		T defaultValue,
-		IConfigValueEditorSerializer<T> serializer,
-		ConfigValueUpdateType updateType
+		IConfigValueSerializer<T> serializer
 	) {
-		this.name = name;
+		this.name = ConfigNameUtil.validateConfigName(name, "configValueName");
 
-		this.localizationKey = localizationPath + "." + name;
-		String descriptionKey = localizationKey + ".description";
-		this.localizedName = Component.translatable(localizationKey);
-		this.description = Component.translatable(descriptionKey);
-		this.defaultValue = defaultValue;
-		this.currentValue = defaultValue;
-		this.serializer = serializer;
-		this.updateType = updateType;
+		localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
+		this.localizationKey = localizationPath + "." + this.name;
+		this.defaultValue = ErrorUtil.checkNotNull(defaultValue, "defaultValue");
+		this.serializer = ErrorUtil.checkNotNull(serializer, "serializer");
+		if (!this.serializer.isValid(this.defaultValue)) {
+			throw new IllegalArgumentException("Default value for '%s' is invalid: %s".formatted(this.name, this.defaultValue));
+		}
+		this.currentValue = this.defaultValue;
 	}
 
-	public void setSchema(IConfigSchema schema) {
+	public void setSchema(ConfigSchema schema) {
 		this.schema = schema;
 	}
 
@@ -61,16 +58,6 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	@Override
 	public String getLocalizationKey() {
 		return localizationKey;
-	}
-
-	@Override
-	public Component getLocalizedDescription() {
-		return description;
-	}
-
-	@Override
-	public Component getLocalizedName() {
-		return localizedName;
 	}
 
 	@Override
@@ -92,24 +79,18 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	@Override
-	public IConfigValueEditorSerializer<T> getSerializer() {
+	public IConfigValueSerializer<T> getSerializer() {
 		return serializer;
 	}
 
-	@Override
-	public ConfigValueUpdateType getUpdateType() {
-		return updateType;
-	}
-
 	public List<String> setFromSerializedValue(String value) {
-		IConfigValueSerializer.IDeserializeResult<T> deserializeResult = serializer.deserialize(value);
+		IDeserializeResult<T> deserializeResult = serializer.deserialize(value);
 		deserializeResult.getResult()
 			.ifPresent(t -> {
-				if (currentValue != t) {
+				if (!currentValue.equals(t)) {
+					T oldValue = currentValue;
 					currentValue = t;
-					if (listeners != null) {
-						listeners.forEach(listener -> listener.accept(currentValue));
-					}
+					notifyListeners(oldValue, currentValue);
 				}
 			});
 		return deserializeResult.getErrors();
@@ -117,8 +98,9 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 
 	@Override
 	public boolean set(T value) {
+		T oldValue = currentValue;
 		if (setWithoutNotifying(value)) {
-			notifyListeners();
+			notifyListeners(oldValue, currentValue);
 			markDirty();
 			return true;
 		}
@@ -126,8 +108,9 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	boolean setWithoutNotifying(T value) {
+		value = ErrorUtil.checkNotNull(value, "value");
 		if (!serializer.isValid(value)) {
-			LOGGER.error("Tried to set invalid value : {}\n{}", value,  serializer.getValidValuesDescription());
+			LOGGER.error("Tried to set invalid value : {}\n{}", value, serializer.getValidValuesDescription());
 			return false;
 		}
 		if (!currentValue.equals(value)) {
@@ -137,9 +120,10 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		return false;
 	}
 
-	void notifyListeners() {
+	void notifyListeners(T oldValue, T newValue) {
+		// TODO: support batched config updates so listeners can observe the final state across multiple changed values.
 		if (listeners != null) {
-			listeners.forEach(listener -> listener.accept(currentValue));
+			listeners.forEach(listener -> listener.onChange(oldValue, newValue));
 		}
 	}
 
@@ -151,6 +135,11 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 
 	@Override
 	public void addListener(Consumer<T> listener) {
+		addListener((oldValue, newValue) -> listener.accept(newValue));
+	}
+
+	@Override
+	public void addListener(IConfigValueChangeListener<T> listener) {
 		if (this.listeners == null) {
 			this.listeners = new ArrayList<>();
 		}

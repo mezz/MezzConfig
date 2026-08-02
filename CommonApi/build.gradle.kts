@@ -12,7 +12,6 @@ val neoformTimestamp: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
-val mixinVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
 
 group = configModGroup
@@ -38,7 +37,6 @@ sourceSets {
 }
 
 dependencies {
-    compileOnly("org.spongepowered:mixin:$mixinVersion")
     implementation("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
 }
 

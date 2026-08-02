@@ -44,8 +44,7 @@ public final class ConfigSerializer {
 
 	public static void load(
 		Path path,
-		List<ConfigCategory> categories,
-		Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> legacyValueMigrations
+		List<ConfigCategory> categories
 	) throws IOException {
 		FileTime lastModifiedTime = Files.getLastModifiedTime(path);
 		FileTime savedTime = saveTimes.get(path);
@@ -74,16 +73,16 @@ public final class ConfigSerializer {
 			if (categoryMatcher.matches()) {
 				categoryName = categoryMatcher.group("category");
 				category = categoriesMap.get(categoryName);
-				if (category == null && !hasLegacyValues(categoryName, legacyValueMigrations)) {
+				if (category == null && !hasMovedValues(categoryName, categories)) {
 					LOGGER.error(getLineErrorString(path, lineNumber, line,
 						"""
 						'[%s]' is not a valid category name.
 						Valid names are: [%s]
 						Skipping all values until the first valid category is declared."""
-						.formatted(
-							categoryName,
-							String.join(", ", categoriesMap.keySet())
-						)
+							.formatted(
+								categoryName,
+								String.join(", ", categoriesMap.keySet())
+							)
 					));
 				}
 				continue;
@@ -103,8 +102,8 @@ public final class ConfigSerializer {
 				Optional<ConfigValue<?>> configValue = getConfigValue(category, key);
 				if (configValue.isEmpty()) {
 					ConfigValueReference legacyValueReference = new ConfigValueReference(categoryName, key);
-					@Nullable List<ConfigValueMigration<?, ?>> migrations = legacyValueMigrations.get(legacyValueReference);
-					if (migrations == null) {
+					List<ConfigValueMigration<?>> migrations = getMovedValueMigrations(categories, legacyValueReference);
+					if (migrations.isEmpty()) {
 						logUnknownConfigValue(path, lineNumber, line, category, categoryName, key);
 					} else {
 						List<String> errors = new ArrayList<>();
@@ -116,7 +115,17 @@ public final class ConfigSerializer {
 				} else {
 					List<String> errors = configValue.get().setFromSerializedValue(value);
 					if (!errors.isEmpty()) {
-						logDeserializeErrors(path, lineNumber, line, value, errors);
+						ConfigValueReference legacyValueReference = new ConfigValueReference(categoryName, key);
+						List<ConfigValueMigration<?>> migrations = getMovedValueMigrations(categories, legacyValueReference);
+						if (migrations.isEmpty()) {
+							logDeserializeErrors(path, lineNumber, line, value, errors);
+						} else {
+							List<String> migrationErrors = new ArrayList<>();
+							migrations.forEach(migration -> migrationErrors.addAll(migration.migrate(value)));
+							if (!migrationErrors.isEmpty()) {
+								logDeserializeErrors(path, lineNumber, line, value, migrationErrors);
+							}
+						}
 					}
 				}
 			} else {
@@ -139,10 +148,15 @@ public final class ConfigSerializer {
 		return category.getConfigValue(key);
 	}
 
-	private static boolean hasLegacyValues(String categoryName, Map<ConfigValueReference, List<ConfigValueMigration<?, ?>>> legacyValueMigrations) {
-		return legacyValueMigrations.keySet()
-			.stream()
-			.anyMatch(reference -> reference.categoryName().equals(categoryName));
+	private static List<ConfigValueMigration<?>> getMovedValueMigrations(List<ConfigCategory> categories, ConfigValueReference reference) {
+		return categories.stream()
+			.flatMap(category -> category.getMovedValueMigrations(reference).stream())
+			.toList();
+	}
+
+	private static boolean hasMovedValues(String categoryName, List<ConfigCategory> categories) {
+		return categories.stream()
+			.anyMatch(category -> category.hasMovedValuesFromCategory(categoryName));
 	}
 
 	private static void logUnknownConfigValue(
@@ -158,7 +172,7 @@ public final class ConfigSerializer {
 				"""
 				'%s' is not a valid config category.
 				Skipping this key."""
-				.formatted(categoryName)
+					.formatted(categoryName)
 			));
 			return;
 		}
@@ -167,10 +181,10 @@ public final class ConfigSerializer {
 			'%s' is not a valid config key for config category '%s'.
 			Valid keys: [%s]
 			Skipping this key."""
-			.formatted(
-				key, category.getName(),
-				String.join(", ", category.getValueNames())
-			)
+				.formatted(
+					key, category.getName(),
+					String.join(", ", category.getValueNames())
+				)
 		));
 	}
 
@@ -219,23 +233,32 @@ public final class ConfigSerializer {
 		String name = configValue.getName();
 		IConfigValueSerializer<T> serializer = configValue.getSerializer();
 
-		String localizedName = Component.translatable(CONFIG_NAME_KEY, configValue.getLocalizedName().getString()).getString();
+		Component nameComponent = Component.translatable(configValue.getLocalizationKey());
+		String localizedName = getLocalizedComment(CONFIG_NAME_KEY, "Name: %s", nameComponent.getString());
 		addCommentedStrings(serialized, localizedName);
 
-		String description = Component.translatable(CONFIG_DESCRIPTION_KEY, configValue.getLocalizedDescription().getString()).getString();
+		Component descriptionComponent = Component.translatable(configValue.getLocalizationKey() + ".description");
+		String description = getLocalizedComment(CONFIG_DESCRIPTION_KEY, "Description: %s", descriptionComponent.getString());
 		addCommentedStrings(serialized, description);
 
-		String validValues = Component.translatable(CONFIG_VALUE_VALUES_KEY, serializer.getValidValuesDescription()).getString();
+		String validValues = getLocalizedComment(CONFIG_VALUE_VALUES_KEY, "Valid Values: %s", serializer.getValidValuesDescription());
 		addCommentedStrings(serialized, validValues);
 
 		T defaultValue = configValue.getDefaultValue();
 		String defaultValueSerialized = serializer.serialize(defaultValue);
-		String defaultValueString = Component.translatable(CONFIG_DEFAULT_VALUE_KEY, defaultValueSerialized).getString();
+		String defaultValueString = getLocalizedComment(CONFIG_DEFAULT_VALUE_KEY, "Default Value: %s", defaultValueSerialized);
 		addCommentedStrings(serialized, defaultValueString);
 
 		T value = configValue.getValue();
 		String valueString = serializer.serialize(value);
 		serialized.add("\t%s = %s".formatted(name, valueString));
+	}
+
+	private static String getLocalizedComment(String translationKey, String fallbackFormat, String value) {
+		if (Language.getInstance().has(translationKey)) {
+			return Component.translatable(translationKey, value).getString();
+		}
+		return fallbackFormat.formatted(value);
 	}
 
 	private static void addCommentedStrings(List<String> serialized, String comment) {

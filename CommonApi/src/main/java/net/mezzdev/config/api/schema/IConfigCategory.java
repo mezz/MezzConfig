@@ -1,44 +1,40 @@
 package net.mezzdev.config.api.schema;
 
-import net.mezzdev.config.api.files.IConfigFile;
 import net.mezzdev.config.api.value.IConfigValue;
-import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Collection;
 
 /**
  * Categories organize {@link IConfigValue}s into groups.
- * An {@link IConfigFile} can contain one or more categories.
+ * An {@link IConfigSchema} can contain one or more categories.
+ * <p>
+ * Add a category to your schema here: {@link IConfigSchemaBuilder#addCategory(String)}.
+ * Get registered categories here: {@link IConfigSchema#getCategories()}.
  *
- * @since 19.39.0
+ * @since 0.1.0
  */
+@ApiStatus.NonExtendable
 public interface IConfigCategory {
 	/**
 	 * The name of the category.
 	 *
-	 * @since 19.39.0
+	 * @since 0.1.0
 	 */
 	String getName();
 
 	/**
-	 * Get the translated name component of this config category.
+	 * Get the translation key used for this config category's name.
 	 *
-	 * @since 19.39.0
+	 * @since 0.1.0
 	 */
-	Component getLocalizedName();
-
-	/**
-	 * Get the translated description component of this config category.
-	 *
-	 * @since 19.39.0
-	 */
-	Component getLocalizedDescription();
+	String getLocalizationKey();
 
 	/**
 	 * The config values in the category.
 	 *
-	 * @since 19.39.0
+	 * @since 0.1.0
 	 */
 	@Unmodifiable
 	Collection<? extends IConfigValue<?>> getConfigValues();

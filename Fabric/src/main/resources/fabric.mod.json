@@ -3,8 +3,8 @@
   "id": "${configModId}",
   "version": "${version}",
 
-  "name": "Mezz Config",
-  "description": "Shared config support for Minecraft mods.",
+  "name": "MezzConfig",
+  "description": "Lightweight client-side config support for Minecraft mods.",
   "authors": [
     "${modAuthor}"
   ],
@@ -23,8 +23,6 @@
 
   "depends": {
     "fabricloader": "${fabricLoaderVersionRange}",
-    "fabric-api": "${fabricApiVersionRange}",
-    "${configApiModId}": "*",
     "java": ">=${modJavaVersion}"
   }
 }

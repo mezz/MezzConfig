@@ -17,17 +17,14 @@ repositories {
 }
 
 // gradle.properties
-val fabricApiVersion: String by extra
 val fabricLoaderVersion: String by extra
 val minecraftVersion: String by extra
-val configApiModId: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
 val parchmentMinecraftVersion: String by extra
 val parchmentVersionFabric: String by extra
 val jsr305Version: String by extra
-val deduplicatingRunnerVersion: String by extra
 
 group = configModGroup
 
@@ -36,30 +33,21 @@ base {
     archivesName.set(baseArchivesName)
 }
 
+val commonProject: Project = project(":Common")
 val dependencyProjects: List<Project> = listOf(
-    project(":Config"),
+    commonProject,
 )
-val configApiProject: Project = project(":ConfigApi")
-val configApiRuntimeProject: Project = project(":ConfigApiFabric")
+val configApiProject: Project = project(":CommonApi")
+val testModProject: Project = project(":FabricTest")
 
-(listOf(configApiProject, configApiRuntimeProject) + dependencyProjects).forEach {
+(listOf(configApiProject, testModProject) + dependencyProjects).forEach {
     project.evaluationDependsOn(it.path)
 }
-
-val embeddedLibraries: Configuration by configurations.creating {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-}
-configurations.implementation {
-    extendsFrom(embeddedLibraries)
-}
-
-extra["configLanguageDependencyProjects"] = dependencyProjects
-apply(from = rootProject.file("buildtools/ConfigLanguageResources.gradle.kts"))
-
-@Suppress("UNCHECKED_CAST")
-val configLanguageResourceProjects = extra["configLanguageResourceProjects"] as List<Project>
-val mergedConfigLanguageResources = tasks.named("mergeConfigLanguageResources")
+val testModSourceSet = testModProject.sourceSets.main.get()
+val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
+val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
+fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
+    zipTree(archiveTask.flatMap { it.archiveFile })
 
 java {
     toolchain {
@@ -85,34 +73,27 @@ dependencies {
         parchment("org.parchmentmc.data:parchment-${parchmentMinecraftVersion}:${parchmentVersionFabric}@zip")
     })
     modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
     compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
     compileOnly(configApiProject)
     dependencyProjects.forEach {
-        implementation(it)
+        compileOnly(it)
     }
-    embeddedLibraries("net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
-        isTransitive = false
+    runtimeOnly(project(commonProject.path)) {
+        attributes {
+            attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.SHADOWED))
+        }
     }
 }
 
 loom {
     mods {
-        create(configApiModId) {
-            sourceSet(configApiRuntimeProject.sourceSets.main.get())
-            sourceSet(configApiProject.sourceSets.main.get())
-        }
         create(configModId) {
             sourceSet(sourceSets.main.get())
-            for (dependencyProject in dependencyProjects) {
-                sourceSet(dependencyProject.sourceSets.main.get())
-            }
+            sourceSet(configApiProject.sourceSets.main.get())
         }
     }
     runs {
-        val dependencyJarPaths = (listOf(configApiRuntimeProject) + dependencyProjects).map {
-            it.tasks.jar.get().archiveFile.get().asFile
-        }
+        val dependencyJarPaths = listOf(commonModShadeJarTask.get().archiveFile.get().asFile)
         val classPaths = sourceSets.main.get().output.classesDirs
         val resourcesPaths = listOfNotNull(
             sourceSets.main.get().output.resourcesDir
@@ -128,7 +109,7 @@ loom {
 
         named("client") {
             client()
-            configName = "Mezz Config Fabric Client"
+            configName = "MezzConfig Fabric Client"
             ideConfigGenerated(true)
             runDir(loomRunDir.resolve("client").toString())
             vmArgs(
@@ -138,7 +119,7 @@ loom {
         }
         named("server") {
             server()
-            configName = "Mezz Config Fabric Server"
+            configName = "MezzConfig Fabric Server"
             ideConfigGenerated(true)
             runDir(loomRunDir.resolve("server").toString())
             vmArgs(
@@ -151,45 +132,24 @@ loom {
 
 sourceSets {
     named("main") {
-        runtimeClasspath += configApiRuntimeProject.sourceSets.main.get().output
         runtimeClasspath += configApiProject.sourceSets.main.get().output
-        resources {
-            for (p in dependencyProjects.filterNot(configLanguageResourceProjects::contains)) {
-                srcDir(p.sourceSets.main.get().resources)
-            }
-        }
     }
-}
-
-tasks.named<ProcessResources>(sourceSets.main.get().processResourcesTaskName) {
-    dependsOn(mergedConfigLanguageResources)
-    for (p in configLanguageResourceProjects) {
-        from(p.sourceSets.main.get().resources) {
-            exclude("fabric.mod.json")
-            exclude("assets/mezz_config/lang/*.json")
-        }
-    }
-    from(mergedConfigLanguageResources)
 }
 
 tasks.jar {
-    dependsOn(mergedConfigLanguageResources, embeddedLibraries)
+    dependsOn(commonModShadeJarTask)
+    from(configApiProject.sourceSets.main.get().output)
     from(sourceSets.main.get().output)
-    for (p in dependencyProjects) {
-        from(p.sourceSets.main.get().output) {
-            exclude("fabric.mod.json")
-            exclude("assets/mezz_config/lang/*.json")
-        }
-    }
-    from(mergedConfigLanguageResources)
-    from(embeddedLibraries.map(::zipTree))
+    from(zipTreeArchive(commonModShadeJarTask))
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.named<Jar>("sourcesJar") {
+    dependsOn(commonModShadeSourcesJarTask)
+    from(configApiProject.sourceSets.main.get().allJava)
     from(sourceSets.main.get().allJava)
-    for (p in dependencyProjects) {
-        from(p.sourceSets.main.get().allJava)
+    from(zipTreeArchive(commonModShadeSourcesJarTask)) {
+        exclude("META-INF/MANIFEST.MF", "MANIFEST.MF")
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     archiveClassifier.set("sources")
@@ -197,6 +157,17 @@ tasks.named<Jar>("sourcesJar") {
 
 tasks.assemble {
     dependsOn(tasks.remapJar, tasks.remapSourcesJar)
+}
+
+val testModClassesTask = testModProject.tasks.named(testModSourceSet.classesTaskName)
+val testModPath = testModProject.layout.buildDirectory.dir("resources/main").get().asFile.absolutePath
+val testModRunTasks = setOf("runClient", "runServer")
+tasks.matching { it.name in testModRunTasks }.configureEach {
+    dependsOn(testModClassesTask)
+    if (this is JavaExec) {
+        classpath(testModSourceSet.output)
+        jvmArgs("-Dfabric.addMods=$testModPath")
+    }
 }
 
 publishing {
@@ -208,19 +179,13 @@ publishing {
             artifact(tasks.remapJar)
             artifact(tasks.remapSourcesJar)
 
-            val dependencyInfos = (listOf(configApiRuntimeProject) + dependencyProjects).map {
+            val dependencyInfos = (listOf(configApiProject) + dependencyProjects).map {
                 mapOf(
                     "groupId" to it.group,
                     "artifactId" to it.base.archivesName.get(),
                     "version" to it.version
                 )
-            } + listOf(
-                mapOf(
-                    "groupId" to "net.mezzdev",
-                    "artifactId" to "deduplicating-runner",
-                    "version" to deduplicatingRunnerVersion
-                )
-            )
+            }
 
             pom.withXml {
                 val dependenciesNode = asNode().appendNode("dependencies")

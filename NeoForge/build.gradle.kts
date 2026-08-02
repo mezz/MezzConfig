@@ -11,11 +11,10 @@ plugins {
 // gradle.properties
 val neoforgeVersion: String by extra
 val minecraftVersion: String by extra
-val configApiModId: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
+val neoforgeTestModId: String by extra
 val modJavaVersion: String by extra
-val deduplicatingRunnerVersion: String by extra
 
 group = configModGroup
 
@@ -24,53 +23,41 @@ base {
     archivesName.set(baseArchivesName)
 }
 
+val commonProject: Project = project(":Common")
 val dependencyProjects: List<Project> = listOf(
-    project(":Config"),
+    commonProject,
 )
-val configApiProject: Project = project(":ConfigApi")
-val configApiRuntimeProject: Project = project(":ConfigApiNeoForge")
+val configApiProject: Project = project(":CommonApi")
+val testModProject: Project = project(":NeoForgeTest")
 
-(listOf(configApiProject, configApiRuntimeProject) + dependencyProjects).forEach {
+(listOf(configApiProject, testModProject) + dependencyProjects).forEach {
     project.evaluationDependsOn(it.path)
 }
-
-val embeddedLibraries: Configuration by configurations.creating {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-}
-configurations.implementation {
-    extendsFrom(embeddedLibraries)
-}
-
-extra["configLanguageDependencyProjects"] = dependencyProjects
-apply(from = rootProject.file("buildtools/ConfigLanguageResources.gradle.kts"))
-
-@Suppress("UNCHECKED_CAST")
-val configLanguageResourceProjects = extra["configLanguageResourceProjects"] as List<Project>
-val mergedConfigLanguageResources = tasks.named("mergeConfigLanguageResources")
+val testModSourceSet = testModProject.sourceSets.main.get()
+val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
+val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
+fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
+    zipTree(archiveTask.flatMap { it.archiveFile })
 
 neoForge {
     version = neoforgeVersion
 
     mods {
-        create(configApiModId) {
-            sourceSet(configApiRuntimeProject.sourceSets.main.get())
-            sourceSet(configApiProject.sourceSets.main.get())
-        }
         create(configModId) {
             sourceSet(sourceSets.main.get())
-            for (dependencyProject in dependencyProjects) {
-                sourceSet(dependencyProject.sourceSets.main.get())
-            }
+            sourceSet(configApiProject.sourceSets.main.get())
+        }
+        create(neoforgeTestModId) {
+            sourceSet(testModSourceSet)
         }
     }
 
     runs {
-        val configApiMod = mods.named(configApiModId)
         val configMod = mods.named(configModId)
+        val testMod = mods.named(neoforgeTestModId)
 
         configureEach {
-            getMods().set(setOf(configApiMod.get(), configMod.get()))
+            getMods().set(setOf(configMod.get(), testMod.get()))
         }
         create("client") {
             client()
@@ -86,6 +73,12 @@ neoForge {
     }
 }
 
+val testModClassesTask = testModProject.tasks.named(testModSourceSet.classesTaskName)
+val testModRunTasks = setOf("runClient", "runServer")
+tasks.matching { it.name in testModRunTasks }.configureEach {
+    dependsOn(testModClassesTask)
+}
+
 sourceSets {
     named("test") {
         //The test module has no resources
@@ -95,12 +88,13 @@ sourceSets {
 
 dependencies {
     compileOnly(configApiProject)
-    runtimeOnly(configApiRuntimeProject)
     dependencyProjects.forEach {
-        implementation(it)
+        compileOnly(it)
     }
-    embeddedLibraries("net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
-        isTransitive = false
+    runtimeOnly(project(commonProject.path)) {
+        attributes {
+            attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.SHADOWED))
+        }
     }
 }
 
@@ -120,33 +114,20 @@ tasks.withType<JavaCompile> {
     }
 }
 
-tasks.named<ProcessResources>(sourceSets.main.get().processResourcesTaskName) {
-    dependsOn(mergedConfigLanguageResources)
-    for (p in configLanguageResourceProjects) {
-        from(p.sourceSets.main.get().resources) {
-            exclude("assets/mezz_config/lang/*.json")
-        }
-    }
-    from(mergedConfigLanguageResources)
-}
-
 tasks.jar {
-    dependsOn(mergedConfigLanguageResources, embeddedLibraries)
+    dependsOn(commonModShadeJarTask)
+    from(configApiProject.sourceSets.main.get().output)
     from(sourceSets.main.get().output)
-    for (p in dependencyProjects) {
-        from(p.sourceSets.main.get().output) {
-            exclude("assets/mezz_config/lang/*.json")
-        }
-    }
-    from(mergedConfigLanguageResources)
-    from(embeddedLibraries.map(::zipTree))
+    from(zipTreeArchive(commonModShadeJarTask))
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 val sourcesJarTask = tasks.named<Jar>("sourcesJar") {
+    dependsOn(commonModShadeSourcesJarTask)
+    from(configApiProject.sourceSets.main.get().allJava)
     from(sourceSets.main.get().allJava)
-    for (p in dependencyProjects) {
-        from(p.sourceSets.main.get().allJava)
+    from(zipTreeArchive(commonModShadeSourcesJarTask)) {
+        exclude("META-INF/MANIFEST.MF", "MANIFEST.MF")
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     archiveClassifier.set("sources")
@@ -163,19 +144,13 @@ publishing {
             artifact(tasks.jar.get())
             artifact(sourcesJarTask.get())
 
-            val dependencyInfos = (listOf(configApiRuntimeProject) + dependencyProjects).map {
+            val dependencyInfos = (listOf(configApiProject) + dependencyProjects).map {
                 mapOf(
                     "groupId" to it.group,
                     "artifactId" to it.base.archivesName.get(),
                     "version" to it.version
                 )
-            } + listOf(
-                mapOf(
-                    "groupId" to "net.mezzdev",
-                    "artifactId" to "deduplicating-runner",
-                    "version" to deduplicatingRunnerVersion
-                )
-            )
+            }
 
             pom.withXml {
                 val dependenciesNode = asNode().appendNode("dependencies")

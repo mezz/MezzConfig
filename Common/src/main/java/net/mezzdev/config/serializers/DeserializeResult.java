@@ -1,6 +1,6 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IDeserializeResult;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jetbrains.annotations.Nullable;
 
@@ -10,7 +10,7 @@ import java.util.Optional;
 /**
  * Standard result implementation for config value deserialization.
  */
-public final class DeserializeResult<T> implements IConfigValueSerializer.IDeserializeResult<T> {
+public final class DeserializeResult<T> implements IDeserializeResult<T> {
 	private final @Nullable T result;
 	private final List<String> errors;
 
@@ -34,6 +34,10 @@ public final class DeserializeResult<T> implements IConfigValueSerializer.IDeser
 	public DeserializeResult(@Nullable T result, List<String> errors) {
 		this.result = result;
 		this.errors = List.copyOf(errors);
+	}
+
+	public DeserializeResult(IDeserializeResult<T> result) {
+		this(result.getResult().orElse(null), result.getErrors());
 	}
 
 	@Override

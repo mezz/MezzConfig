@@ -1,9 +1,7 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.api.value.ConfigValueEditorType;
-import net.mezzdev.config.api.value.ConfigValueEditorTypes;
-import net.mezzdev.config.api.value.IConfigIntegerValueSerializer;
-import net.minecraft.network.chat.Component;
+import net.mezzdev.config.api.value.ConfigValueRange;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 
 import java.util.Collection;
 import java.util.List;
@@ -13,23 +11,19 @@ import java.util.stream.IntStream;
 /**
  * Serializer for bounded integer config values.
  */
-public final class IntegerSerializer implements IConfigIntegerValueSerializer {
-	private final int min;
-	private final int max;
+public final class IntegerSerializer implements IConfigValueSerializer<Integer> {
+	private final ConfigValueRange<Integer> range;
 
 	public IntegerSerializer(int min, int max) {
-		this.min = min;
-		this.max = max;
+		if (min > max) {
+			throw new IllegalArgumentException("min must be less than or equal to max.");
+		}
+		this.range = new ConfigValueRange<>(min, max);
 	}
 
 	@Override
-	public int getMin() {
-		return min;
-	}
-
-	@Override
-	public int getMax() {
-		return max;
+	public Optional<ConfigValueRange<Integer>> getRange() {
+		return Optional.of(range);
 	}
 
 	@Override
@@ -55,6 +49,8 @@ public final class IntegerSerializer implements IConfigIntegerValueSerializer {
 
 	@Override
 	public String getValidValuesDescription() {
+		int min = range.min();
+		int max = range.max();
 		if (min == Integer.MIN_VALUE && max == Integer.MAX_VALUE) {
 			return "Any integer";
 		}
@@ -67,11 +63,13 @@ public final class IntegerSerializer implements IConfigIntegerValueSerializer {
 
 	@Override
 	public boolean isValid(Integer value) {
-		return value >= min && value <= max;
+		return value != null && value >= range.min() && value <= range.max();
 	}
 
 	@Override
 	public Optional<Collection<Integer>> getAllValidValues() {
+		int min = range.min();
+		int max = range.max();
 		int count = max - min + 1;
 		if (count > 0 && count < 20) {
 			List<Integer> values = IntStream.rangeClosed(min, max)
@@ -82,13 +80,4 @@ public final class IntegerSerializer implements IConfigIntegerValueSerializer {
 		return Optional.empty();
 	}
 
-	@Override
-	public ConfigValueEditorType<Integer> getEditorType() {
-		return ConfigValueEditorTypes.INTEGER;
-	}
-
-	@Override
-	public Component getLocalizedValueName(String configValueLocalizationKey, Integer value) {
-		return Component.literal(value.toString());
-	}
 }

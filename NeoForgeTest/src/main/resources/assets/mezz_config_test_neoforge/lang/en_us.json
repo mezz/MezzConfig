@@ -1,0 +1,12 @@
+{
+  "mezz_config_test.neoforge.general": "NeoForge Test",
+  "mezz_config_test.neoforge.general.description": "NeoForge-only test config values.",
+  "mezz_config_test.neoforge.general.enabled": "Enabled",
+  "mezz_config_test.neoforge.general.enabled.description": "Boolean value registered by the NeoForge test config plugin.",
+  "mezz_config_test.neoforge.general.maxEntries": "Max Entries",
+  "mezz_config_test.neoforge.general.maxEntries.description": "Integer value registered by the NeoForge test config plugin.",
+  "mezz_config_test.neoforge.general.mode": "Mode",
+  "mezz_config_test.neoforge.general.mode.description": "Enum value registered by the NeoForge test config plugin.",
+  "mezz_config_test.neoforge.general.modes": "Modes",
+  "mezz_config_test.neoforge.general.modes.description": "Enum list value registered by the NeoForge test config plugin."
+}

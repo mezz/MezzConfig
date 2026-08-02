@@ -1,19 +1,25 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.api.files.IConfigFile;
 import net.mezzdev.config.api.files.IConfigManager;
+import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.deduplicatingrunner.DelayedExecutor;
 import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
+import net.mezzdev.filewatcher.FileWatcher;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
+	private static final Duration SAVE_SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
+	private static final String SAVE_SCHEDULER_THREAD_NAME = "MezzConfig Save Scheduler";
+
 	private final FileWatcher fileWatcher;
-	private final ConfigSaveExecutor saveExecutor;
+	private final DelayedExecutor saveExecutor;
 	private final Map<Path, ConfigSchema> configFiles = new HashMap<>();
 
 	public ConfigManager() {
@@ -22,7 +28,9 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 
 	public ConfigManager(String fileWatcherThreadName) {
 		this.fileWatcher = new FileWatcher(fileWatcherThreadName);
-		this.saveExecutor = new ConfigSaveExecutor("Mezz Config Save Scheduler");
+		this.saveExecutor = new DelayedExecutor(SAVE_SHUTDOWN_TIMEOUT, SAVE_SCHEDULER_THREAD_NAME);
+		Runtime.getRuntime()
+			.addShutdownHook(new Thread(saveExecutor::shutdown, SAVE_SCHEDULER_THREAD_NAME + " Shutdown"));
 	}
 
 	public DelayedTaskScheduler getSaveScheduler() {
@@ -43,7 +51,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 	}
 
 	@Override
-	public Collection<? extends IConfigFile> getConfigFiles() {
+	public Collection<? extends IConfigSchema> getConfigFiles() {
 		return Collections.unmodifiableCollection(configFiles.values());
 	}
 }

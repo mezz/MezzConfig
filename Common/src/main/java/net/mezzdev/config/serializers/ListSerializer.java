@@ -1,11 +1,6 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.api.value.ConfigValueEditorType;
-import net.mezzdev.config.api.value.ConfigValueEditorTypes;
-import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,7 +12,7 @@ import java.util.stream.Collectors;
 /**
  * Serializer for comma-separated list config values.
  */
-public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
+public final class ListSerializer<T> implements IConfigValueSerializer<List<T>> {
 	private final IConfigValueSerializer<T> valueSerializer;
 
 	public ListSerializer(IConfigValueSerializer<T> valueSerializer) {
@@ -71,32 +66,7 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 	}
 
 	@Override
-	public IConfigValueSerializer<T> getListValueSerializer() {
-		return valueSerializer;
-	}
-
-	@Override
 	public Optional<Collection<List<T>>> getAllValidValues() {
 		return Optional.empty();
-	}
-
-	@Override
-	public ConfigValueEditorType<List<T>> getEditorType() {
-		return ConfigValueEditorTypes.getList();
-	}
-
-	@Override
-	public Component getLocalizedValueName(String configValueLocalizationKey, List<T> values) {
-		if (values.isEmpty()) {
-			return Component.translatable("mezz_config.config.value.list.empty");
-		}
-		MutableComponent result = Component.empty();
-		for (int i = 0; i < values.size(); i++) {
-			if (i > 0) {
-				result.append(Component.literal(", "));
-			}
-			result.append(valueSerializer.getLocalizedValueName(configValueLocalizationKey, values.get(i)));
-		}
-		return result;
 	}
 }

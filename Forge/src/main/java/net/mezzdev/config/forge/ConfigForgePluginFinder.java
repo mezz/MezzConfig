@@ -48,7 +48,7 @@ public final class ConfigForgePluginFinder {
 			try {
 				Class<?> asmClass = Class.forName(className);
 				Class<? extends T> asmInstanceClass = asmClass.asSubclass(instanceClass);
-				Constructor<? extends T> constructor = asmInstanceClass.getDeclaredConstructor();
+				Constructor<? extends T> constructor = asmInstanceClass.getConstructor();
 				T instance = constructor.newInstance();
 				instances.add(instance);
 			} catch (ReflectiveOperationException | RuntimeException | LinkageError e) {

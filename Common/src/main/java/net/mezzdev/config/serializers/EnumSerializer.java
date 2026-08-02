@@ -1,26 +1,49 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.api.value.ConfigValueEditorType;
-import net.mezzdev.config.api.value.ConfigValueEditorTypes;
-import net.mezzdev.config.api.value.IConfigValueEditorSerializer;
-import net.minecraft.locale.Language;
-import net.minecraft.network.chat.Component;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * Serializer for enum config values.
  */
-public class EnumSerializer<T extends Enum<T>> implements IConfigValueEditorSerializer<T> {
+public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer<T> {
 	private final Class<T> enumClass;
 	private final Collection<T> validValues;
 
 	public EnumSerializer(Class<T> enumClass) {
-		this.enumClass = enumClass;
-		this.validValues = List.of(enumClass.getEnumConstants());
+		this.enumClass = Objects.requireNonNull(enumClass, "enumClass");
+		this.validValues = List.of(this.enumClass.getEnumConstants());
+	}
+
+	public EnumSerializer(Class<T> enumClass, Collection<T> validValues) {
+		this.enumClass = Objects.requireNonNull(enumClass, "enumClass");
+		Objects.requireNonNull(validValues, "validValues");
+		if (validValues.isEmpty()) {
+			throw new IllegalArgumentException("validValues must not be empty.");
+		}
+
+		Set<T> checkedValidValues = new LinkedHashSet<>();
+		for (T validValue : validValues) {
+			Objects.requireNonNull(validValue, "validValue");
+			if (validValue.getDeclaringClass() != this.enumClass) {
+				throw new IllegalArgumentException("Valid enum value does not belong to %s: %s".formatted(
+					this.enumClass.getCanonicalName(),
+					validValue
+				));
+			}
+			if (!checkedValidValues.add(validValue)) {
+				throw new IllegalArgumentException("Duplicate valid enum value: " + validValue);
+			}
+		}
+		this.validValues = List.copyOf(checkedValidValues);
 	}
 
 	@Override
@@ -30,16 +53,13 @@ public class EnumSerializer<T extends Enum<T>> implements IConfigValueEditorSeri
 
 	@Override
 	public DeserializeResult<T> deserialize(String string) {
-		string = string.trim();
-		if (string.startsWith("\"") && string.endsWith("\"")) {
-			string = string.substring(1, string.length() - 1);
+		String enumName = normalizeSerializedEnumName(string);
+		T enumValue = getEnumValue(enumClass, enumName);
+		if (enumValue != null && isValid(enumValue)) {
+			return new DeserializeResult<>(enumValue);
 		}
-		try {
-			T value = Enum.valueOf(enumClass, string);
-			return new DeserializeResult<>(value);
-		} catch (IllegalArgumentException e) {
-			return new DeserializeResult<>(null, "Invalid enum name: %s".formatted(e.getMessage()));
-		}
+
+		return new DeserializeResult<>(null, "Invalid enum name. Must be: " + getValidValuesDescription());
 	}
 
 	@Override
@@ -61,33 +81,20 @@ public class EnumSerializer<T extends Enum<T>> implements IConfigValueEditorSeri
 		return Optional.of(validValues);
 	}
 
-	@Override
-	public ConfigValueEditorType<T> getEditorType() {
-		return ConfigValueEditorTypes.getSelection();
-	}
-
-	@Override
-	public Component getLocalizedValueName(String configValueLocalizationKey, T value) {
-		return getTranslatedEnumValue(configValueLocalizationKey, value, ".name")
-			.orElseGet(() -> Component.literal(ConfigValueSerializerUtil.getDisplayNameFallback(value.name())));
-	}
-
-	@Override
-	public Optional<Component> getLocalizedValueDescription(String configValueLocalizationKey, T value) {
-		return getTranslatedEnumValue(configValueLocalizationKey, value, ".description");
-	}
-
-	private Optional<Component> getTranslatedEnumValue(String configValueLocalizationKey, T value, String suffix) {
-		String valueName = value.name();
-		Optional<Component> configValueTranslation = ConfigValueSerializerUtil.getTranslatedValue(configValueLocalizationKey, valueName, suffix);
-		if (configValueTranslation.isPresent()) {
-			return configValueTranslation;
+	@Nullable
+	private static <T extends Enum<T>> T getEnumValue(Class<T> enumClass, String enumName) {
+		try {
+			return Enum.valueOf(enumClass, enumName);
+		} catch (IllegalArgumentException e) {
+			return null;
 		}
+	}
 
-		String enumKey = "mezz_config.config.value." + enumClass.getSimpleName() + "." + valueName + suffix;
-		if (Language.getInstance().has(enumKey)) {
-			return Optional.of(Component.translatable(enumKey));
+	private static String normalizeSerializedEnumName(String string) {
+		string = string.trim();
+		if (string.startsWith("\"") && string.endsWith("\"")) {
+			string = string.substring(1, string.length() - 1);
 		}
-		return Optional.empty();
+		return string;
 	}
 }
