@@ -13,6 +13,8 @@ import java.util.Optional;
  * {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)}
  * or as the element serializer in
  * {@link IConfigCategoryBuilder#addList(String, java.util.List, IConfigValueSerializer)}.
+ * <p>
+ * For list config values that should expose their element serializer, implement {@link IConfigListValueSerializer}.
  *
  * @since 0.1.0
  */

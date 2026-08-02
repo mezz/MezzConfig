@@ -2,6 +2,7 @@ package net.mezzdev.config.test.serializers;
 
 import net.mezzdev.config.api.value.ConfigValueRange;
 import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.ColorSerializer;
@@ -17,6 +18,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -224,10 +226,13 @@ public class ConfigValueSerializerTest {
 
 	@Test
 	public void listSerializerWrapsElementSerializer() {
-		ListSerializer<Boolean> serializer = new ListSerializer<>(BooleanSerializer.INSTANCE);
+		IConfigValueSerializer<List<Boolean>> serializer = new ListSerializer<>(BooleanSerializer.INSTANCE);
 
 		assertEquals(List.of(true, false), deserializeValue(serializer, "true, false"));
 		assertEquals("true, false", serializer.serialize(List.of(true, false)));
+		assertTrue(serializer instanceof IConfigListValueSerializer<?>);
+		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) serializer;
+		assertSame(BooleanSerializer.INSTANCE, listSerializer.getElementSerializer());
 	}
 
 	@Test

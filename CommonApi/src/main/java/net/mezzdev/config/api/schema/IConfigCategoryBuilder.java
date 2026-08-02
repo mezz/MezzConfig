@@ -1,6 +1,7 @@
 package net.mezzdev.config.api.schema;
 
 import net.mezzdev.config.api.value.IConfigValueBuilder;
+import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import org.jetbrains.annotations.ApiStatus;
 
@@ -11,6 +12,7 @@ import java.util.List;
  * <p>
  * Create a builder for your category here: {@link IConfigSchemaBuilder#addCategory(String)}.
  * Value methods return a builder. Add any optional legacy migrations, then call {@link IConfigValueBuilder#build()}.
+ * List value helpers create values whose serializers implement {@link IConfigListValueSerializer}.
  *
  * @since 0.1.0
  */
@@ -30,7 +32,8 @@ public interface IConfigCategoryBuilder {
 
 	/**
 	 * Create a builder for a config value with a custom serializer.
-	 * Use this method with an {@code IConfigValueSerializer<List<T>>} for custom list storage formats.
+	 * Use this method with an {@link IConfigListValueSerializer} for custom list storage formats that expose their
+	 * element serializer.
 	 *
 	 * @param name stable storage name for the value
 	 * @param defaultValue default value
@@ -286,6 +289,9 @@ public interface IConfigCategoryBuilder {
 
 	/**
 	 * Create a builder for a list config value using a serializer for each list element.
+	 * <p>
+	 * The resulting config value's serializer implements {@link IConfigListValueSerializer}, so callers can inspect
+	 * the element serializer.
 	 *
 	 * @param name stable storage name for the value
 	 * @param defaultValue default value

@@ -36,6 +36,10 @@ Supported built-in value helpers include:
 - typed lists of strings, booleans, integers, ARGB colors, longs, finite doubles, or enums
 - custom serializers
 
+List helpers expose their element serializer through `IConfigListValueSerializer`,
+so integrations can edit list elements individually without GUI-specific API in
+MezzConfig.
+
 ```java
 general.addBoolean("enabled", true)
 	.addLegacyName("oldEnabled")

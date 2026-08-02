@@ -1,6 +1,8 @@
 package net.mezzdev.config.test.schema;
 
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
+import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.serializers.BooleanSerializer;
@@ -17,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -58,6 +61,9 @@ public class ConfigSchemaTest {
 				.getResult()
 				.orElseThrow()
 		);
+		assertTrue(flags.getSerializer() instanceof IConfigListValueSerializer<?>);
+		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) flags.getSerializer();
+		assertSame(BooleanSerializer.INSTANCE, listSerializer.getElementSerializer());
 	}
 
 	@Test
@@ -113,6 +119,16 @@ public class ConfigSchemaTest {
 		assertEquals(List.of(1.5, 2.5), boundedDoubles.getSerializer().deserialize("1.5, 2.5").getResult().orElseThrow());
 		assertEquals(TestMode.STANDARD, restrictedEnum.getSerializer().deserialize("STANDARD").getResult().orElseThrow());
 		assertEquals(List.of(TestMode.STANDARD), restrictedEnums.getSerializer().deserialize("STANDARD").getResult().orElseThrow());
+		assertListElementSerializer(names, "configured", "configured");
+		assertListElementSerializer(flags, "false", false);
+		assertListElementSerializer(unboundedIntegers, "2", 2);
+		assertListElementSerializer(boundedIntegers, "2", 2);
+		assertListElementSerializer(colors, "0xFF445566", 0xFF445566);
+		assertListElementSerializer(unboundedLongs, "2", 2L);
+		assertListElementSerializer(boundedLongs, "2", 2L);
+		assertListElementSerializer(unboundedDoubles, "2.5", 2.5);
+		assertListElementSerializer(boundedDoubles, "2.5", 2.5);
+		assertListElementSerializer(restrictedEnums, "STANDARD", TestMode.STANDARD);
 		assertTrue(boundedIntegers.getSerializer().deserialize("11").getErrors().getFirst().contains("Invalid integer"));
 		assertTrue(color.getSerializer().deserialize("112233").getErrors().getFirst().contains("Invalid color"));
 		assertTrue(boundedLongs.getSerializer().deserialize("11").getErrors().getFirst().contains("Invalid long"));
@@ -326,6 +342,21 @@ public class ConfigSchemaTest {
 			List.of(builder),
 			(command, delay) -> CompletableFuture.completedFuture(null)
 		);
+	}
+
+	@SuppressWarnings("unchecked")
+	private static <T> void assertListElementSerializer(
+		ConfigValue<List<T>> configValue,
+		String serializedValue,
+		T expectedValue
+	) {
+		assertTrue(configValue.getSerializer() instanceof IConfigListValueSerializer<?>);
+		IConfigListValueSerializer<T> listSerializer = (IConfigListValueSerializer<T>) configValue.getSerializer();
+		IDeserializeResult<T> result = listSerializer.getElementSerializer()
+			.deserialize(serializedValue);
+
+		assertEquals(List.of(), result.getErrors());
+		assertEquals(expectedValue, result.getResult().orElseThrow());
 	}
 
 	private static String formatBatch(

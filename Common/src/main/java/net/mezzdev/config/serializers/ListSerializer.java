@@ -1,6 +1,8 @@
 package net.mezzdev.config.serializers;
 
+import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.util.ErrorUtil;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,17 +14,22 @@ import java.util.stream.Collectors;
 /**
  * Serializer for comma-separated list config values.
  */
-public final class ListSerializer<T> implements IConfigValueSerializer<List<T>> {
-	private final IConfigValueSerializer<T> valueSerializer;
+public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
+	private final IConfigValueSerializer<T> elementSerializer;
 
-	public ListSerializer(IConfigValueSerializer<T> valueSerializer) {
-		this.valueSerializer = valueSerializer;
+	public ListSerializer(IConfigValueSerializer<T> elementSerializer) {
+		this.elementSerializer = ErrorUtil.checkNotNull(elementSerializer, "elementSerializer");
+	}
+
+	@Override
+	public IConfigValueSerializer<T> getElementSerializer() {
+		return elementSerializer;
 	}
 
 	@Override
 	public String serialize(List<T> values) {
 		return values.stream()
-			.map(valueSerializer::serialize)
+			.map(elementSerializer::serialize)
 			.collect(Collectors.joining(", "));
 	}
 
@@ -44,7 +51,7 @@ public final class ListSerializer<T> implements IConfigValueSerializer<List<T>> 
 		List<T> results = Arrays.stream(split)
 			.map(String::trim)
 			.filter(s -> !s.isEmpty())
-			.map(valueSerializer::deserialize)
+			.map(elementSerializer::deserialize)
 			.<T>mapMulti((r, c) -> {
 				r.getResult().ifPresent(c);
 				errors.addAll(r.getErrors());
@@ -56,13 +63,13 @@ public final class ListSerializer<T> implements IConfigValueSerializer<List<T>> 
 
 	@Override
 	public String getValidValuesDescription() {
-		return "A comma-separated list containing values of:\n%s".formatted(valueSerializer.getValidValuesDescription());
+		return "A comma-separated list containing values of:\n%s".formatted(elementSerializer.getValidValuesDescription());
 	}
 
 	@Override
 	public boolean isValid(List<T> value) {
 		return value.stream()
-			.allMatch(valueSerializer::isValid);
+			.allMatch(elementSerializer::isValid);
 	}
 
 	@Override
