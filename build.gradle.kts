@@ -7,7 +7,7 @@ import org.gradle.api.tasks.TaskAction
 
 plugins {
     // https://github.com/mezz/JavaFormatting
-    id("net.mezzdev.java-formatting") version("0.2.3")
+    id("net.mezzdev.java-formatting") version("0.2.4")
 
     // https://central.sonatype.com/artifact/net.mezzdev.gradle/modshade-plugin
     id("net.mezzdev.modshade") version("0.3.0") apply(false)

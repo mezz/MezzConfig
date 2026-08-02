@@ -25,10 +25,10 @@ public class ConfigSchemaTest {
 	public void addEnumListSupportsEmptyDefaultLists() {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<List<TestMode>> modes = builder.addEnumList(
-			"modes",
-			List.of(),
-			TestMode.class
-		)
+				"modes",
+				List.of(),
+				TestMode.class
+			)
 			.build();
 
 		assertEquals(List.of(), modes.getDefaultValue());
@@ -45,10 +45,10 @@ public class ConfigSchemaTest {
 	public void addListWrapsElementSerializer() {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<List<Boolean>> flags = builder.addList(
-			"flags",
-			List.of(true),
-			BooleanSerializer.INSTANCE
-		)
+				"flags",
+				List.of(true),
+				BooleanSerializer.INSTANCE
+			)
 			.build();
 
 		assertEquals(
