@@ -1,3 +1,6 @@
+import net.fabricmc.loom.task.RemapJarTask
+import net.fabricmc.loom.task.RemapSourcesJarTask
+
 plugins {
     java
     idea
@@ -155,6 +158,34 @@ tasks.named<Jar>("sourcesJar") {
     archiveClassifier.set("sources")
 }
 
+val mavenJarTask = tasks.register<Jar>("mavenJar") {
+    from(sourceSets.main.get().output)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    destinationDirectory.set(layout.buildDirectory.dir("maven-intermediates"))
+}
+
+val remapMavenJarTask = tasks.register<RemapJarTask>("remapMavenJar") {
+    inputFile.set(mavenJarTask.flatMap { it.archiveFile })
+    addNestedDependencies.set(false)
+    archiveBaseName.set(baseArchivesName)
+    archiveClassifier.set("")
+    destinationDirectory.set(layout.buildDirectory.dir("maven-libs"))
+}
+
+val mavenSourcesJarTask = tasks.register<Jar>("mavenSourcesJar") {
+    from(sourceSets.main.get().allJava)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    archiveClassifier.set("sources")
+    destinationDirectory.set(layout.buildDirectory.dir("maven-intermediates"))
+}
+
+val remapMavenSourcesJarTask = tasks.register<RemapSourcesJarTask>("remapMavenSourcesJar") {
+    inputFile.set(mavenSourcesJarTask.flatMap { it.archiveFile })
+    archiveBaseName.set(baseArchivesName)
+    archiveClassifier.set("sources")
+    destinationDirectory.set(layout.buildDirectory.dir("maven-libs"))
+}
+
 tasks.assemble {
     dependsOn(tasks.remapJar, tasks.remapSourcesJar)
 }
@@ -176,8 +207,8 @@ publishing {
             @Suppress("UnstableApiUsage")
             loom.disableDeprecatedPomGeneration(this)
             artifactId = baseArchivesName
-            artifact(tasks.remapJar)
-            artifact(tasks.remapSourcesJar)
+            artifact(remapMavenJarTask)
+            artifact(remapMavenSourcesJarTask)
 
             val dependencyInfos = (listOf(configApiProject) + dependencyProjects).map {
                 mapOf(

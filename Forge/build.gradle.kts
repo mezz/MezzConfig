@@ -156,6 +156,19 @@ val sourcesJarTask = tasks.named<Jar>("sourcesJar") {
 	archiveClassifier.set("sources")
 }
 
+val mavenJarTask = tasks.register<Jar>("mavenJar") {
+	from(sourceSets.main.get().output)
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	destinationDirectory.set(layout.buildDirectory.dir("maven-libs"))
+}
+
+val mavenSourcesJarTask = tasks.register<Jar>("mavenSourcesJar") {
+	from(sourceSets.main.get().allJava)
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	archiveClassifier.set("sources")
+	destinationDirectory.set(layout.buildDirectory.dir("maven-libs"))
+}
+
 tasks.assemble {
 	dependsOn(sourcesJarTask)
 }
@@ -164,8 +177,8 @@ publishing {
 	publications {
 		register<MavenPublication>("configForgeJar") {
 			artifactId = baseArchivesName
-			artifact(tasks.jar.get())
-			artifact(sourcesJarTask.get())
+			artifact(mavenJarTask.get())
+			artifact(mavenSourcesJarTask.get())
 
 			val dependencyInfos = (listOf(configApiProject) + dependencyProjects).map {
 				mapOf(
