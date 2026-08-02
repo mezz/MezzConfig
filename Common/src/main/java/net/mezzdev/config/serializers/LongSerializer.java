@@ -2,6 +2,7 @@ package net.mezzdev.config.serializers;
 
 import net.mezzdev.config.api.value.ConfigValueRange;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -62,7 +63,7 @@ public final class LongSerializer implements IConfigValueSerializer<Long> {
 	}
 
 	@Override
-	public boolean isValid(Long value) {
+	public boolean isValid(@Nullable Long value) {
 		return value != null && value >= range.min() && value <= range.max();
 	}
 

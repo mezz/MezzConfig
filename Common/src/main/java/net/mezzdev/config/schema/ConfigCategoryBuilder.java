@@ -155,14 +155,14 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 
 	@Override
 	public <T extends Enum<T>> ConfigValueBuilder<T> addEnum(String name, T defaultValue) {
-		defaultValue = ErrorUtil.checkNotNull(defaultValue, "defaultValue");
+		ErrorUtil.checkNotNull(defaultValue, "defaultValue");
 		EnumSerializer<T> serializer = new EnumSerializer<>(defaultValue.getDeclaringClass());
 		return addValue(name, defaultValue, serializer);
 	}
 
 	@Override
 	public <T extends Enum<T>> ConfigValueBuilder<T> addEnum(String name, T defaultValue, List<T> validValues) {
-		defaultValue = ErrorUtil.checkNotNull(defaultValue, "defaultValue");
+		ErrorUtil.checkNotNull(defaultValue, "defaultValue");
 		EnumSerializer<T> serializer = new EnumSerializer<>(defaultValue.getDeclaringClass(), validValues);
 		return addValue(name, defaultValue, serializer);
 	}
@@ -183,11 +183,11 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 		List<T> defaultValue,
 		List<T> validValues
 	) {
-		validValues = ErrorUtil.checkNotNull(validValues, "validValues");
+		ErrorUtil.checkNotNull(validValues, "validValues");
 		if (validValues.isEmpty()) {
 			throw new IllegalArgumentException("validValues must not be empty.");
 		}
-		T firstValidValue = ErrorUtil.checkNotNull(validValues.get(0), "validValues[0]");
+		T firstValidValue = ErrorUtil.checkNotNull(validValues.getFirst(), "validValues[0]");
 		EnumSerializer<T> serializer = new EnumSerializer<>(firstValidValue.getDeclaringClass(), validValues);
 		return addValue(name, defaultValue, new ListSerializer<>(serializer));
 	}

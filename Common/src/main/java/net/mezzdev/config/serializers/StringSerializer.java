@@ -1,6 +1,7 @@
 package net.mezzdev.config.serializers;
 
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Optional;
@@ -27,7 +28,7 @@ public final class StringSerializer implements IConfigValueSerializer<String> {
 	}
 
 	@Override
-	public boolean isValid(String value) {
+	public boolean isValid(@Nullable String value) {
 		return value != null;
 	}
 

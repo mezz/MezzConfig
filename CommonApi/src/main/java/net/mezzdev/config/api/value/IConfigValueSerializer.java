@@ -54,7 +54,7 @@ public interface IConfigValueSerializer<T> {
 	/**
 	 * If this config value only has a limited number of valid values,
 	 * this returns them all.
-	 *
+	 * <p>
 	 * If there are many or unlimited valid values, this will return
 	 * {@link Optional#empty()}
 	 *

@@ -4,6 +4,7 @@ import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
+import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.ConfigValueMigration;
@@ -17,6 +18,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -34,7 +36,7 @@ public class ConfigSerializerMigrationTest {
 			.addLegacyName("legacy");
 		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", true)
 			.build();
-		ConfigCategory category = categoryBuilder.build(null);
+		ConfigCategory category = buildCategory(path, categoryBuilder);
 
 		ConfigSerializer.load(path, List.of(category));
 
@@ -52,7 +54,7 @@ public class ConfigSerializerMigrationTest {
 		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", true)
 			.addLegacyName("oldEnabled")
 			.build();
-		ConfigCategory category = categoryBuilder.build(null);
+		ConfigCategory category = buildCategory(path, categoryBuilder);
 
 		ConfigSerializer.load(path, List.of(category));
 
@@ -68,9 +70,9 @@ public class ConfigSerializerMigrationTest {
 		));
 		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", false)
-			.addLegacyValueMigration(legacyValue -> "yes".equalsIgnoreCase(legacyValue))
+			.addLegacyValueMigration("yes"::equalsIgnoreCase)
 			.build();
-		ConfigCategory category = categoryBuilder.build(null);
+		ConfigCategory category = buildCategory(path, categoryBuilder);
 
 		ConfigSerializer.load(path, List.of(category));
 
@@ -90,7 +92,7 @@ public class ConfigSerializerMigrationTest {
 			.addLegacyName("disabled")
 			.addLegacyValueMigration(legacyValue -> !Boolean.parseBoolean(legacyValue))
 			.build();
-		ConfigCategory category = categoryBuilder.build(null);
+		ConfigCategory category = buildCategory(path, categoryBuilder);
 
 		ConfigSerializer.load(path, List.of(category));
 
@@ -181,5 +183,15 @@ public class ConfigSerializerMigrationTest {
 			first,
 			second
 		);
+	}
+
+	private static ConfigCategory buildCategory(Path path, ConfigCategoryBuilder categoryBuilder) {
+		ConfigSchema schema = new ConfigSchema(
+			path,
+			List.of(categoryBuilder),
+			(command, delay) -> CompletableFuture.completedFuture(null)
+		);
+		return schema.getCategories()
+			.getFirst();
 	}
 }

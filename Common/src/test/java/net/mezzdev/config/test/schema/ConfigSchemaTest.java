@@ -113,12 +113,12 @@ public class ConfigSchemaTest {
 		assertEquals(List.of(1.5, 2.5), boundedDoubles.getSerializer().deserialize("1.5, 2.5").getResult().orElseThrow());
 		assertEquals(TestMode.STANDARD, restrictedEnum.getSerializer().deserialize("STANDARD").getResult().orElseThrow());
 		assertEquals(List.of(TestMode.STANDARD), restrictedEnums.getSerializer().deserialize("STANDARD").getResult().orElseThrow());
-		assertTrue(boundedIntegers.getSerializer().deserialize("11").getErrors().get(0).contains("Invalid integer"));
-		assertTrue(color.getSerializer().deserialize("112233").getErrors().get(0).contains("Invalid color"));
-		assertTrue(boundedLongs.getSerializer().deserialize("11").getErrors().get(0).contains("Invalid long"));
-		assertTrue(boundedDoubles.getSerializer().deserialize("11.0").getErrors().get(0).contains("Invalid double"));
-		assertTrue(restrictedEnum.getSerializer().deserialize("ADVANCED").getErrors().get(0).contains("Invalid enum name"));
-		assertTrue(restrictedEnums.getSerializer().deserialize("ADVANCED").getErrors().get(0).contains("Invalid enum name"));
+		assertTrue(boundedIntegers.getSerializer().deserialize("11").getErrors().getFirst().contains("Invalid integer"));
+		assertTrue(color.getSerializer().deserialize("112233").getErrors().getFirst().contains("Invalid color"));
+		assertTrue(boundedLongs.getSerializer().deserialize("11").getErrors().getFirst().contains("Invalid long"));
+		assertTrue(boundedDoubles.getSerializer().deserialize("11.0").getErrors().getFirst().contains("Invalid double"));
+		assertTrue(restrictedEnum.getSerializer().deserialize("ADVANCED").getErrors().getFirst().contains("Invalid enum name"));
+		assertTrue(restrictedEnums.getSerializer().deserialize("ADVANCED").getErrors().getFirst().contains("Invalid enum name"));
 	}
 
 	@Test
@@ -236,7 +236,7 @@ public class ConfigSchemaTest {
 		ConfigSchema schema = createSchema(builder);
 		List<String> schemaBatches = new ArrayList<>();
 		schema.addListener(changes -> {
-			IAppliedConfigValueChange<?> change = changes.get(0);
+			IAppliedConfigValueChange<?> change = changes.getFirst();
 			schemaBatches.add("%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()));
 		});
 
@@ -274,7 +274,7 @@ public class ConfigSchemaTest {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		builder.addBoolean("enabled", true);
 
-		assertThrows(IllegalStateException.class, () -> builder.build(null));
+		assertThrows(IllegalStateException.class, () -> createSchema(builder));
 	}
 
 	@Test
@@ -308,7 +308,7 @@ public class ConfigSchemaTest {
 
 		assertThrows(IllegalArgumentException.class, () -> builder.addEnum("invalidDefault", TestMode.ADVANCED, List.of(TestMode.STANDARD)));
 		assertThrows(IllegalArgumentException.class, () -> builder.addEnum("emptyValidValues", TestMode.STANDARD, List.of()));
-		assertThrows(IllegalArgumentException.class, () -> builder.addEnumList("emptyListValidValues", List.<TestMode>of(), List.<TestMode>of()));
+		assertThrows(IllegalArgumentException.class, () -> builder.addEnumList("emptyListValidValues", List.<TestMode>of(), List.of()));
 	}
 
 	private enum TestMode {

@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 /**
  * Represents a config value.
  * Config values can be read or updated by mods.
- *
+ * <p>
  * These config values are automatically synced with the config file.
  * {@link #getValue()} will automatically update based on changes to the file,
  * and using {@link #set} will automatically update the file.

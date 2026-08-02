@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * Represents one registered config schema and its backing file.
- *
+ * <p>
  * Config schemas contain one or more {@link IConfigCategory},
  * and each category has one or more {@link IConfigValue}.
  * <p>
@@ -27,7 +27,7 @@ public interface IConfigSchema {
 	/**
 	 * Get the path of this config schema.
 	 * Used to identify the backing file.
-	 *
+	 * <p>
 	 * Note that config values will read from this file automatically,
 	 * and updating config values will save the file automatically,
 	 * so you should not read or write this file yourself.

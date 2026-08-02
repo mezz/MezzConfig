@@ -2,6 +2,7 @@ package net.mezzdev.config.serializers;
 
 import net.mezzdev.config.api.value.ConfigValueRange;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Optional;
@@ -63,7 +64,7 @@ public final class DoubleSerializer implements IConfigValueSerializer<Double> {
 	}
 
 	@Override
-	public boolean isValid(Double value) {
+	public boolean isValid(@Nullable Double value) {
 		return value != null &&
 			Double.isFinite(value) &&
 			value >= range.min() &&

@@ -59,7 +59,7 @@ public class ConfigValueTest {
 		List<String> changes = new ArrayList<>();
 		value.addBatchListener(batch -> {
 			assertEquals(1, batch.size());
-			IAppliedConfigValueChange<?> change = batch.get(0);
+			IAppliedConfigValueChange<?> change = batch.getFirst();
 			changes.add("%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()));
 		});
 

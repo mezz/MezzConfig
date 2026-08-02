@@ -68,7 +68,7 @@ public class ConfigValueSerializerTest {
 		assertTrue(outOfRange.getResult().isEmpty());
 		assertEquals(List.of("Invalid integer. Must be: An integer in the range [2, 4] (inclusive)"), outOfRange.getErrors());
 		assertTrue(notAnInteger.getResult().isEmpty());
-		assertTrue(notAnInteger.getErrors().get(0).contains("Unable to parse int: 'five'"));
+		assertTrue(notAnInteger.getErrors().getFirst().contains("Unable to parse int: 'five'"));
 	}
 
 	@Test
@@ -100,7 +100,7 @@ public class ConfigValueSerializerTest {
 		assertTrue(shortColor.getResult().isEmpty());
 		assertEquals(List.of("Invalid color. Must be: An ARGB color serialized as 0xAARRGGBB"), shortColor.getErrors());
 		assertTrue(invalidHex.getResult().isEmpty());
-		assertTrue(invalidHex.getErrors().get(0).contains("Unable to parse color: '0xGG112233'"));
+		assertTrue(invalidHex.getErrors().getFirst().contains("Unable to parse color: '0xGG112233'"));
 	}
 
 	@Test
@@ -126,7 +126,7 @@ public class ConfigValueSerializerTest {
 		assertTrue(outOfRange.getResult().isEmpty());
 		assertEquals(List.of("Invalid long. Must be: A long in the range [2, 4] (inclusive)"), outOfRange.getErrors());
 		assertTrue(notALong.getResult().isEmpty());
-		assertTrue(notALong.getErrors().get(0).contains("Unable to parse long: 'five'"));
+		assertTrue(notALong.getErrors().getFirst().contains("Unable to parse long: 'five'"));
 	}
 
 	@Test
@@ -161,7 +161,7 @@ public class ConfigValueSerializerTest {
 		assertTrue(outOfRange.getResult().isEmpty());
 		assertEquals(List.of("Invalid double. Must be: A finite double in the range [0.5, 2.5] (inclusive)"), outOfRange.getErrors());
 		assertTrue(notADouble.getResult().isEmpty());
-		assertTrue(notADouble.getErrors().get(0).contains("Unable to parse double: 'many'"));
+		assertTrue(notADouble.getErrors().getFirst().contains("Unable to parse double: 'many'"));
 	}
 
 	@Test
@@ -180,7 +180,7 @@ public class ConfigValueSerializerTest {
 		IDeserializeResult<TestEnum> result = serializer.deserialize("MISSING");
 
 		assertTrue(result.getResult().isEmpty());
-		assertTrue(result.getErrors().get(0).contains("Invalid enum name"));
+		assertTrue(result.getErrors().getFirst().contains("Invalid enum name"));
 	}
 
 	@Test
@@ -191,7 +191,7 @@ public class ConfigValueSerializerTest {
 		assertEquals("[SECOND_VALUE]", serializer.getValidValuesDescription());
 		assertEquals(List.of(TestEnum.SECOND_VALUE), List.copyOf(serializer.getAllValidValues().orElseThrow()));
 		assertFalse(serializer.isValid(TestEnum.FIRST_VALUE));
-		assertTrue(serializer.deserialize("FIRST_VALUE").getErrors().get(0).contains("Invalid enum name"));
+		assertTrue(serializer.deserialize("FIRST_VALUE").getErrors().getFirst().contains("Invalid enum name"));
 	}
 
 	@Test
@@ -219,7 +219,7 @@ public class ConfigValueSerializerTest {
 
 		assertTrue(result.getResult().isEmpty());
 		assertEquals(1, result.getErrors().size());
-		assertTrue(result.getErrors().get(0).contains("No closing brace found."));
+		assertTrue(result.getErrors().getFirst().contains("No closing brace found."));
 	}
 
 	@Test

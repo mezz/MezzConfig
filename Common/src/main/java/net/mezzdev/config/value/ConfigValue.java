@@ -123,7 +123,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	private boolean canSet(T value) {
-		value = ErrorUtil.checkNotNull(value, "value");
+		ErrorUtil.checkNotNull(value, "value");
 		if (!serializer.isValid(value)) {
 			LOGGER.error("Tried to set invalid value : {}\n{}", value, serializer.getValidValuesDescription());
 			return false;
@@ -132,7 +132,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	void validateUpdateValue(T value) {
-		value = ErrorUtil.checkNotNull(value, "value");
+		ErrorUtil.checkNotNull(value, "value");
 		if (!serializer.isValid(value)) {
 			throw new IllegalArgumentException("Invalid value for '%s': %s\n%s".formatted(name, value, serializer.getValidValuesDescription()));
 		}
