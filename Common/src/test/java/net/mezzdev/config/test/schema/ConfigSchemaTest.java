@@ -28,7 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ConfigSchemaTest {
 	@Test
 	public void addEnumListSupportsEmptyDefaultLists() {
+		// Setup: an enum list can have no default entries, so the enum class must provide the element type.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+
+		// Operation: create an empty default list and deserialize stored enum names later.
 		ConfigValue<List<TestMode>> modes = builder.addEnumList(
 				"modes",
 				List.of(),
@@ -36,6 +39,7 @@ public class ConfigSchemaTest {
 			)
 			.build();
 
+		// Assertions: the empty default is valid, and the serializer still knows which enum values to parse.
 		assertEquals(List.of(), modes.getDefaultValue());
 		assertEquals(
 			List.of(TestMode.STANDARD, TestMode.ADVANCED),
@@ -48,7 +52,10 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void addListWrapsElementSerializer() {
+		// Setup: custom list values are built from a normal element serializer.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+
+		// Operation: create a boolean list with the public addList helper.
 		ConfigValue<List<Boolean>> flags = builder.addList(
 				"flags",
 				List.of(true),
@@ -56,6 +63,7 @@ public class ConfigSchemaTest {
 			)
 			.build();
 
+		// Assertions: the list serializer can still parse the whole list from storage text.
 		assertEquals(
 			List.of(false, true),
 			flags.getSerializer()
@@ -63,6 +71,8 @@ public class ConfigSchemaTest {
 				.getResult()
 				.orElseThrow()
 		);
+
+		// Assertions: integrations can discover the original element serializer for per-element list editing.
 		assertTrue(flags.getSerializer() instanceof IConfigListValueSerializer<?>);
 		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) flags.getSerializer();
 		assertSame(BooleanSerializer.INSTANCE, listSerializer.getElementSerializer());
@@ -70,6 +80,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void addBuiltInValueHelpersCreateSerializers() {
+		// Setup: create one value for each built-in helper that the public category builder offers.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<String> name = builder.addString("name", "default")
 			.build();
@@ -104,6 +115,7 @@ public class ConfigSchemaTest {
 		ConfigValue<List<TestMode>> restrictedEnums = builder.addEnumList("restrictedEnums", List.of(), List.of(TestMode.STANDARD))
 			.build();
 
+		// Assertions: each helper wires a serializer that understands its public storage format.
 		assertEquals("configured", name.getSerializer().deserialize("configured").getResult().orElseThrow());
 		assertEquals(List.of("one", "two"), names.getSerializer().deserialize("one, two").getResult().orElseThrow());
 		assertEquals(List.of(false, true), flags.getSerializer().deserialize("false, true").getResult().orElseThrow());
@@ -121,6 +133,8 @@ public class ConfigSchemaTest {
 		assertEquals(List.of(1.5, 2.5), boundedDoubles.getSerializer().deserialize("1.5, 2.5").getResult().orElseThrow());
 		assertEquals(TestMode.STANDARD, restrictedEnum.getSerializer().deserialize("STANDARD").getResult().orElseThrow());
 		assertEquals(List.of(TestMode.STANDARD), restrictedEnums.getSerializer().deserialize("STANDARD").getResult().orElseThrow());
+
+		// Assertions: built-in list helpers expose element serializers for GUI integrations.
 		assertListElementSerializer(names, "configured", "configured");
 		assertListElementSerializer(flags, "false", false);
 		assertListElementSerializer(unboundedIntegers, "2", 2);
@@ -131,6 +145,8 @@ public class ConfigSchemaTest {
 		assertListElementSerializer(unboundedDoubles, "2.5", 2.5);
 		assertListElementSerializer(boundedDoubles, "2.5", 2.5);
 		assertListElementSerializer(restrictedEnums, "STANDARD", TestMode.STANDARD);
+
+		// Assertions: bounded and restricted helpers reject values outside their declared valid range.
 		assertTrue(boundedIntegers.getSerializer().deserialize("11").getErrors().getFirst().contains("Invalid integer"));
 		assertTrue(color.getSerializer().deserialize("112233").getErrors().getFirst().contains("Invalid color"));
 		assertTrue(boundedLongs.getSerializer().deserialize("11").getErrors().getFirst().contains("Invalid long"));
@@ -183,6 +199,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void batchUpdaterNotifiesListenersAfterAllValuesUpdate() {
+		// Setup: two values share a schema, and listeners observe both single-value and batch notifications.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
@@ -200,6 +217,7 @@ public class ConfigSchemaTest {
 			count.getValue()
 		)));
 
+		// Operation: queue both changes in one callback. Nothing should change until the callback returns.
 		List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(updater -> {
 			updater.set(enabled, false);
 			updater.set(count, 3);
@@ -210,6 +228,7 @@ public class ConfigSchemaTest {
 			assertEquals(List.of(), schemaBatches);
 		});
 
+		// Assertions: both values changed before any listener ran, and listeners receive one batch.
 		assertEquals(2, changes.size());
 		assertFalse(enabled.getValue());
 		assertEquals(3, count.getValue());
@@ -220,6 +239,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void batchUpdaterValidatesAllUpdatesBeforeChangingValues() {
+		// Setup: one queued update is valid and one queued update is outside the integer range.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
@@ -227,27 +247,32 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createSchema(builder);
 
+		// Operation: try to apply the mixed-validity batch.
 		assertThrows(IllegalArgumentException.class, () -> schema.batchUpdate(updater -> {
 			updater.set(enabled, false);
 			updater.set(count, 11);
 		}));
 
+		// Assertions: validation happens before mutation, so even the valid update is not applied.
 		assertTrue(enabled.getValue());
 		assertEquals(1, count.getValue());
 	}
 
 	@Test
 	public void batchUpdaterUsesLastValueForRepeatedUpdates() {
+		// Setup: one value is set twice in the same batch callback.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
 		ConfigSchema schema = createSchema(builder);
 
+		// Operation: queue a no-op update first, then queue the final value that should be applied.
 		List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(updater -> {
 			updater.set(enabled, true);
 			updater.set(enabled, false);
 		});
 
+		// Assertions: repeated updates are collapsed to the last queued value.
 		assertEquals(1, changes.size());
 		assertFalse(enabled.getValue());
 		assertEquals(true, changes.getFirst().oldValue());
@@ -256,14 +281,17 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void batchUpdaterRejectsUpdatesAfterCallbackReturns() {
+		// Setup: capture the callback-scoped updater so the test can try to misuse it later.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
 		ConfigSchema schema = createSchema(builder);
 		AtomicReference<IConfigBatchUpdater> retainedUpdater = new AtomicReference<>();
 
+		// Operation: run an empty batch but retain the updater reference.
 		List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(updater -> retainedUpdater.set(updater));
 
+		// Assertions: the updater cannot be used after the schema-owned callback has returned.
 		assertEquals(List.of(), changes);
 		assertThrows(IllegalStateException.class, () -> retainedUpdater.get().set(enabled, false));
 		assertTrue(enabled.getValue());
@@ -271,6 +299,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void setNotifiesSchemaBatchListeners() {
+		// Setup: a single config value still uses schema batch listeners when set directly.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
@@ -281,13 +310,16 @@ public class ConfigSchemaTest {
 			schemaBatches.add("%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()));
 		});
 
+		// Operation: set one value through the normal IConfigValue API.
 		assertTrue(enabled.set(false));
 
+		// Assertions: direct set is represented as a one-value schema batch.
 		assertEquals(List.of("enabled: true -> false"), schemaBatches);
 	}
 
 	@Test
 	public void loadIfNeededNotifiesSchemaBatchListenersAfterAllValuesUpdate(@TempDir Path tempDir) throws IOException {
+		// Setup: a config file changes two values before the schema is loaded.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[category]",
@@ -303,8 +335,10 @@ public class ConfigSchemaTest {
 		List<String> schemaBatches = new ArrayList<>();
 		schema.addListener(changes -> schemaBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
 
+		// Operation: load the file through the schema.
 		schema.loadIfNeeded();
 
+		// Assertions: file loading also notifies after all changed values have been applied.
 		assertFalse(enabled.getValue());
 		assertEquals(3, count.getValue());
 		assertEquals(List.of("enabled: true -> false, count: 1 -> 3; enabled = false; count = 3"), schemaBatches);
