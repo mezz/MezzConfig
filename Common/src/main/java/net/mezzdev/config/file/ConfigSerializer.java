@@ -1,5 +1,6 @@
 package net.mezzdev.config.file;
 
+import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.value.ConfigValue;
@@ -31,6 +32,7 @@ public final class ConfigSerializer {
 	private static final String CONFIG_DESCRIPTION_KEY = "mezz_config.config.description";
 	private static final String CONFIG_VALUE_VALUES_KEY = "mezz_config.config.valueValues";
 	private static final String CONFIG_DEFAULT_VALUE_KEY = "mezz_config.config.defaultValue";
+	private static final String CONFIG_REQUIRES_GAME_RESTART_KEY = "mezz_config.config.requiresGameRestart";
 	private static final Pattern commentRegex = Pattern.compile("\\s*#.*");
 	private static final Pattern categoryRegex = Pattern.compile("\\[(?<category>\\w+)]\\s*");
 	private static final Pattern keyValueRegex = Pattern.compile("\\s*(?<key>\\w+)\\s*=\\s*(?<value>.*)");
@@ -222,7 +224,8 @@ public final class ConfigSerializer {
 		return language.has(CONFIG_NAME_KEY) &&
 			language.has(CONFIG_DESCRIPTION_KEY) &&
 			language.has(CONFIG_VALUE_VALUES_KEY) &&
-			language.has(CONFIG_DEFAULT_VALUE_KEY);
+			language.has(CONFIG_DEFAULT_VALUE_KEY) &&
+			language.has(CONFIG_REQUIRES_GAME_RESTART_KEY);
 	}
 
 	private static void serializeCategory(List<String> serialized, ConfigCategory category) {
@@ -253,9 +256,24 @@ public final class ConfigSerializer {
 		String defaultValueString = getLocalizedComment(CONFIG_DEFAULT_VALUE_KEY, "Default Value: %s", defaultValueSerialized);
 		addCommentedStrings(serialized, defaultValueString);
 
+		if (configValue.getEditMode() == ConfigValueEditMode.RESTART) {
+			String requiresRestart = getLocalizedComment(
+				CONFIG_REQUIRES_GAME_RESTART_KEY,
+				"Requires a game restart to take effect."
+			);
+			addCommentedStrings(serialized, requiresRestart);
+		}
+
 		T value = configValue.getValue();
 		String valueString = serializer.serialize(value);
 		serialized.add("\t%s = %s".formatted(name, valueString));
+	}
+
+	private static String getLocalizedComment(String translationKey, String fallback) {
+		if (Language.getInstance().has(translationKey)) {
+			return Component.translatable(translationKey).getString();
+		}
+		return fallback;
 	}
 
 	private static String getLocalizedComment(String translationKey, String fallbackFormat, String value) {

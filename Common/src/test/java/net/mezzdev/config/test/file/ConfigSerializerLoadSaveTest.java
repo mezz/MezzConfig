@@ -1,5 +1,6 @@
 package net.mezzdev.config.test.file;
 
+import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
@@ -125,16 +126,35 @@ public class ConfigSerializerLoadSaveTest {
 		assertTrue(lines.contains("\t# Description: mezz_config.config.test.current.enabled.description"));
 		assertTrue(lines.contains("\t# Valid Values: [true, false]"));
 		assertTrue(lines.contains("\t# Default Value: true"));
+		assertFalse(lines.contains("\t# Requires a game restart to take effect."));
 		assertTrue(lines.contains("\tenabled = false"));
 		assertTrue(lines.contains("\tcount = 7"));
 	}
 
+	@Test
+	public void saveNotesWhenValueRequiresGameRestart(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		ConfigValue<Boolean> enabled = createBooleanValue(true, ConfigValueEditMode.RESTART);
+		ConfigCategory category = createCategory(enabled);
+
+		ConfigSerializer.save(path, List.of(category));
+
+		List<String> lines = Files.readAllLines(path);
+		assertTrue(lines.contains("\t# Requires a game restart to take effect."));
+	}
+
 	private static ConfigValue<Boolean> createBooleanValue(boolean defaultValue) {
+		return createBooleanValue(defaultValue, ConfigValueEditMode.BATCH);
+	}
+
+	private static ConfigValue<Boolean> createBooleanValue(boolean defaultValue, ConfigValueEditMode editMode) {
 		return new ConfigValue<>(
 			LOCALIZATION_PATH,
 			"enabled",
 			defaultValue,
-			BooleanSerializer.INSTANCE
+			BooleanSerializer.INSTANCE,
+			editMode,
+			List.of()
 		);
 	}
 
