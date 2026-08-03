@@ -29,12 +29,10 @@ import java.util.function.Function;
 public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 	private final String name;
 	private final String localizationPath;
-	private final Set<String> legacyNames = new LinkedHashSet<>();
 	private final List<ConfigValueBuilder<?>> valueBuilders = new ArrayList<>();
 	private final List<ConfigValue<?>> values = new ArrayList<>();
 	private final Set<String> valueNames = new LinkedHashSet<>();
-	private final Map<ConfigValue<?>, Set<String>> legacyValueNames = new LinkedHashMap<>();
-	private final Map<ConfigValue<?>, ConfigValueMigration<?>> legacyValueMigrations = new LinkedHashMap<>();
+	private final Map<ConfigValueReference, List<ConfigValueMigration<?>>> movedValueMigrations = new LinkedHashMap<>();
 	private boolean built;
 
 	public ConfigCategoryBuilder(String localizationPath, String name) {
@@ -47,83 +45,28 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 		return name;
 	}
 
-	@Override
-	public ConfigCategoryBuilder addLegacyName(String legacyName) {
-		checkNotBuilt();
-		legacyName = ConfigNameUtil.validateConfigName(legacyName, "legacyCategoryName");
-		if (legacyName.equals(name)) {
-			throw new IllegalArgumentException("Legacy category name must not match the current category name: " + name);
-		}
-		if (!legacyNames.add(legacyName)) {
-			throw new IllegalArgumentException("There is already a legacy category name: " + legacyName);
-		}
-		return this;
-	}
-
 	public <T> ConfigValue<T> addValue(
 		ConfigValue<T> value,
-		Set<String> legacyValueNames,
-		@Nullable Function<String, T> legacyValueMigration
+		Set<ConfigValueReference> legacyValueReferences,
+		Map<ConfigValueReference, Function<String, T>> legacyValueMigrations,
+		@Nullable Function<String, T> currentValueMigration
 	) {
 		checkNotBuilt();
 		this.values.add(value);
-		this.legacyValueNames.put(value, new LinkedHashSet<>(legacyValueNames));
-		if (legacyValueMigration != null) {
-			this.legacyValueMigrations.put(value, ConfigValueMigration.migrate(value, legacyValueMigration));
+		if (currentValueMigration != null) {
+			ConfigValueReference reference = new ConfigValueReference(name, value.getName());
+			addMovedValueMigration(reference, ConfigValueMigration.migrate(value, currentValueMigration));
+		}
+		for (ConfigValueReference reference : legacyValueReferences) {
+			addMovedValueMigration(reference, ConfigValueMigration.deserialize(value));
+		}
+		for (Map.Entry<ConfigValueReference, Function<String, T>> entry : legacyValueMigrations.entrySet()) {
+			addMovedValueMigration(entry.getKey(), ConfigValueMigration.migrate(value, entry.getValue()));
 		}
 		return value;
 	}
 
-	private List<String> getCurrentAndLegacyCategoryNames() {
-		List<String> categoryNames = new ArrayList<>();
-		categoryNames.add(name);
-		categoryNames.addAll(legacyNames);
-		return categoryNames;
-	}
-
-	private Map<ConfigValueReference, List<ConfigValueMigration<?>>> createMovedValueMigrations() {
-		Map<ConfigValueReference, List<ConfigValueMigration<?>>> movedValueMigrations = new LinkedHashMap<>();
-		for (ConfigValue<?> value : values) {
-			ConfigValueMigration<?> valueMigration = legacyValueMigrations.get(value);
-			if (valueMigration != null) {
-				for (String categoryName : getCurrentAndLegacyCategoryNames()) {
-					ConfigValueReference reference = new ConfigValueReference(categoryName, value.getName());
-					addMovedValueMigration(movedValueMigrations, reference, valueMigration);
-				}
-			}
-
-			if (valueMigration == null) {
-				for (String legacyCategoryName : legacyNames) {
-					ConfigValueReference reference = new ConfigValueReference(legacyCategoryName, value.getName());
-					addMovedValueMigration(movedValueMigrations, reference, ConfigValueMigration.deserialize(value));
-				}
-			}
-
-			Set<String> valueLegacyNames = legacyValueNames.get(value);
-			if (valueLegacyNames != null) {
-				for (String legacyValueName : valueLegacyNames) {
-					for (String categoryName : getCurrentAndLegacyCategoryNames()) {
-						ConfigValueReference reference = new ConfigValueReference(categoryName, legacyValueName);
-						addMovedValueMigration(movedValueMigrations, reference, getValueMigration(value, valueMigration));
-					}
-				}
-			}
-		}
-		return movedValueMigrations;
-	}
-
-	private static ConfigValueMigration<?> getValueMigration(ConfigValue<?> value, @Nullable ConfigValueMigration<?> valueMigration) {
-		if (valueMigration != null) {
-			return valueMigration;
-		}
-		return ConfigValueMigration.deserialize(value);
-	}
-
-	private static void addMovedValueMigration(
-		Map<ConfigValueReference, List<ConfigValueMigration<?>>> movedValueMigrations,
-		ConfigValueReference reference,
-		ConfigValueMigration<?> migration
-	) {
+	private void addMovedValueMigration(ConfigValueReference reference, ConfigValueMigration<?> migration) {
 		movedValueMigrations.computeIfAbsent(reference, key -> new ArrayList<>())
 			.add(migration);
 	}
@@ -295,7 +238,6 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 		for (ConfigValue<?> value : values) {
 			value.setSchema(schema);
 		}
-		Map<ConfigValueReference, List<ConfigValueMigration<?>>> movedValueMigrations = createMovedValueMigrations();
 		return new ConfigCategory(localizationPath, name, values, movedValueMigrations);
 	}
 

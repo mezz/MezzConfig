@@ -26,15 +26,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigSerializerMigrationTest {
 	@Test
-	public void loadMigratesLegacyCategoryName(@TempDir Path tempDir) throws IOException {
+	public void loadMigratesLegacyValueFromOldCategory(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[legacy]",
 			"enabled = false"
 		));
-		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general")
-			.addLegacyName("legacy");
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", true)
+			.addLegacyValue("legacy", "enabled")
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
@@ -86,17 +86,40 @@ public class ConfigSerializerMigrationTest {
 			"[legacy]",
 			"disabled = true"
 		));
-		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general")
-			.addLegacyName("legacy");
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", true)
-			.addLegacyName("disabled")
-			.addLegacyValueMigration(legacyValue -> !Boolean.parseBoolean(legacyValue))
+			.addLegacyValueMigration("legacy", "disabled", legacyValue -> !Boolean.parseBoolean(legacyValue))
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
 		ConfigSerializer.load(path, List.of(category));
 
 		assertFalse(enabled.getValue());
+	}
+
+	@Test
+	public void loadDoesNotMigrateWholeLegacyCategory(@TempDir Path tempDir) throws IOException {
+		// Setup: only one value declares that it moved from the old category.
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[legacy]",
+			"enabled = false",
+			"visible = false"
+		));
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", true)
+			.addLegacyValue("legacy", "enabled")
+			.build();
+		ConfigValue<Boolean> visible = categoryBuilder.addBoolean("visible", true)
+			.build();
+		ConfigCategory category = buildCategory(path, categoryBuilder);
+
+		// Operation: load a file where the old category contains another value with a matching current name.
+		ConfigSerializer.load(path, List.of(category));
+
+		// Assertions: only the explicitly declared legacy value migrates.
+		assertFalse(enabled.getValue());
+		assertTrue(visible.getValue());
 	}
 
 	@Test

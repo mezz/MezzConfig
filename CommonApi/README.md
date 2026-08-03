@@ -45,12 +45,17 @@ general.addBoolean("enabled", true)
 	.addLegacyName("oldEnabled")
 	.build();
 
+general.addString("filter", "")
+	.addLegacyValue("oldGeneral", "oldFilter")
+	.build();
+
 general.addEnum("mode", Mode.STANDARD)
 	.build();
 ```
 
-Use category and value legacy names when storage names change. If serialized
-text also changed, add a legacy value migration function.
+Use value legacy names when storage names change. If a value moved from another
+storage category, declare the old category and value name on that value. If
+serialized text also changed, add a legacy value migration function.
 
 Values can also declare editor hints for integrations such as MezzConfigGui:
 

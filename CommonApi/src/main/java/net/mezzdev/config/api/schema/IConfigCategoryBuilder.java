@@ -19,18 +19,6 @@ import java.util.List;
 @ApiStatus.NonExtendable
 public interface IConfigCategoryBuilder {
 	/**
-	 * Add an old storage name for this category.
-	 * <p>
-	 * Use this when this category has been renamed. Values found under the old category name are loaded into this
-	 * category.
-	 *
-	 * @param legacyName old stable storage name for the category
-	 *
-	 * @since 0.1.0
-	 */
-	IConfigCategoryBuilder addLegacyName(String legacyName);
-
-	/**
 	 * Create a builder for a config value with a custom serializer.
 	 * Use this method with an {@link IConfigListValueSerializer} for custom list storage formats that expose their
 	 * element serializer.

@@ -162,15 +162,6 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
-	public void addCategoryRejectsDuplicateLegacyNames() {
-		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
-		builder.addLegacyName("legacy");
-
-		assertThrows(IllegalArgumentException.class, () -> builder.addLegacyName("category"));
-		assertThrows(IllegalArgumentException.class, () -> builder.addLegacyName("legacy"));
-	}
-
-	@Test
 	public void addValueRejectsDuplicateNames() {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		builder.addBoolean("enabled", false)
@@ -187,6 +178,18 @@ public class ConfigSchemaTest {
 
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyName("enabled"));
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyName("oldEnabled"));
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("category", "oldEnabled"));
+	}
+
+	@Test
+	public void addValueRejectsCurrentOrDuplicateLegacyValueReferences() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		var valueBuilder = builder.addBoolean("enabled", false)
+			.addLegacyValue("legacy", "enabled");
+
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("category", "enabled"));
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("legacy", "enabled"));
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration("legacy", "enabled", Boolean::parseBoolean));
 	}
 
 	@Test
@@ -196,6 +199,7 @@ public class ConfigSchemaTest {
 			.addLegacyValueMigration(Boolean::parseBoolean);
 
 		assertThrows(IllegalStateException.class, () -> valueBuilder.addLegacyValueMigration(Boolean::parseBoolean));
+		assertThrows(IllegalStateException.class, () -> valueBuilder.addLegacyValueMigration("category", "enabled", Boolean::parseBoolean));
 	}
 
 	@Test
