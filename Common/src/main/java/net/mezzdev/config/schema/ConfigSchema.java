@@ -70,13 +70,15 @@ public class ConfigSchema implements IConfigSchema {
 		needsLoad.set(true);
 	}
 
-	public void register(FileWatcher fileWatcher, IConfigFileRegistrar configFileRegistrar) {
+	public void register(@Nullable FileWatcher fileWatcher, IConfigFileRegistrar configFileRegistrar) {
 		if (Files.exists(path)) {
 			loadIfNeeded();
 		}
 		saveAfterLocalizationLoads(0);
 
-		fileWatcher.addCallback(path, this::onFileChanged);
+		if (fileWatcher != null) {
+			fileWatcher.addCallback(path, this::onFileChanged);
+		}
 		configFileRegistrar.addConfigFile(this);
 	}
 

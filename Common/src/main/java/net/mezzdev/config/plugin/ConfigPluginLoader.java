@@ -5,6 +5,7 @@ import net.mezzdev.config.api.plugin.IConfigPlugin;
 import net.mezzdev.config.api.plugin.IConfigRegistration;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
+import net.mezzdev.config.file.ConfigFileWatcherSettings;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.file.ConfigManagers;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
@@ -31,7 +32,9 @@ public final class ConfigPluginLoader {
 	}
 
 	public static IConfigManager createConfigManager(String fileWatcherThreadName, Path configRootDir, List<? extends IConfigPlugin> plugins) {
-		ConfigManager configManager = new ConfigManager(fileWatcherThreadName);
+		ConfigFileWatcherSettings fileWatcherSettings = ConfigFileWatcherSettings.load(configRootDir);
+		ConfigManager configManager = new ConfigManager(fileWatcherThreadName, fileWatcherSettings);
+		ConfigFileWatcherSettings.registerSchema(configManager, configRootDir);
 		for (IConfigPlugin plugin : plugins) {
 			addPlugin(configManager, configRootDir, plugin);
 		}
