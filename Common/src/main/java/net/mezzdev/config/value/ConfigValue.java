@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
@@ -202,7 +201,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	public void notifyListeners(List<? extends AppliedConfigValueChange<?>> changes) {
 		AppliedConfigValueChange<T> change = getChange(changes);
 		if (listeners != null) {
-			listeners.forEach(listener -> listener.onChange(change.oldValue(), change.newValue()));
+			listeners.forEach(listener -> listener.onChange(change));
 		}
 		if (batchListeners != null) {
 			batchListeners.forEach(listener -> listener.onChange(changes));
@@ -223,11 +222,6 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		if (schema != null) {
 			schema.markDirty();
 		}
-	}
-
-	@Override
-	public void addListener(Consumer<T> listener) {
-		addListener((oldValue, newValue) -> listener.accept(newValue));
 	}
 
 	@Override

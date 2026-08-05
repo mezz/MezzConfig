@@ -70,7 +70,7 @@ public class ConfigSerializerLoadSaveTest {
 		ConfigCategory category = createCategory(count);
 		List<String> regularChanges = new ArrayList<>();
 		List<String> batchChanges = new ArrayList<>();
-		count.addListener((oldValue, newValue) -> regularChanges.add("%s -> %s".formatted(oldValue, newValue)));
+		count.addListener(change -> regularChanges.add("%s -> %s".formatted(change.oldValue(), change.newValue())));
 		count.addBatchListener(changes -> batchChanges.add(formatBatch(changes, true, count.getValue())));
 
 		List<? extends IAppliedConfigValueChange<?>> changes = ConfigSerializer.load(path, List.of(category));
@@ -95,7 +95,7 @@ public class ConfigSerializerLoadSaveTest {
 		List<String> regularChanges = new ArrayList<>();
 		List<String> enabledBatches = new ArrayList<>();
 		List<String> countBatches = new ArrayList<>();
-		enabled.addListener((oldValue, newValue) -> regularChanges.add("%s -> %s, count = %s".formatted(oldValue, newValue, count.getValue())));
+		enabled.addListener(change -> regularChanges.add("%s -> %s, count = %s".formatted(change.oldValue(), change.newValue(), count.getValue())));
 		enabled.addBatchListener(changes -> enabledBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
 		count.addBatchListener(changes -> countBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
 

@@ -12,10 +12,9 @@ public interface IConfigValueChangeListener<T> {
 	/**
 	 * Called when a config value changes.
 	 *
-	 * @param oldValue value before the change
-	 * @param newValue value after the change
+	 * @param change the applied change
 	 *
 	 * @since 0.1.0
 	 */
-	void onChange(T oldValue, T newValue);
+	void onChange(IAppliedConfigValueChange<T> change);
 }

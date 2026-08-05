@@ -260,7 +260,7 @@ public class ConfigSchemaTest {
 		List<String> valueChanges = new ArrayList<>();
 		List<String> valueBatches = new ArrayList<>();
 		List<String> schemaBatches = new ArrayList<>();
-		enabled.addListener((oldValue, newValue) -> valueChanges.add("%s -> %s, count = %s".formatted(oldValue, newValue, count.getValue())));
+		enabled.addListener(change -> valueChanges.add("%s -> %s, count = %s".formatted(change.oldValue(), change.newValue(), count.getValue())));
 		enabled.addBatchListener(changes -> valueBatches.add("value batch: %s, count = %s".formatted(changes.size(), count.getValue())));
 		schema.addListener(changes -> schemaBatches.add("schema batch: %s, enabled = %s, count = %s".formatted(
 			changes.size(),

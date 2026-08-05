@@ -6,7 +6,6 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Represents a config value.
@@ -84,16 +83,9 @@ public interface IConfigValue<T> {
 	boolean set(T value);
 
 	/**
-	 * Add a listener that is called with the new value when this config value changes.
+	 * Add a listener that is called with the applied change when this config value changes.
 	 *
-	 * @since 0.1.0
-	 */
-	void addListener(Consumer<T> listener);
-
-	/**
-	 * Add a listener that is called with the old and new values when this config value changes.
-	 *
-	 * @param listener callback accepting the old value and new value
+	 * @param listener callback accepting the applied change
 	 *
 	 * @since 0.1.0
 	 */

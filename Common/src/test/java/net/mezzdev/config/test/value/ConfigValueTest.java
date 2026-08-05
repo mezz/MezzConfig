@@ -24,7 +24,7 @@ public class ConfigValueTest {
 			new IntegerSerializer(0, 10)
 		);
 		AtomicInteger notifications = new AtomicInteger();
-		value.addListener(v -> notifications.incrementAndGet());
+		value.addListener(ignored -> notifications.incrementAndGet());
 
 		assertFalse(value.set(11));
 
@@ -33,7 +33,7 @@ public class ConfigValueTest {
 	}
 
 	@Test
-	public void setNotifiesListenerWithOldAndNewValues() {
+	public void setNotifiesListenerWithAppliedChange() {
 		ConfigValue<Integer> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"count",
@@ -41,7 +41,7 @@ public class ConfigValueTest {
 			new IntegerSerializer(0, 10)
 		);
 		List<String> changes = new ArrayList<>();
-		value.addListener((oldValue, newValue) -> changes.add("%s -> %s".formatted(oldValue, newValue)));
+		value.addListener(change -> changes.add("%s -> %s".formatted(change.oldValue(), change.newValue())));
 
 		assertTrue(value.set(7));
 
@@ -77,7 +77,7 @@ public class ConfigValueTest {
 			BooleanSerializer.INSTANCE
 		);
 		AtomicInteger notifications = new AtomicInteger();
-		value.addListener(v -> notifications.incrementAndGet());
+		value.addListener(ignored -> notifications.incrementAndGet());
 
 		value.clearListeners();
 		assertTrue(value.set(true));

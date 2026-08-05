@@ -5,8 +5,9 @@ import org.jetbrains.annotations.ApiStatus;
 /**
  * One config value change that has already been applied.
  * <p>
- * Get changes from {@link net.mezzdev.config.api.schema.IConfigSchema#batchUpdate(java.util.function.Consumer)}
- * or {@link IConfigValueBatchChangeListener#onChange(java.util.List)}.
+ * Get changes from {@link net.mezzdev.config.api.schema.IConfigSchema#batchUpdate(java.util.function.Consumer)},
+ * {@link IConfigValueChangeListener#onChange(IAppliedConfigValueChange)}, or
+ * {@link IConfigValueBatchChangeListener#onChange(java.util.List)}.
  *
  * @param <T> config value type
  *

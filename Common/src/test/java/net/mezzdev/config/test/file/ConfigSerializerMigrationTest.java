@@ -180,7 +180,7 @@ public class ConfigSerializerMigrationTest {
 		List<String> regularChanges = new ArrayList<>();
 		List<String> firstBatches = new ArrayList<>();
 		List<String> secondBatches = new ArrayList<>();
-		first.addListener((oldValue, newValue) -> regularChanges.add("%s -> %s, second = %s".formatted(oldValue, newValue, second.getValue())));
+		first.addListener(change -> regularChanges.add("%s -> %s, second = %s".formatted(change.oldValue(), change.newValue(), second.getValue())));
 		first.addBatchListener(changes -> firstBatches.add(formatBatch(changes, first.getValue(), second.getValue())));
 		second.addBatchListener(changes -> secondBatches.add(formatBatch(changes, first.getValue(), second.getValue())));
 
