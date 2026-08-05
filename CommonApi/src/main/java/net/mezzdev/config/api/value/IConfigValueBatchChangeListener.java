@@ -1,11 +1,13 @@
 package net.mezzdev.config.api.value;
 
+import net.mezzdev.config.api.schema.IConfigSchema;
+
 import java.util.List;
 
 /**
  * Listener for a batch of config value changes.
  * <p>
- * Register a schema-wide listener here: {@link net.mezzdev.config.api.schema.IConfigSchema#addListener(IConfigValueBatchChangeListener)}.
+ * Register a schema-wide listener here: {@link IConfigSchema#addListener(IConfigValueBatchChangeListener)}.
  * Register a value-scoped listener here: {@link IConfigValue#addBatchListener(IConfigValueBatchChangeListener)}.
  *
  * @since 0.1.0

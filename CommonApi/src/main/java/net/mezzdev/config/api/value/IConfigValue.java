@@ -2,10 +2,12 @@ package net.mezzdev.config.api.value;
 
 import net.mezzdev.config.api.schema.IConfigCategory;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
+import net.mezzdev.config.api.schema.IConfigSchema;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Represents a config value.
@@ -75,7 +77,7 @@ public interface IConfigValue<T> {
 	 * Set the config value to the given value.
 	 * This will automatically mark the config file as dirty so that it will save the new values.
 	 * <p>
-	 * Use {@link net.mezzdev.config.api.schema.IConfigSchema#batchUpdate(java.util.function.Consumer)} to update
+	 * Use {@link IConfigSchema#batchUpdate(Consumer)} to update
 	 * several config values together.
 	 *
 	 * @since 0.1.0

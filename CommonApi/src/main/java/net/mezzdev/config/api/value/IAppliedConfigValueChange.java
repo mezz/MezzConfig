@@ -1,11 +1,14 @@
 package net.mezzdev.config.api.value;
 
+import net.mezzdev.config.api.schema.IConfigSchema;
 import org.jetbrains.annotations.ApiStatus;
+
+import java.util.function.Consumer;
 
 /**
  * One config value change that has already been applied.
  * <p>
- * Get changes from {@link net.mezzdev.config.api.schema.IConfigSchema#batchUpdate(java.util.function.Consumer)},
+ * Get changes from {@link IConfigSchema#batchUpdate(Consumer)},
  * {@link IConfigValueChangeListener#onChange(IAppliedConfigValueChange)}, or
  * {@link IConfigValueBatchChangeListener#onChange(java.util.List)}.
  *
