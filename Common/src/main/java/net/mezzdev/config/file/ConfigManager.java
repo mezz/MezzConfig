@@ -12,12 +12,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 
 public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 	private static final Logger LOGGER = LogManager.getLogger();
@@ -26,7 +25,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 
 	private final @Nullable FileWatcher fileWatcher;
 	private final DelayedExecutor saveExecutor;
-	private final Map<Path, ConfigSchema> configFiles = new HashMap<>();
+	private final List<ConfigSchema> configFiles = new ArrayList<>();
 
 	public ConfigManager() {
 		this("Config File Watcher");
@@ -75,7 +74,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 
 	@Override
 	public void addConfigFile(ConfigSchema configFile) {
-		this.configFiles.put(configFile.getPath(), configFile);
+		this.configFiles.add(configFile);
 	}
 
 	public void startWatching() {
@@ -86,6 +85,6 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 
 	@Override
 	public Collection<? extends IConfigSchema> getSchemas() {
-		return Collections.unmodifiableCollection(configFiles.values());
+		return Collections.unmodifiableCollection(configFiles);
 	}
 }

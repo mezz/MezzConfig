@@ -12,6 +12,7 @@ import java.util.Collection;
  * Useful for mods that let users change configs in-game.
  * <p>
  * An instance is available during plugin registration here: {@link IConfigRegistration#getConfigManager()}.
+ * Config editors can get the active manager here: {@link ConfigManagers#getConfigManager()}.
  *
  * @since 0.1.0
  */

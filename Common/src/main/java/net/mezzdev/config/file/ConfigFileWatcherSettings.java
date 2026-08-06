@@ -18,6 +18,7 @@ public record ConfigFileWatcherSettings(
 	Duration changeSettlingDelay,
 	Duration missingDirectoryRetryInterval
 ) {
+	private static final String MOD_ID = "mezz_config";
 	private static final String CONFIG_DIRECTORY_NAME = "mezz_config";
 	private static final String CONFIG_FILE_NAME = "file_watcher.ini";
 	private static final String LOCALIZATION_PATH = "mezz_config.config";
@@ -86,6 +87,7 @@ public record ConfigFileWatcherSettings(
 			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 		ConfigSchema schema = new ConfigSchema(
+			MOD_ID,
 			getConfigFile(configRootDir),
 			List.of(category),
 			scheduler

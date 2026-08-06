@@ -22,32 +22,68 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 public class ConfigSchema implements IConfigSchema {
 	private static final Logger LOGGER = LogManager.getLogger();
+	static final String DEFAULT_MOD_ID = "mezz_config";
 	private static final Duration SAVE_DELAY_TIME = Duration.ofSeconds(2);
 	private static final int LOCALIZATION_SAVE_RETRY_LIMIT = 30;
 
-	private final Path path;
+	private final String modId;
+	private final ConfigSchemaPathResolver pathResolver;
 	private final List<ConfigCategory> categories;
 	private final List<ConfigEditorCategory> editorCategories;
 	private final AtomicBoolean needsLoad = new AtomicBoolean(true);
 	private final DeduplicatingRunner delayedSave;
+	private @Nullable FileWatcher fileWatcher;
+	private @Nullable Path activePath;
+	private @Nullable Path pendingSavePath;
+	private @Nullable Runnable removeFileWatcherCallback;
 	private @Nullable List<IConfigValueBatchChangeListener> listeners;
+	private boolean registered;
 
 	public ConfigSchema(
 		Path path,
 		List<ConfigCategoryBuilder> categoryBuilders,
 		DelayedTaskScheduler scheduler
 	) {
-		this(path, categoryBuilders, List.copyOf(categoryBuilders), scheduler);
+		this(DEFAULT_MOD_ID, path, categoryBuilders, List.copyOf(categoryBuilders), scheduler);
+	}
+
+	public ConfigSchema(
+		ConfigSchemaPathResolver pathResolver,
+		List<ConfigCategoryBuilder> categoryBuilders,
+		DelayedTaskScheduler scheduler
+	) {
+		this(DEFAULT_MOD_ID, pathResolver, categoryBuilders, List.copyOf(categoryBuilders), scheduler);
+	}
+
+	public ConfigSchema(
+		String modId,
+		Path path,
+		List<ConfigCategoryBuilder> categoryBuilders,
+		DelayedTaskScheduler scheduler
+	) {
+		this(modId, path, categoryBuilders, List.copyOf(categoryBuilders), scheduler);
+	}
+
+	public ConfigSchema(
+		String modId,
+		ConfigSchemaPathResolver pathResolver,
+		List<ConfigCategoryBuilder> categoryBuilders,
+		DelayedTaskScheduler scheduler
+	) {
+		this(modId, pathResolver, categoryBuilders, List.copyOf(categoryBuilders), scheduler);
 	}
 
 	public ConfigSchema(
@@ -56,7 +92,37 @@ public class ConfigSchema implements IConfigSchema {
 		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
 		DelayedTaskScheduler scheduler
 	) {
-		this.path = path;
+		this(DEFAULT_MOD_ID, new StaticConfigSchemaPathResolver(path), categoryBuilders, editorCategoryBuilders, scheduler);
+	}
+
+	public ConfigSchema(
+		ConfigSchemaPathResolver pathResolver,
+		List<ConfigCategoryBuilder> categoryBuilders,
+		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
+		DelayedTaskScheduler scheduler
+	) {
+		this(DEFAULT_MOD_ID, pathResolver, categoryBuilders, editorCategoryBuilders, scheduler);
+	}
+
+	public ConfigSchema(
+		String modId,
+		Path path,
+		List<ConfigCategoryBuilder> categoryBuilders,
+		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
+		DelayedTaskScheduler scheduler
+	) {
+		this(modId, new StaticConfigSchemaPathResolver(path), categoryBuilders, editorCategoryBuilders, scheduler);
+	}
+
+	public ConfigSchema(
+		String modId,
+		ConfigSchemaPathResolver pathResolver,
+		List<ConfigCategoryBuilder> categoryBuilders,
+		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
+		DelayedTaskScheduler scheduler
+	) {
+		this.modId = validateModId(modId);
+		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
 		Map<ConfigCategoryBuilder, ConfigCategory> categoryMap = new IdentityHashMap<>();
 		Map<ConfigEditorCategoryBuilder, ConfigEditorCategory> editorCategoryMap = new IdentityHashMap<>();
 		List<ConfigCategory> categories = new ArrayList<>();
@@ -81,18 +147,122 @@ public class ConfigSchema implements IConfigSchema {
 		this.delayedSave = new DeduplicatingRunner(SAVE_DELAY_TIME, scheduler);
 	}
 
+	public static String validateModId(String modId) {
+		modId = ErrorUtil.checkNotNull(modId, "modId");
+		if (modId.isBlank()) {
+			throw new IllegalArgumentException("modId must not be blank.");
+		}
+		return modId;
+	}
+
 	public void loadIfNeeded() {
+		LoadResult loadResult = loadIfNeededWithoutNotifying();
+		List<AppliedConfigValueChange<?>> changes = loadResult.changes();
+		if (!changes.isEmpty()) {
+			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
+			notifyListeners(immutableChanges);
+		}
+		if (loadResult.activePathChanged() && registered && activePath != null) {
+			saveAfterLocalizationLoads(activePath, 0);
+		}
+	}
+
+	private synchronized LoadResult loadIfNeededWithoutNotifying() {
+		Map<ConfigValue<?>, Object> previousValues = getCurrentValues();
+		Path previousPath = activePath;
+		Optional<Path> resolvedPath = pathResolver.resolvePath()
+			.map(Path::normalize);
+		if (resolvedPath.isEmpty()) {
+			if (previousPath != null) {
+				setActivePath(null);
+				resetValuesToDefaults();
+				needsLoad.set(true);
+				return new LoadResult(getChanges(previousValues), true);
+			}
+			return LoadResult.EMPTY;
+		}
+
+		Path path = resolvedPath.get();
+		boolean pathChanged = !path.equals(previousPath);
+		if (pathChanged) {
+			setActivePath(path);
+			resetValuesToDefaults();
+			needsLoad.set(true);
+		}
+
 		if (!needsLoad.compareAndSet(true, false)) {
-			return;
+			if (pathChanged) {
+				return new LoadResult(getChanges(previousValues), true);
+			}
+			return LoadResult.EMPTY;
 		}
 
 		if (Files.exists(path)) {
 			try {
-				List<AppliedConfigValueChange<?>> changes = ConfigSerializer.load(path, categories);
-				notifyListeners(changes);
+				ConfigSerializer.loadWithoutNotifying(path, categories);
 			} catch (IOException e) {
 				LOGGER.error("Failed to load config schema for: {}", path, e);
 			}
+		}
+		return new LoadResult(getChanges(previousValues), pathChanged);
+	}
+
+	private Map<ConfigValue<?>, Object> getCurrentValues() {
+		Map<ConfigValue<?>, Object> values = new IdentityHashMap<>();
+		getConfigValues().forEach(configValue -> values.put(configValue, configValue.getValueWithoutLoading()));
+		return values;
+	}
+
+	private List<AppliedConfigValueChange<?>> getChanges(Map<ConfigValue<?>, Object> previousValues) {
+		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
+		for (ConfigValue<?> configValue : getConfigValues()) {
+			Object oldValue = previousValues.get(configValue);
+			AppliedConfigValueChange<?> change = getChange(configValue, oldValue);
+			if (change != null) {
+				changes.add(change);
+			}
+		}
+		return List.copyOf(changes);
+	}
+
+	private Collection<ConfigValue<?>> getConfigValues() {
+		return categories.stream()
+			.flatMap(category -> category.getConfigValues().stream())
+			.toList();
+	}
+
+	@SuppressWarnings("unchecked")
+	private static <T> @Nullable AppliedConfigValueChange<T> getChange(ConfigValue<T> configValue, Object oldValue) {
+		T currentValue = configValue.getValueWithoutLoading();
+		if (!Objects.equals(oldValue, currentValue)) {
+			return new AppliedConfigValueChange<>(configValue, (T) oldValue, currentValue);
+		}
+		return null;
+	}
+
+	private void resetValuesToDefaults() {
+		getConfigValues().forEach(ConfigValue::resetToDefaultWithoutNotifying);
+	}
+
+	private void setActivePath(@Nullable Path path) {
+		if (Objects.equals(activePath, path)) {
+			return;
+		}
+		flushPendingSaveIfNeeded();
+		if (removeFileWatcherCallback != null) {
+			removeFileWatcherCallback.run();
+			removeFileWatcherCallback = null;
+		}
+		activePath = path;
+		if (path != null && fileWatcher != null) {
+			removeFileWatcherCallback = fileWatcher.addCallback(path, this::onFileChanged);
+		}
+	}
+
+	private void flushPendingSaveIfNeeded() {
+		Path pendingPath = pendingSavePath;
+		if (pendingPath != null && Objects.equals(activePath, pendingPath)) {
+			save(pendingPath);
 		}
 	}
 
@@ -101,20 +271,18 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	public void register(@Nullable FileWatcher fileWatcher, IConfigFileRegistrar configFileRegistrar) {
-		if (Files.exists(path)) {
-			loadIfNeeded();
-		}
-		saveAfterLocalizationLoads(0);
-
-		if (fileWatcher != null) {
-			fileWatcher.addCallback(path, this::onFileChanged);
-		}
+		this.fileWatcher = fileWatcher;
+		this.registered = true;
+		loadIfNeeded();
 		configFileRegistrar.addConfigFile(this);
 	}
 
-	private void saveAfterLocalizationLoads(int attempt) {
+	private void saveAfterLocalizationLoads(Path path, int attempt) {
+		if (!Objects.equals(path, activePath) && !Objects.equals(path, pendingSavePath)) {
+			return;
+		}
 		if (ConfigSerializer.canLocalizeComments()) {
-			save();
+			save(path);
 			return;
 		}
 		if (attempt == 0) {
@@ -122,22 +290,31 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		if (attempt >= LOCALIZATION_SAVE_RETRY_LIMIT) {
 			LOGGER.debug("Localization did not load before the config save retry limit, saving with translation keys: {}", path);
-			save();
+			save(path);
 			return;
 		}
-		delayedSave.run(() -> saveAfterLocalizationLoads(attempt + 1));
+		delayedSave.run(() -> saveAfterLocalizationLoads(path, attempt + 1));
 	}
 
-	private void save() {
+	private void save(Path path) {
 		try {
 			ConfigSerializer.save(path, categories);
 		} catch (IOException e) {
 			LOGGER.error("Failed to save config file: '{}'", path, e);
+		} finally {
+			if (Objects.equals(pendingSavePath, path)) {
+				pendingSavePath = null;
+			}
 		}
 	}
 
 	public void markDirty() {
-		delayedSave.run(() -> saveAfterLocalizationLoads(0));
+		Path path = activePath;
+		if (path == null) {
+			return;
+		}
+		pendingSavePath = path;
+		delayedSave.run(() -> saveAfterLocalizationLoads(path, 0));
 	}
 
 	@Override
@@ -159,6 +336,9 @@ public class ConfigSchema implements IConfigSchema {
 		}
 
 		loadIfNeeded();
+		if (activePath == null) {
+			throw new IllegalStateException("Config schema has no active backing file.");
+		}
 		validateUpdates(updates);
 
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
@@ -238,7 +418,20 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public Path getPath() {
-		return path;
+	public String getModId() {
+		return modId;
+	}
+
+	@Override
+	public Optional<Path> getPath() {
+		loadIfNeeded();
+		return Optional.ofNullable(activePath);
+	}
+
+	private record LoadResult(
+		List<AppliedConfigValueChange<?>> changes,
+		boolean activePathChanged
+	) {
+		private static final LoadResult EMPTY = new LoadResult(List.of(), false);
 	}
 }

@@ -50,6 +50,14 @@ public final class ConfigSerializer {
 		Path path,
 		List<ConfigCategory> categories
 	) throws IOException {
+		List<AppliedConfigValueChange<?>> changes = loadWithoutNotifying(path, categories);
+		return ConfigValue.notifyChangedValues(changes);
+	}
+
+	public static List<AppliedConfigValueChange<?>> loadWithoutNotifying(
+		Path path,
+		List<ConfigCategory> categories
+	) throws IOException {
 		FileTime lastModifiedTime = Files.getLastModifiedTime(path);
 		FileTime savedTime = saveTimes.get(path);
 		if (savedTime != null && savedTime.compareTo(lastModifiedTime) >= 0) {
@@ -135,7 +143,7 @@ public final class ConfigSerializer {
 				));
 			}
 		}
-		return ConfigValue.notifyChangedValues(changes);
+		return List.copyOf(changes);
 	}
 
 	private static Optional<ConfigValue<?>> getConfigValue(@Nullable ConfigCategory category, String key) {
@@ -250,7 +258,7 @@ public final class ConfigSerializer {
 
 		addRestartRequirementComment(serialized, configValue);
 
-		T value = configValue.getValue();
+		T value = configValue.getValueWithoutLoading();
 		String valueString = serializer.serialize(value);
 		serialized.add("\t%s = %s".formatted(name, valueString));
 	}

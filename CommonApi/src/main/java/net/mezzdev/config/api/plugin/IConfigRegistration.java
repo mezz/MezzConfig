@@ -29,6 +29,19 @@ public interface IConfigRegistration {
 	IConfigSchemaBuilder createSchemaBuilder(String configFileName, String localizationPath);
 
 	/**
+	 * Create a client-world config schema builder.
+	 * <p>
+	 * The file is resolved inside a client-side world or server-specific directory owned by this plugin's mod id.
+	 * These schemas are only active while the client is connected to a world or server.
+	 *
+	 * @param configFileName relative file name for the config file
+	 * @param localizationPath translation key prefix for the config file
+	 *
+	 * @since 0.1.0
+	 */
+	IConfigSchemaBuilder createClientWorldSchemaBuilder(String configFileName, String localizationPath);
+
+	/**
 	 * Create a string-backed sort order.
 	 * The file is resolved inside the config directory owned by this plugin's mod id.
 	 * When removal is allowed, saved sort-order files may omit values.

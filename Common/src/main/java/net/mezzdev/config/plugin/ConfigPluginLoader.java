@@ -1,5 +1,6 @@
 package net.mezzdev.config.plugin;
 
+import net.mezzdev.config.api.files.ConfigManagers;
 import net.mezzdev.config.api.files.IConfigManager;
 import net.mezzdev.config.api.plugin.IConfigPlugin;
 import net.mezzdev.config.api.plugin.IConfigRegistration;
@@ -7,7 +8,8 @@ import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
 import net.mezzdev.config.file.ConfigFileWatcherSettings;
 import net.mezzdev.config.file.ConfigManager;
-import net.mezzdev.config.file.ConfigManagers;
+import net.mezzdev.config.schema.ClientWorldConfigSchemaPathResolver;
+import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
 import net.mezzdev.config.sorting.SortingConfig;
 import net.mezzdev.config.util.ErrorUtil;
@@ -56,14 +58,15 @@ public final class ConfigPluginLoader {
 	}
 
 	private static String validateModId(@Nullable String modId) {
-		modId = ErrorUtil.checkNotNull(modId, "modId");
-		if (modId.isBlank()) {
-			throw new IllegalArgumentException("modId must not be blank.");
-		}
-		return modId;
+		return ConfigSchema.validateModId(modId);
 	}
 
 	private static Path resolveConfigFile(Path pluginConfigDir, String configFileName) {
+		Path relativeConfigFile = getRelativeConfigFile(configFileName);
+		return pluginConfigDir.resolve(relativeConfigFile).normalize();
+	}
+
+	private static Path getRelativeConfigFile(String configFileName) {
 		configFileName = ErrorUtil.checkNotNull(configFileName, "configFileName");
 		if (configFileName.isBlank()) {
 			throw new IllegalArgumentException("configFileName must not be blank.");
@@ -72,7 +75,7 @@ public final class ConfigPluginLoader {
 		if (relativeConfigFile.isAbsolute() || relativeConfigFile.startsWith("..")) {
 			throw new IllegalArgumentException("configFileName must be a relative path inside the plugin config directory: " + configFileName);
 		}
-		return pluginConfigDir.resolve(relativeConfigFile).normalize();
+		return relativeConfigFile;
 	}
 
 	private record ConfigRegistration(
@@ -84,7 +87,18 @@ public final class ConfigPluginLoader {
 		public IConfigSchemaBuilder createSchemaBuilder(String configFileName, String localizationPath) {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path configFile = resolveConfigFile(pluginConfigDir, configFileName);
-			return new ConfigSchemaBuilder(configFile, localizationPath, configManager);
+			return new ConfigSchemaBuilder(modId, configFile, localizationPath, configManager);
+		}
+
+		@Override
+		public IConfigSchemaBuilder createClientWorldSchemaBuilder(String configFileName, String localizationPath) {
+			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
+			Path relativeConfigFile = getRelativeConfigFile(configFileName);
+			ClientWorldConfigSchemaPathResolver pathResolver = new ClientWorldConfigSchemaPathResolver(
+				relativeConfigFile,
+				() -> ClientWorldConfigPathUtil.getWorldPath(pluginConfigDir)
+			);
+			return new ConfigSchemaBuilder(modId, pathResolver, localizationPath, configManager);
 		}
 
 		@Override

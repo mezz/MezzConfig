@@ -15,13 +15,27 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private final Set<String> categoryNames = new HashSet<>();
 	private final List<ConfigCategoryBuilder> categoryBuilders = new ArrayList<>();
 	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders = new ArrayList<>();
-	private final Path configFile;
+	private final String modId;
+	private final ConfigSchemaPathResolver pathResolver;
 	private final String localizationPath;
 	private final ConfigManager configManager;
 	private boolean built;
 
 	public ConfigSchemaBuilder(Path configFile, String localizationPath, ConfigManager configManager) {
-		this.configFile = ErrorUtil.checkNotNull(configFile, "configFile");
+		this(ConfigSchema.DEFAULT_MOD_ID, new StaticConfigSchemaPathResolver(configFile), localizationPath, configManager);
+	}
+
+	public ConfigSchemaBuilder(ConfigSchemaPathResolver pathResolver, String localizationPath, ConfigManager configManager) {
+		this(ConfigSchema.DEFAULT_MOD_ID, pathResolver, localizationPath, configManager);
+	}
+
+	public ConfigSchemaBuilder(String modId, Path configFile, String localizationPath, ConfigManager configManager) {
+		this(modId, new StaticConfigSchemaPathResolver(configFile), localizationPath, configManager);
+	}
+
+	public ConfigSchemaBuilder(String modId, ConfigSchemaPathResolver pathResolver, String localizationPath, ConfigManager configManager) {
+		this.modId = ConfigSchema.validateModId(modId);
+		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
 		this.localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 		this.configManager = ErrorUtil.checkNotNull(configManager, "configManager");
 	}
@@ -56,7 +70,8 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 		checkNotBuilt();
 		built = true;
 		ConfigSchema schema = new ConfigSchema(
-			configFile,
+			modId,
+			pathResolver,
 			categoryBuilders,
 			editorCategoryBuilders,
 			configManager.getSaveScheduler()
@@ -67,7 +82,7 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 
 	private void checkNotBuilt() {
 		if (built) {
-			throw new IllegalStateException("Config schema has already been built: " + configFile);
+			throw new IllegalStateException("Config schema has already been built.");
 		}
 	}
 }

@@ -9,6 +9,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -25,8 +26,19 @@ import java.util.function.Consumer;
 @ApiStatus.NonExtendable
 public interface IConfigSchema {
 	/**
-	 * Get the path of this config schema.
-	 * Used to identify the backing file.
+	 * Get the mod id that owns this config schema.
+	 * <p>
+	 * Config editors can use this to group schemas and attach generated config screens to the owning mod.
+	 *
+	 * @since 0.1.0
+	 */
+	String getModId();
+
+	/**
+	 * Get the current path of this config schema.
+	 * <p>
+	 * Normal client schemas always have a path. Context-specific schemas, such as client-world schemas, return an empty
+	 * optional when there is no active backing file for the current game state.
 	 * <p>
 	 * Note that config values will read from this file automatically,
 	 * and updating config values will save the file automatically,
@@ -34,7 +46,7 @@ public interface IConfigSchema {
 	 *
 	 * @since 0.1.0
 	 */
-	Path getPath();
+	Optional<Path> getPath();
 
 	/**
 	 * Get all the categories in this schema.

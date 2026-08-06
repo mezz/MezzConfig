@@ -11,6 +11,7 @@ import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchemaPathResolver;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -282,6 +284,25 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void schemaExposesOwningModIdForGuiDiscovery() {
+		// Setup: a schema is created for a specific plugin/mod id.
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		builder.addBoolean("enabled", true)
+			.build();
+
+		// Operation: build the schema with owner metadata.
+		ConfigSchema schema = new ConfigSchema(
+			"example_mod",
+			Path.of("test.ini"),
+			List.of(builder),
+			(command, delay) -> CompletableFuture.completedFuture(null)
+		);
+
+		// Assertions: GUI integrations can discover which mod owns this schema without their own registration plugin.
+		assertEquals("example_mod", schema.getModId());
+	}
+
+	@Test
 	public void configValueBuilderRejectsDuplicateEditorCategories() {
 		// Setup: a value builder already has one editor category.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
@@ -481,6 +502,99 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void contextSchemaIsInactiveUntilPathResolves(@TempDir Path tempDir) {
+		// Setup: a context-specific schema has no active backing file until the game context can resolve one.
+		Path activePath = tempDir.resolve("world").resolve("local").resolve("test").resolve("test.ini");
+		AtomicReference<Optional<Path>> resolvedPath = new AtomicReference<>(Optional.empty());
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createSchema(createPathResolver(resolvedPath), builder);
+
+		// Assertions: inactive schemas keep their defaults and cannot be updated because there is nowhere to save them.
+		assertEquals(Optional.empty(), schema.getPath());
+		assertTrue(enabled.getValue());
+		assertThrows(IllegalStateException.class, () -> enabled.set(false));
+
+		// Operation: the client enters a world and the schema can now resolve its active path.
+		resolvedPath.set(Optional.of(activePath));
+
+		// Assertions: the schema is now editable and reports the active backing file.
+		assertEquals(Optional.of(activePath), schema.getPath());
+		assertTrue(enabled.set(false));
+	}
+
+	@Test
+	public void contextSchemaLoadsFromNewPathAsOneBatch(@TempDir Path tempDir) throws IOException {
+		// Setup: two different client-world paths have different saved values for the same schema.
+		Path firstPath = tempDir.resolve("world").resolve("local").resolve("first").resolve("test.ini");
+		Path secondPath = tempDir.resolve("world").resolve("local").resolve("second").resolve("test.ini");
+		Files.createDirectories(firstPath.getParent());
+		Files.createDirectories(secondPath.getParent());
+		Files.write(firstPath, List.of(
+			"[category]",
+			"enabled = false"
+		));
+		Files.write(secondPath, List.of(
+			"[category]",
+			"enabled = true"
+		));
+		AtomicReference<Optional<Path>> resolvedPath = new AtomicReference<>(Optional.of(firstPath));
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createSchema(createPathResolver(resolvedPath), builder);
+		List<String> valueChanges = new ArrayList<>();
+		List<String> schemaBatches = new ArrayList<>();
+		enabled.addListener(change -> valueChanges.add("%s -> %s".formatted(change.oldValue(), change.newValue())));
+		schema.addListener(changes -> schemaBatches.add(formatChanges(changes)));
+
+		// Operation: load the first world-specific config file.
+		assertFalse(enabled.getValue());
+
+		// Assertions: the value loads from the active file and listeners receive one applied batch.
+		assertEquals(Optional.of(firstPath), schema.getPath());
+		assertEquals(List.of("true -> false"), valueChanges);
+		assertEquals(List.of("enabled: true -> false"), schemaBatches);
+
+		// Operation: switch context and load the second world-specific config file.
+		resolvedPath.set(Optional.of(secondPath));
+		assertTrue(enabled.getValue());
+
+		// Assertions: switching paths resets and loads before notifying, so listeners see old world value -> new world value.
+		assertEquals(Optional.of(secondPath), schema.getPath());
+		assertEquals(List.of("true -> false", "false -> true"), valueChanges);
+		assertEquals(List.of("enabled: true -> false", "enabled: false -> true"), schemaBatches);
+	}
+
+	@Test
+	public void contextSchemaFlushesPendingSaveBeforePathSwitch(@TempDir Path tempDir) throws IOException {
+		// Setup: a client-world schema has an active path and a save scheduler that never runs delayed saves.
+		Path firstPath = tempDir.resolve("world").resolve("local").resolve("first").resolve("test.ini");
+		Path secondPath = tempDir.resolve("world").resolve("local").resolve("second").resolve("test.ini");
+		AtomicReference<Optional<Path>> resolvedPath = new AtomicReference<>(Optional.of(firstPath));
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = new ConfigSchema(
+			createPathResolver(resolvedPath),
+			List.of(builder),
+			List.of(builder),
+			(command, delay) -> new CompletableFuture<>()
+		);
+
+		// Operation: update the first world, then switch to the second world before the delayed save can run.
+		assertTrue(enabled.set(false));
+		resolvedPath.set(Optional.of(secondPath));
+		assertTrue(enabled.getValue());
+
+		// Assertions: switching paths flushes the first world's pending save before values reset for the second world.
+		assertTrue(Files.readString(firstPath).contains("enabled = false"));
+		assertEquals(Optional.of(secondPath), schema.getPath());
+		assertTrue(enabled.getValue());
+	}
+
+	@Test
 	public void buildCategoryRequiresValuesToBeBuilt() {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		builder.addBoolean("enabled", true);
@@ -555,6 +669,24 @@ public class ConfigSchemaTest {
 		);
 	}
 
+	private static ConfigSchema createSchema(ConfigSchemaPathResolver pathResolver, ConfigCategoryBuilder... builders) {
+		return new ConfigSchema(
+			pathResolver,
+			List.of(builders),
+			List.of(builders),
+			(command, delay) -> CompletableFuture.completedFuture(null)
+		);
+	}
+
+	private static ConfigSchemaPathResolver createPathResolver(AtomicReference<Optional<Path>> resolvedPath) {
+		return new ConfigSchemaPathResolver() {
+			@Override
+			public Optional<Path> resolvePath() {
+				return resolvedPath.get();
+			}
+		};
+	}
+
 	private static List<String> getCategoryNames(List<? extends IConfigEditorCategory> categories) {
 		return categories.stream()
 			.map(IConfigEditorCategory::getName)
@@ -589,5 +721,11 @@ public class ConfigSchemaTest {
 			enabled,
 			count
 		);
+	}
+
+	private static String formatChanges(List<? extends IAppliedConfigValueChange<?>> changes) {
+		return String.join(", ", changes.stream()
+			.map(change -> "%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()))
+			.toList());
 	}
 }

@@ -23,8 +23,9 @@ the future.
 ## Config schemas
 
 Use `IConfigRegistration.createSchemaBuilder(...)` to create a schema backed by
-a config file. Schemas contain storage categories, and categories contain config
-values.
+a config file. Use `createClientWorldSchemaBuilder(...)` when the values should
+be separate for each singleplayer world or multiplayer server. Schemas contain
+storage categories, and categories contain config values.
 
 Supported built-in value helpers include:
 
@@ -52,6 +53,18 @@ general.addString("filter", "")
 general.addEnum("mode", Mode.STANDARD)
 	.build();
 ```
+
+Client-world schemas are inactive until the client is connected to a world or
+server. While inactive, values read as defaults and updates are rejected because
+there is no backing file to save. Config editors should check
+`IConfigSchema.getPath()` before showing or enabling context-specific schemas.
+
+Schemas expose the owning mod id through `IConfigSchema.getModId()`, so
+integrations can group schemas by mod and create default config screens without
+adding GUI-specific API to MezzConfig.
+
+Generated config screens can get the active config manager from
+`net.mezzdev.config.api.files.ConfigManagers.getConfigManager()`.
 
 Use value legacy names when storage names change. If a value moved from another
 storage category, declare the old category and value name on that value. If

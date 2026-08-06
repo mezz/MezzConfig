@@ -162,6 +162,10 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		if (schema != null) {
 			schema.loadIfNeeded();
 		}
+		return getValueWithoutLoading();
+	}
+
+	public T getValueWithoutLoading() {
 		return currentValue;
 	}
 
@@ -231,6 +235,10 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 			return new AppliedConfigValueChange<>(this, oldValue, currentValue);
 		}
 		return null;
+	}
+
+	public void resetToDefaultWithoutNotifying() {
+		currentValue = defaultValue;
 	}
 
 	void notifyListeners(AppliedConfigValueChange<T> change) {
