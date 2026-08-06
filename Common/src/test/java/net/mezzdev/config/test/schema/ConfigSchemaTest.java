@@ -1,11 +1,14 @@
 package net.mezzdev.config.test.schema;
 
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
+import net.mezzdev.config.api.schema.IConfigEditorCategory;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
+import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
+import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.value.ConfigValue;
@@ -18,6 +21,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -188,6 +192,7 @@ public class ConfigSchemaTest {
 			.addLegacyValue("legacy", "enabled");
 
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("category", "enabled"));
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration("category", "enabled", Boolean::parseBoolean));
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("legacy", "enabled"));
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration("legacy", "enabled", Boolean::parseBoolean));
 	}
@@ -196,10 +201,10 @@ public class ConfigSchemaTest {
 	public void addValueRejectsDuplicateLegacyValueMigrations() {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		var valueBuilder = builder.addBoolean("enabled", false)
-			.addLegacyValueMigration(Boolean::parseBoolean);
+			.addLegacyValueMigration("legacy", "enabled", Boolean::parseBoolean);
 
-		assertThrows(IllegalStateException.class, () -> valueBuilder.addLegacyValueMigration(Boolean::parseBoolean));
-		assertThrows(IllegalStateException.class, () -> valueBuilder.addLegacyValueMigration("category", "enabled", Boolean::parseBoolean));
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("legacy", "enabled"));
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration("legacy", "enabled", Boolean::parseBoolean));
 	}
 
 	@Test
@@ -213,28 +218,63 @@ public class ConfigSchemaTest {
 
 		// Assertions: editors can batch by default and use the value's storage category when no editor category is set.
 		assertEquals(ConfigValueEditMode.BATCH, enabled.getEditMode());
-		assertEquals(List.of(), enabled.getEditorCategoryNames());
+		assertEquals(List.of(), enabled.getEditorCategories());
 	}
 
 	@Test
-	public void configValueBuilderStoresEditorHints() {
-		// Setup: values can declare when editors should save them and where editors should show them.
+	public void configValueBuilderResolvesEditorOnlyCategoriesInSchemaOrder() {
+		// Setup: values can declare when editors should save them and which editor categories should show them.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigEditorCategoryBuilder quick = new ConfigEditorCategoryBuilder("mezz_config.config.test", "quick");
+		ConfigEditorCategoryBuilder advanced = new ConfigEditorCategoryBuilder("mezz_config.config.test", "advanced");
 
-		// Operation: declare presentation hints on the value builder before building the value.
+		// Operation: declare presentation hints before the schema builds the final category instances.
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.setEditMode(ConfigValueEditMode.IMMEDIATE)
-			.addEditorCategory("quick")
-			.addEditorCategory("advanced")
+			.addEditorCategory(advanced)
+			.addEditorCategory(quick)
 			.build();
 		ConfigValue<Boolean> requiresRestart = builder.addBoolean("requiresRestart", false)
 			.setEditMode(ConfigValueEditMode.RESTART)
 			.build();
+		ConfigSchema schema = createSchema(
+			List.of(builder),
+			List.of(builder, quick, advanced)
+		);
 
-		// Assertions: the config value exposes the hints for config editor integrations.
+		// Assertions: editor-only categories are not storage categories, but they are exposed in schema editor order.
+		assertEquals(List.of("category"), getCategoryNames(schema.getCategories()));
+		assertEquals(List.of("category", "quick", "advanced"), getCategoryNames(schema.getEditorCategories()));
 		assertEquals(ConfigValueEditMode.IMMEDIATE, enabled.getEditMode());
-		assertEquals(List.of("quick", "advanced"), enabled.getEditorCategoryNames());
+		assertEquals(List.of("quick", "advanced"), getCategoryNames(enabled.getEditorCategories()));
+		assertSame(schema.getEditorCategories().get(1), enabled.getEditorCategories().get(0));
+		assertSame(schema.getEditorCategories().get(2), enabled.getEditorCategories().get(1));
 		assertEquals(ConfigValueEditMode.RESTART, requiresRestart.getEditMode());
+	}
+
+	@Test
+	public void editorOnlyCategoriesAreNotSerialized(@TempDir Path tempDir) throws IOException {
+		// Setup: a value is stored in one category but shown under a separate editor-only category.
+		Path path = tempDir.resolve("test.ini");
+		ConfigCategoryBuilder storage = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigEditorCategoryBuilder editorOnly = new ConfigEditorCategoryBuilder("mezz_config.config.test", "ingredientSorting");
+		storage.addBoolean("sortIngredientsAfterLookup", true)
+			.addEditorCategory(editorOnly)
+			.build();
+		ConfigSchema schema = createSchema(
+			path,
+			List.of(storage),
+			List.of(storage, editorOnly)
+		);
+
+		// Operation: save the storage schema to disk.
+		ConfigSerializer.save(path, schema.getCategories());
+
+		// Assertions: the editor-only category is available for GUI ordering but not written as an empty file section.
+		List<String> lines = Files.readAllLines(path);
+		assertEquals(List.of("general", "ingredientSorting"), getCategoryNames(schema.getEditorCategories()));
+		assertTrue(lines.contains("[general]"));
+		assertFalse(lines.contains("[ingredientSorting]"));
 	}
 
 	@Test
@@ -242,10 +282,10 @@ public class ConfigSchemaTest {
 		// Setup: a value builder already has one editor category.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		var valueBuilder = builder.addBoolean("enabled", true)
-			.addEditorCategory("quick");
+			.addEditorCategory(builder);
 
 		// Operation and assertions: duplicate editor categories are rejected early instead of producing duplicate GUI rows.
-		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addEditorCategory("quick"));
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addEditorCategory(builder));
 	}
 
 	@Test
@@ -369,6 +409,47 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void addListenerReturnsUnsubscribeCallback() {
+		// Setup: register a schema-wide batch listener and keep its unsubscribe callback.
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		AtomicInteger notifications = new AtomicInteger();
+		Runnable unsubscribe = schema.addListener(ignored -> notifications.incrementAndGet());
+
+		// Operation: notify once, unsubscribe, then change the value again.
+		assertTrue(enabled.set(false));
+		unsubscribe.run();
+		assertTrue(enabled.set(true));
+
+		// Assertions: the schema listener only receives changes before its unsubscribe callback is run.
+		assertEquals(1, notifications.get());
+	}
+
+	@Test
+	public void schemaListenerCanUnsubscribeDuringNotification() {
+		// Setup: register a schema-wide listener that removes itself while handling its first batch.
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		AtomicInteger notifications = new AtomicInteger();
+		AtomicReference<Runnable> unsubscribe = new AtomicReference<>();
+		unsubscribe.set(schema.addListener(ignored -> {
+			notifications.incrementAndGet();
+			unsubscribe.get().run();
+		}));
+
+		// Operation: apply two changes that would both notify if the listener remained subscribed.
+		assertTrue(enabled.set(false));
+		assertTrue(enabled.set(true));
+
+		// Assertions: notification uses a stable listener snapshot and the self-unsubscribe prevents later callbacks.
+		assertEquals(1, notifications.get());
+	}
+
+	@Test
 	public void loadIfNeededNotifiesSchemaBatchListenersAfterAllValuesUpdate(@TempDir Path tempDir) throws IOException {
 		// Setup: a config file changes two values before the schema is loaded.
 		Path path = tempDir.resolve("test.ini");
@@ -442,16 +523,38 @@ public class ConfigSchemaTest {
 		ADVANCED
 	}
 
-	private static ConfigSchema createSchema(ConfigCategoryBuilder builder) {
-		return createSchema(Path.of("test.ini"), builder);
+	private static ConfigSchema createSchema(ConfigCategoryBuilder... builders) {
+		return createSchema(Path.of("test.ini"), builders);
 	}
 
-	private static ConfigSchema createSchema(Path path, ConfigCategoryBuilder builder) {
+	private static ConfigSchema createSchema(Path path, ConfigCategoryBuilder... builders) {
+		return createSchema(path, List.of(builders), List.of(builders));
+	}
+
+	private static ConfigSchema createSchema(
+		List<ConfigCategoryBuilder> builders,
+		List<ConfigEditorCategoryBuilder> editorCategoryBuilders
+	) {
+		return createSchema(Path.of("test.ini"), builders, editorCategoryBuilders);
+	}
+
+	private static ConfigSchema createSchema(
+		Path path,
+		List<ConfigCategoryBuilder> builders,
+		List<ConfigEditorCategoryBuilder> editorCategoryBuilders
+	) {
 		return new ConfigSchema(
 			path,
-			List.of(builder),
+			builders,
+			editorCategoryBuilders,
 			(command, delay) -> CompletableFuture.completedFuture(null)
 		);
+	}
+
+	private static List<String> getCategoryNames(List<? extends IConfigEditorCategory> categories) {
+		return categories.stream()
+			.map(IConfigEditorCategory::getName)
+			.toList();
 	}
 
 	@SuppressWarnings("unchecked")

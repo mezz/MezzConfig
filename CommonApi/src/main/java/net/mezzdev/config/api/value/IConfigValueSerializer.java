@@ -4,6 +4,7 @@ import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -12,7 +13,7 @@ import java.util.Optional;
  * Pass your serializer to
  * {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)}
  * or as the element serializer in
- * {@link IConfigCategoryBuilder#addList(String, java.util.List, IConfigValueSerializer)}.
+ * {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)}.
  * <p>
  * For list config values that should expose their element serializer, implement {@link IConfigListValueSerializer}.
  *
@@ -63,7 +64,9 @@ public interface IConfigValueSerializer<T> {
 	 * @since 0.1.0
 	 */
 	@Unmodifiable
-	Optional<Collection<T>> getAllValidValues();
+	default Optional<Collection<T>> getAllValidValues() {
+		return Optional.empty();
+	}
 
 	/**
 	 * Get the description of what values are valid for this config value.

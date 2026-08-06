@@ -22,8 +22,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -35,6 +37,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	private final Path path;
 	private final List<ConfigCategory> categories;
+	private final List<ConfigEditorCategory> editorCategories;
 	private final AtomicBoolean needsLoad = new AtomicBoolean(true);
 	private final DeduplicatingRunner delayedSave;
 	private @Nullable List<IConfigValueBatchChangeListener> listeners;
@@ -44,10 +47,37 @@ public class ConfigSchema implements IConfigSchema {
 		List<ConfigCategoryBuilder> categoryBuilders,
 		DelayedTaskScheduler scheduler
 	) {
+		this(path, categoryBuilders, List.copyOf(categoryBuilders), scheduler);
+	}
+
+	public ConfigSchema(
+		Path path,
+		List<ConfigCategoryBuilder> categoryBuilders,
+		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
+		DelayedTaskScheduler scheduler
+	) {
 		this.path = path;
-		this.categories = categoryBuilders.stream()
-			.map(b -> b.build(this))
-			.toList();
+		Map<ConfigCategoryBuilder, ConfigCategory> categoryMap = new IdentityHashMap<>();
+		Map<ConfigEditorCategoryBuilder, ConfigEditorCategory> editorCategoryMap = new IdentityHashMap<>();
+		List<ConfigCategory> categories = new ArrayList<>();
+		for (ConfigCategoryBuilder categoryBuilder : categoryBuilders) {
+			ConfigCategory category = categoryBuilder.build(this);
+			categoryMap.put(categoryBuilder, category);
+			editorCategoryMap.put(categoryBuilder, category);
+			categories.add(category);
+		}
+		List<ConfigEditorCategory> editorCategories = new ArrayList<>();
+		for (ConfigEditorCategoryBuilder editorCategoryBuilder : editorCategoryBuilders) {
+			ConfigEditorCategory category = editorCategoryMap.get(editorCategoryBuilder);
+			if (category == null) {
+				category = editorCategoryBuilder.build();
+				editorCategoryMap.put(editorCategoryBuilder, category);
+			}
+			editorCategories.add(category);
+		}
+		categoryBuilders.forEach(categoryBuilder -> categoryBuilder.resolveEditorCategories(editorCategoryBuilders, editorCategoryMap));
+		this.categories = List.copyOf(categories);
+		this.editorCategories = List.copyOf(editorCategories);
 		this.delayedSave = new DeduplicatingRunner(SAVE_DELAY_TIME, scheduler);
 	}
 
@@ -169,15 +199,22 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public void addListener(IConfigValueBatchChangeListener listener) {
+	public Runnable addListener(IConfigValueBatchChangeListener listener) {
+		ErrorUtil.checkNotNull(listener, "listener");
 		if (this.listeners == null) {
 			this.listeners = new ArrayList<>();
 		}
 		this.listeners.add(listener);
+		return () -> {
+			if (this.listeners != null) {
+				this.listeners.remove(listener);
+			}
+		};
 	}
 
 	private void notifyListeners(List<? extends IAppliedConfigValueChange<?>> changes) {
 		if (listeners != null && !changes.isEmpty()) {
+			List<IConfigValueBatchChangeListener> listeners = List.copyOf(this.listeners);
 			listeners.forEach(listener -> listener.onChange(changes));
 		}
 	}
@@ -193,6 +230,11 @@ public class ConfigSchema implements IConfigSchema {
 	@Override
 	public List<ConfigCategory> getCategories() {
 		return categories;
+	}
+
+	@Override
+	public List<ConfigEditorCategory> getEditorCategories() {
+		return editorCategories;
 	}
 
 	@Override

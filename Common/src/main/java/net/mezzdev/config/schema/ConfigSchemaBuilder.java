@@ -14,6 +14,7 @@ import java.util.Set;
 public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private final Set<String> categoryNames = new HashSet<>();
 	private final List<ConfigCategoryBuilder> categoryBuilders = new ArrayList<>();
+	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders = new ArrayList<>();
 	private final Path configFile;
 	private final String localizationPath;
 	private final ConfigManager configManager;
@@ -32,8 +33,21 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 		if (!categoryNames.add(name)) {
 			throw new IllegalArgumentException("There is already a category named: " + name);
 		}
-		ConfigCategoryBuilder category = new ConfigCategoryBuilder(localizationPath, name);
+		ConfigCategoryBuilder category = new ConfigCategoryBuilder(this, localizationPath, name);
 		this.categoryBuilders.add(category);
+		this.editorCategoryBuilders.add(category);
+		return category;
+	}
+
+	@Override
+	public ConfigEditorCategoryBuilder addEditorCategory(String name) {
+		checkNotBuilt();
+		name = ConfigNameUtil.validateConfigName(name, "categoryName");
+		if (!categoryNames.add(name)) {
+			throw new IllegalArgumentException("There is already a category named: " + name);
+		}
+		ConfigEditorCategoryBuilder category = new ConfigEditorCategoryBuilder(this, localizationPath, name);
+		this.editorCategoryBuilders.add(category);
 		return category;
 	}
 
@@ -44,6 +58,7 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 		ConfigSchema schema = new ConfigSchema(
 			configFile,
 			categoryBuilders,
+			editorCategoryBuilders,
 			configManager.getSaveScheduler()
 		);
 		configManager.registerSchema(schema);

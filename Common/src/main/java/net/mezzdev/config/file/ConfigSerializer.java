@@ -120,17 +120,7 @@ public final class ConfigSerializer {
 					List<String> errors = configValue.get()
 						.setFromSerializedValue(value, changes);
 					if (!errors.isEmpty()) {
-						ConfigValueReference legacyValueReference = new ConfigValueReference(categoryName, key);
-						List<ConfigValueMigration<?>> migrations = getMovedValueMigrations(categories, legacyValueReference);
-						if (migrations.isEmpty()) {
-							logDeserializeErrors(path, lineNumber, line, value, errors);
-						} else {
-							List<String> migrationErrors = new ArrayList<>();
-							migrations.forEach(migration -> migrationErrors.addAll(migration.migrate(value, changes)));
-							if (!migrationErrors.isEmpty()) {
-								logDeserializeErrors(path, lineNumber, line, value, migrationErrors);
-							}
-						}
+						logDeserializeErrors(path, lineNumber, line, value, errors);
 					}
 				}
 			} else {

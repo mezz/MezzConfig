@@ -13,9 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-public class ConfigCategory implements IConfigCategory {
-	private final String name;
-	private final String localizationKey;
+public class ConfigCategory extends ConfigEditorCategory implements IConfigCategory {
 	private final Map<String, ConfigValue<?>> valueMap;
 	private final Map<ConfigValueReference, List<ConfigValueMigration<?>>> movedValueMigrations;
 
@@ -29,8 +27,7 @@ public class ConfigCategory implements IConfigCategory {
 		List<ConfigValue<?>> values,
 		Map<ConfigValueReference, List<ConfigValueMigration<?>>> movedValueMigrations
 	) {
-		this.name = name;
-		this.localizationKey = localizationPath;
+		super(localizationPath, name);
 		Map<String, ConfigValue<?>> map = new LinkedHashMap<>();
 		for (ConfigValue<?> value : values) {
 			ConfigValue<?> previous = map.put(value.getName(), value);
@@ -48,16 +45,6 @@ public class ConfigCategory implements IConfigCategory {
 		Map<ConfigValueReference, List<ConfigValueMigration<?>>> copy = new LinkedHashMap<>();
 		movedValueMigrations.forEach((key, value) -> copy.put(key, List.copyOf(value)));
 		return Map.copyOf(copy);
-	}
-
-	@Override
-	public String getName() {
-		return name;
-	}
-
-	@Override
-	public String getLocalizationKey() {
-		return localizationKey;
 	}
 
 	public Optional<ConfigValue<?>> getConfigValue(String configValueName) {

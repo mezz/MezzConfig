@@ -2,6 +2,7 @@ package net.mezzdev.config.api.value;
 
 import net.mezzdev.config.api.schema.IConfigCategory;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
+import net.mezzdev.config.api.schema.IConfigEditorCategory;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
@@ -63,15 +64,16 @@ public interface IConfigValue<T> {
 	ConfigValueEditMode getEditMode();
 
 	/**
-	 * Get the category names where config editors should show this value.
+	 * Get the categories where config editors should show this value.
 	 * <p>
-	 * If this is empty, config editors can show the value in its storage category. Values may be shown in multiple
-	 * editor categories.
+	 * If this is empty, config editors can show the value in the category that contains it.
+	 * Values may be shown in multiple editor categories. Categories are returned in editor category order from
+	 * {@link IConfigSchema#getEditorCategories()}.
 	 *
 	 * @since 0.1.0
 	 */
 	@Unmodifiable
-	List<String> getEditorCategoryNames();
+	List<? extends IConfigEditorCategory> getEditorCategories();
 
 	/**
 	 * Set the config value to the given value.
@@ -88,19 +90,23 @@ public interface IConfigValue<T> {
 	 * Add a listener that is called with the applied change when this config value changes.
 	 *
 	 * @param listener callback accepting the applied change
+	 * @return a callback that removes this listener
 	 *
 	 * @since 0.1.0
 	 */
-	void addListener(IConfigValueChangeListener<T> listener);
+	Runnable addListener(IConfigValueChangeListener<T> listener);
 
 	/**
 	 * Add a listener that is called with all changes from a batch containing this config value.
 	 * <p>
 	 * Use this when the listener needs to observe other config values updated in the same batch.
 	 *
+	 * @param listener callback accepting the applied changes
+	 * @return a callback that removes this listener
+	 *
 	 * @since 0.1.0
 	 */
-	void addBatchListener(IConfigValueBatchChangeListener listener);
+	Runnable addBatchListener(IConfigValueBatchChangeListener listener);
 
 	/**
 	 * Get the helper for serializing values to and from Strings, and validating values.

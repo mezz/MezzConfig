@@ -14,7 +14,6 @@ import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.ConfigValueBuilder;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
-import net.mezzdev.config.util.ConfigNameUtil;
 import net.mezzdev.config.util.ErrorUtil;
 import org.jetbrains.annotations.Nullable;
 
@@ -26,9 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
-public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
-	private final String name;
-	private final String localizationPath;
+public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implements IConfigCategoryBuilder {
 	private final List<ConfigValueBuilder<?>> valueBuilders = new ArrayList<>();
 	private final List<ConfigValue<?>> values = new ArrayList<>();
 	private final Set<String> valueNames = new LinkedHashSet<>();
@@ -36,27 +33,20 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 	private boolean built;
 
 	public ConfigCategoryBuilder(String localizationPath, String name) {
-		this.name = ConfigNameUtil.validateConfigName(name, "categoryName");
-		localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
-		this.localizationPath = localizationPath + "." + this.name;
+		super(localizationPath, name);
 	}
 
-	public String getName() {
-		return name;
+	ConfigCategoryBuilder(@Nullable ConfigSchemaBuilder schemaBuilder, String localizationPath, String name) {
+		super(schemaBuilder, localizationPath, name);
 	}
 
 	public <T> ConfigValue<T> addValue(
 		ConfigValue<T> value,
 		Set<ConfigValueReference> legacyValueReferences,
-		Map<ConfigValueReference, Function<String, T>> legacyValueMigrations,
-		@Nullable Function<String, T> currentValueMigration
+		Map<ConfigValueReference, Function<String, T>> legacyValueMigrations
 	) {
 		checkNotBuilt();
 		this.values.add(value);
-		if (currentValueMigration != null) {
-			ConfigValueReference reference = new ConfigValueReference(name, value.getName());
-			addMovedValueMigration(reference, ConfigValueMigration.migrate(value, currentValueMigration));
-		}
 		for (ConfigValueReference reference : legacyValueReferences) {
 			addMovedValueMigration(reference, ConfigValueMigration.deserialize(value));
 		}
@@ -73,7 +63,7 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 
 	@Override
 	public <T> ConfigValueBuilder<T> addValue(String name, T defaultValue, IConfigValueSerializer<T> serializer) {
-		return addValueBuilder(new ConfigValueBuilder<>(this, localizationPath, name, defaultValue, serializer));
+		return addValueBuilder(new ConfigValueBuilder<>(this, getLocalizationKey(), name, defaultValue, serializer));
 	}
 
 	@Override
@@ -238,12 +228,21 @@ public class ConfigCategoryBuilder implements IConfigCategoryBuilder {
 		for (ConfigValue<?> value : values) {
 			value.setSchema(schema);
 		}
-		return new ConfigCategory(localizationPath, name, values, movedValueMigrations);
+		return new ConfigCategory(getLocalizationKey(), getName(), values, movedValueMigrations);
+	}
+
+	public void resolveEditorCategories(
+		List<ConfigEditorCategoryBuilder> categoryBuilders,
+		Map<ConfigEditorCategoryBuilder, ? extends ConfigEditorCategory> categories
+	) {
+		for (ConfigValue<?> value : values) {
+			value.resolveEditorCategories(categoryBuilders, categories);
+		}
 	}
 
 	private void checkNotBuilt() {
 		if (built) {
-			throw new IllegalStateException("Config category has already been built: " + name);
+			throw new IllegalStateException("Config category has already been built: " + getName());
 		}
 	}
 }

@@ -14,12 +14,23 @@ import org.jetbrains.annotations.ApiStatus;
 public interface IConfigSchemaBuilder {
 	/**
 	 * Add a storage category to this config schema.
+	 * Categories are returned from {@link IConfigSchema#getCategories()} in the order they are added here.
 	 *
 	 * @param name stable storage name for the category
 	 *
 	 * @since 0.1.0
 	 */
 	IConfigCategoryBuilder addCategory(String name);
+
+	/**
+	 * Add a category for config editors without adding a category to the config file.
+	 * Editor categories are returned from {@link IConfigSchema#getEditorCategories()} in the order they are added here.
+	 *
+	 * @param name stable editor category name
+	 *
+	 * @since 0.1.0
+	 */
+	IConfigEditorCategoryBuilder addEditorCategory(String name);
 
 	/**
 	 * Build and register the config schema.

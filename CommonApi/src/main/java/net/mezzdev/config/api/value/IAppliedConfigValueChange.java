@@ -3,6 +3,7 @@ package net.mezzdev.config.api.value;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import org.jetbrains.annotations.ApiStatus;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -10,7 +11,7 @@ import java.util.function.Consumer;
  * <p>
  * Get changes from {@link IConfigSchema#batchUpdate(Consumer)},
  * {@link IConfigValueChangeListener#onChange(IAppliedConfigValueChange)}, or
- * {@link IConfigValueBatchChangeListener#onChange(java.util.List)}.
+ * {@link IConfigValueBatchChangeListener#onChange(List)}.
  *
  * @param <T> config value type
  *

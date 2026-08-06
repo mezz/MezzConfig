@@ -9,6 +9,7 @@ import java.util.List;
  * <p>
  * Register a schema-wide listener here: {@link IConfigSchema#addListener(IConfigValueBatchChangeListener)}.
  * Register a value-scoped listener here: {@link IConfigValue#addBatchListener(IConfigValueBatchChangeListener)}.
+ * The registration methods return a callback that unsubscribes the listener.
  *
  * @since 0.1.0
  */

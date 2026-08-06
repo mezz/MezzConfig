@@ -3,7 +3,9 @@ package net.mezzdev.config.value;
 import net.mezzdev.config.api.value.IConfigValueBuilder;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.schema.IConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
+import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.util.ConfigNameUtil;
 import net.mezzdev.config.util.ErrorUtil;
 import org.jetbrains.annotations.Nullable;
@@ -22,8 +24,7 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 	private final IConfigValueSerializer<T> serializer;
 	private final Set<ConfigValueReference> legacyValueReferences = new LinkedHashSet<>();
 	private final Map<ConfigValueReference, Function<String, T>> legacyValueMigrations = new LinkedHashMap<>();
-	private final Set<String> editorCategoryNames = new LinkedHashSet<>();
-	private @Nullable Function<String, T> currentValueMigration;
+	private final Set<ConfigEditorCategoryBuilder> editorCategoryBuilders = new LinkedHashSet<>();
 	private ConfigValueEditMode editMode = ConfigValueEditMode.BATCH;
 	private @Nullable ConfigValue<T> configValue;
 
@@ -74,16 +75,6 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 	}
 
 	@Override
-	public ConfigValueBuilder<T> addLegacyValueMigration(Function<String, T> migration) {
-		checkNotBuilt();
-		if (currentValueMigration != null) {
-			throw new IllegalStateException("Config value already has a legacy value migration: " + name);
-		}
-		this.currentValueMigration = ErrorUtil.checkNotNull(migration, "migration");
-		return this;
-	}
-
-	@Override
 	public ConfigValueBuilder<T> addLegacyValueMigration(
 		String legacyCategoryName,
 		String legacyValueName,
@@ -92,7 +83,7 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 		checkNotBuilt();
 		ConfigValueReference reference = createLegacyReference(legacyCategoryName, legacyValueName);
 		if (isCurrentValueReference(reference)) {
-			return addLegacyValueMigration(migration);
+			throw new IllegalArgumentException("Legacy value reference must not match the current value: " + reference);
 		}
 		if (legacyValueReferences.contains(reference) || legacyValueMigrations.containsKey(reference)) {
 			throw new IllegalArgumentException("There is already a legacy value reference: " + reference);
@@ -109,13 +100,28 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 	}
 
 	@Override
-	public ConfigValueBuilder<T> addEditorCategory(String categoryName) {
+	public ConfigValueBuilder<T> addEditorCategory(IConfigEditorCategoryBuilder categoryBuilder) {
 		checkNotBuilt();
-		categoryName = ConfigNameUtil.validateConfigName(categoryName, "editorCategoryName");
-		if (!editorCategoryNames.add(categoryName)) {
-			throw new IllegalArgumentException("There is already an editor category name: " + categoryName);
+		ConfigEditorCategoryBuilder editorCategoryBuilder = getEditorCategoryBuilder(categoryBuilder);
+		ConfigCategoryBuilder currentCategoryBuilder = this.categoryBuilder;
+		if (editorCategoryBuilder.getSchemaBuilder() != null &&
+			currentCategoryBuilder.getSchemaBuilder() != null &&
+			editorCategoryBuilder.getSchemaBuilder() != currentCategoryBuilder.getSchemaBuilder()
+		) {
+			throw new IllegalArgumentException("Editor category must belong to the same schema: " + editorCategoryBuilder.getName());
+		}
+		if (!editorCategoryBuilders.add(editorCategoryBuilder)) {
+			throw new IllegalArgumentException("There is already an editor category: " + editorCategoryBuilder.getName());
 		}
 		return this;
+	}
+
+	private ConfigEditorCategoryBuilder getEditorCategoryBuilder(IConfigEditorCategoryBuilder categoryBuilder) {
+		ErrorUtil.checkNotNull(categoryBuilder, "categoryBuilder");
+		if (categoryBuilder instanceof ConfigEditorCategoryBuilder configEditorCategoryBuilder) {
+			return configEditorCategoryBuilder;
+		}
+		throw new IllegalArgumentException("Editor category must be created by MezzConfig.");
 	}
 
 	@Override
@@ -127,13 +133,12 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 			defaultValue,
 			serializer,
 			editMode,
-			editorCategoryNames
+			editorCategoryBuilders
 		);
 		this.configValue = categoryBuilder.addValue(
 			value,
 			legacyValueReferences,
-			legacyValueMigrations,
-			currentValueMigration
+			legacyValueMigrations
 		);
 		return this.configValue;
 	}

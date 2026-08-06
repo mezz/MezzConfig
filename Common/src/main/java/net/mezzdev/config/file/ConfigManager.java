@@ -85,7 +85,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 	}
 
 	@Override
-	public Collection<? extends IConfigSchema> getConfigFiles() {
+	public Collection<? extends IConfigSchema> getSchemas() {
 		return Collections.unmodifiableCollection(configFiles.values());
 	}
 }

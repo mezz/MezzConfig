@@ -18,7 +18,7 @@ import java.util.function.Consumer;
  * and each category has one or more {@link IConfigValue}.
  * <p>
  * Create and register your schema here: {@link IConfigSchemaBuilder#build()}.
- * Get registered schemas here: {@link IConfigManager#getConfigFiles()}.
+ * Get registered schemas here: {@link IConfigManager#getSchemas()}.
  *
  * @since 0.1.0
  */
@@ -38,12 +38,23 @@ public interface IConfigSchema {
 
 	/**
 	 * Get all the categories in this schema.
-	 * Each category contains values that can be read or edited.
+	 * Each category contains values that can be read or edited. Categories are returned in the order they were added to
+	 * the schema builder.
 	 *
 	 * @since 0.1.0
 	 */
 	@Unmodifiable
 	List<? extends IConfigCategory> getCategories();
+
+	/**
+	 * Get all categories where config editors can show values.
+	 * <p>
+	 * Storage categories and editor-only categories are returned in the order they were added to the schema builder.
+	 *
+	 * @since 0.1.0
+	 */
+	@Unmodifiable
+	List<? extends IConfigEditorCategory> getEditorCategories();
 
 	/**
 	 * Apply several config value updates together.
@@ -63,9 +74,12 @@ public interface IConfigSchema {
 	/**
 	 * Add a listener that is called with every batch of changes applied to this schema.
 	 *
+	 * @param listener callback accepting the applied changes
+	 * @return a callback that removes this listener
+	 *
 	 * @since 0.1.0
 	 */
-	void addListener(IConfigValueBatchChangeListener listener);
+	Runnable addListener(IConfigValueBatchChangeListener listener);
 
 	/**
 	 * Clear listeners from this schema and its values.

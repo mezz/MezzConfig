@@ -1,6 +1,7 @@
 package net.mezzdev.config.api.value;
 
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
+import net.mezzdev.config.api.schema.IConfigEditorCategoryBuilder;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.function.Function;
@@ -41,22 +42,14 @@ public interface IConfigValueBuilder<T> {
 	IConfigValueBuilder<T> addLegacyValue(String legacyCategoryName, String legacyValueName);
 
 	/**
-	 * Add a migration from old serialized text for this value.
-	 * <p>
-	 * Use this when this value's serialized format or type has changed, but its storage category and value name have
-	 * not changed.
-	 *
-	 * @param migration converts the old serialized text into the current value type
-	 *
-	 * @since 0.1.0
-	 */
-	IConfigValueBuilder<T> addLegacyValueMigration(Function<String, T> migration);
-
-	/**
 	 * Add a migration from an old storage location and old serialized text for this value.
 	 * <p>
 	 * Use this when this value has moved from another category, another name, or both, and its serialized format or
 	 * type has changed.
+	 * <p>
+	 * The legacy category and value name must not match this value's current storage location. If a serialized format
+	 * changes without a storage name change, use a serializer that accepts both formats, or move to a new storage name
+	 * and migrate from the old name.
 	 *
 	 * @param legacyCategoryName old stable storage category name
 	 * @param legacyValueName old stable storage value name
@@ -80,17 +73,18 @@ public interface IConfigValueBuilder<T> {
 	IConfigValueBuilder<T> setEditMode(ConfigValueEditMode editMode);
 
 	/**
-	 * Add a category name where config editors should show this value.
+	 * Add a category where config editors should show this value.
 	 * <p>
-	 * If no editor categories are added, config editors can show the value in its storage category.
+	 * Pass an editor category builder or storage category builder from the same schema. The category does not need to
+	 * be built yet. If no editor categories are added, config editors can show the value in its storage category.
 	 * Values may be added to multiple editor categories.
 	 *
-	 * @param categoryName stable editor category name
+	 * @param categoryBuilder category where config editors should show this value
 	 * @return this builder
 	 *
 	 * @since 0.1.0
 	 */
-	IConfigValueBuilder<T> addEditorCategory(String categoryName);
+	IConfigValueBuilder<T> addEditorCategory(IConfigEditorCategoryBuilder categoryBuilder);
 
 	/**
 	 * Build and add the config value to its category.

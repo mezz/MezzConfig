@@ -62,20 +62,23 @@ public class ConfigSerializerMigrationTest {
 	}
 
 	@Test
-	public void loadMigratesCurrentValueNameWithLegacyValueMigration(@TempDir Path tempDir) throws IOException {
+	public void loadMigratesLegacyValueNameWithLegacyValueMigration(@TempDir Path tempDir) throws IOException {
+		// Setup: the old value used a different storage name and different serialized text.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
-			"enabled = yes"
+			"oldEnabled = yes"
 		));
 		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", false)
-			.addLegacyValueMigration("yes"::equalsIgnoreCase)
+			.addLegacyValueMigration("general", "oldEnabled", "yes"::equalsIgnoreCase)
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
+		// Operation: load a legacy-name config entry.
 		ConfigSerializer.load(path, List.of(category));
 
+		// Assertions: the legacy-name migration converts the old serialized text into the current value.
 		assertTrue(enabled.getValue());
 	}
 

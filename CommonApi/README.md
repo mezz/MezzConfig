@@ -55,21 +55,31 @@ general.addEnum("mode", Mode.STANDARD)
 
 Use value legacy names when storage names change. If a value moved from another
 storage category, declare the old category and value name on that value. If
-serialized text also changed, add a legacy value migration function.
+serialized text also changed, add a legacy value migration from the old storage
+location. Legacy migrations must come from an old category, old value name, or
+both. If the serialized format changes without a storage name change, use a
+serializer that accepts both formats, or move to a new storage name and migrate
+from the old one.
 
 Values can also declare editor hints for integrations such as MezzConfigGui:
 
 ```java
+IConfigEditorCategoryBuilder quick = schemaBuilder.addEditorCategory("quick");
+IConfigEditorCategoryBuilder advanced = schemaBuilder.addEditorCategory("advanced");
+
 general.addBoolean("enabled", true)
 	.setEditMode(ConfigValueEditMode.IMMEDIATE)
-	.addEditorCategory("quick")
-	.addEditorCategory("advanced")
+	.addEditorCategory(quick)
+	.addEditorCategory(advanced)
 	.build();
 ```
 
-Editor categories are presentation hints only. The value is still stored in its
-schema category. Use {@code ConfigValueEditMode.RESTART} only for values whose
-saved changes require a full game restart.
+Editor-only categories are presentation hints and are not written to the config
+file. The value is still stored in its schema category. Storage categories can
+also be used as editor categories. Config editors should use
+`IConfigSchema.getEditorCategories()` as the category display order. Use
+`ConfigValueEditMode.RESTART` only for values whose saved changes require a full
+game restart.
 
 Use a batch updater when several config values should change together:
 
@@ -83,9 +93,10 @@ List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(update
 The batch is validated before any values are changed, and listeners are notified
 after all changed values have updated.
 
-The core API exposes serialization, validation, storage names, and localization
-keys. GUI/editor metadata and immediate versus staged editing behavior are
-expected to live in a GUI integration layer.
+The core API exposes serialization, validation, storage names, localization
+keys, lightweight editor category hints, and edit-mode hints. GUI-specific
+widgets, layout, staging, and apply behavior are expected to live in a GUI
+integration layer.
 
 ## Sorting configs
 

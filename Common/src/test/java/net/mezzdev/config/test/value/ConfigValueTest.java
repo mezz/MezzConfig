@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -49,6 +50,51 @@ public class ConfigValueTest {
 	}
 
 	@Test
+	public void addListenerReturnsUnsubscribeCallback() {
+		// Setup: register a normal single-value listener and keep its unsubscribe callback.
+		ConfigValue<Boolean> value = new ConfigValue<>(
+			"mezz_config.config.test.category",
+			"enabled",
+			false,
+			BooleanSerializer.INSTANCE
+		);
+		AtomicInteger notifications = new AtomicInteger();
+		Runnable unsubscribe = value.addListener(ignored -> notifications.incrementAndGet());
+
+		// Operation: notify once, unsubscribe, then change the value again.
+		assertTrue(value.set(true));
+		unsubscribe.run();
+		assertTrue(value.set(false));
+
+		// Assertions: the listener only receives changes before its unsubscribe callback is run.
+		assertEquals(1, notifications.get());
+	}
+
+	@Test
+	public void listenerCanUnsubscribeDuringNotification() {
+		// Setup: register a listener that removes itself while handling its first change.
+		ConfigValue<Boolean> value = new ConfigValue<>(
+			"mezz_config.config.test.category",
+			"enabled",
+			false,
+			BooleanSerializer.INSTANCE
+		);
+		AtomicInteger notifications = new AtomicInteger();
+		AtomicReference<Runnable> unsubscribe = new AtomicReference<>();
+		unsubscribe.set(value.addListener(ignored -> {
+			notifications.incrementAndGet();
+			unsubscribe.get().run();
+		}));
+
+		// Operation: apply two changes that would both notify if the listener remained subscribed.
+		assertTrue(value.set(true));
+		assertTrue(value.set(false));
+
+		// Assertions: notification uses a stable listener snapshot and the self-unsubscribe prevents later callbacks.
+		assertEquals(1, notifications.get());
+	}
+
+	@Test
 	public void setNotifiesBatchListenersWithOneChange() {
 		ConfigValue<Integer> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
@@ -66,6 +112,27 @@ public class ConfigValueTest {
 		assertTrue(value.set(7));
 
 		assertEquals(List.of("count: 5 -> 7"), changes);
+	}
+
+	@Test
+	public void addBatchListenerReturnsUnsubscribeCallback() {
+		// Setup: register a value-scoped batch listener and keep its unsubscribe callback.
+		ConfigValue<Boolean> value = new ConfigValue<>(
+			"mezz_config.config.test.category",
+			"enabled",
+			false,
+			BooleanSerializer.INSTANCE
+		);
+		AtomicInteger notifications = new AtomicInteger();
+		Runnable unsubscribe = value.addBatchListener(ignored -> notifications.incrementAndGet());
+
+		// Operation: notify once, unsubscribe, then change the value again.
+		assertTrue(value.set(true));
+		unsubscribe.run();
+		assertTrue(value.set(false));
+
+		// Assertions: the batch listener only receives changes before its unsubscribe callback is run.
+		assertEquals(1, notifications.get());
 	}
 
 	@Test

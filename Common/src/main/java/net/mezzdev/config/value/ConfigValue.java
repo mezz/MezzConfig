@@ -6,6 +6,9 @@ import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IConfigValueChangeListener;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.schema.IConfigEditorCategory;
+import net.mezzdev.config.schema.ConfigEditorCategory;
+import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.util.ConfigNameUtil;
 import net.mezzdev.config.util.ErrorUtil;
@@ -16,6 +19,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -27,7 +31,8 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	private final T defaultValue;
 	private final IConfigValueSerializer<T> serializer;
 	private final ConfigValueEditMode editMode;
-	private final List<String> editorCategoryNames;
+	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders;
+	private List<ConfigEditorCategory> editorCategories = List.of();
 	private @Nullable List<IConfigValueChangeListener<T>> listeners;
 	private @Nullable List<IConfigValueBatchChangeListener> batchListeners;
 	private volatile T currentValue;
@@ -49,7 +54,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		T defaultValue,
 		IConfigValueSerializer<T> serializer,
 		ConfigValueEditMode editMode,
-		Iterable<String> editorCategoryNames
+		Iterable<ConfigEditorCategoryBuilder> editorCategoryBuilders
 	) {
 		this.name = ConfigNameUtil.validateConfigName(name, "configValueName");
 
@@ -58,27 +63,53 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		this.defaultValue = ErrorUtil.checkNotNull(defaultValue, "defaultValue");
 		this.serializer = ErrorUtil.checkNotNull(serializer, "serializer");
 		this.editMode = ErrorUtil.checkNotNull(editMode, "editMode");
-		this.editorCategoryNames = getEditorCategoryNames(editorCategoryNames);
+		this.editorCategoryBuilders = getEditorCategoryBuilders(editorCategoryBuilders);
 		if (!this.serializer.isValid(this.defaultValue)) {
 			throw new IllegalArgumentException("Default value for '%s' is invalid: %s".formatted(this.name, this.defaultValue));
 		}
 		this.currentValue = this.defaultValue;
 	}
 
-	private static List<String> getEditorCategoryNames(Iterable<String> editorCategoryNames) {
-		ErrorUtil.checkNotNull(editorCategoryNames, "editorCategoryNames");
-		Set<String> categoryNames = new LinkedHashSet<>();
-		for (String categoryName : editorCategoryNames) {
-			categoryName = ConfigNameUtil.validateConfigName(categoryName, "editorCategoryName");
-			if (!categoryNames.add(categoryName)) {
-				throw new IllegalArgumentException("There is already an editor category name: " + categoryName);
+	private static List<ConfigEditorCategoryBuilder> getEditorCategoryBuilders(Iterable<ConfigEditorCategoryBuilder> editorCategoryBuilders) {
+		ErrorUtil.checkNotNull(editorCategoryBuilders, "editorCategoryBuilders");
+		Set<ConfigEditorCategoryBuilder> categoryBuilders = new LinkedHashSet<>();
+		for (ConfigEditorCategoryBuilder categoryBuilder : editorCategoryBuilders) {
+			categoryBuilder = ErrorUtil.checkNotNull(categoryBuilder, "editorCategoryBuilder");
+			if (!categoryBuilders.add(categoryBuilder)) {
+				throw new IllegalArgumentException("There is already an editor category: " + categoryBuilder.getName());
 			}
 		}
-		return List.copyOf(categoryNames);
+		return List.copyOf(categoryBuilders);
 	}
 
 	public void setSchema(ConfigSchema schema) {
 		this.schema = schema;
+	}
+
+	public void resolveEditorCategories(
+		List<ConfigEditorCategoryBuilder> categoryBuilders,
+		Map<ConfigEditorCategoryBuilder, ? extends ConfigEditorCategory> categories
+	) {
+		ErrorUtil.checkNotNull(categoryBuilders, "categoryBuilders");
+		ErrorUtil.checkNotNull(categories, "categories");
+		Set<ConfigEditorCategoryBuilder> unresolvedCategoryBuilders = new LinkedHashSet<>(editorCategoryBuilders);
+		List<ConfigEditorCategory> resolvedCategories = new ArrayList<>();
+		for (ConfigEditorCategoryBuilder categoryBuilder : categoryBuilders) {
+			if (unresolvedCategoryBuilders.remove(categoryBuilder)) {
+				ConfigEditorCategory category = categories.get(categoryBuilder);
+				if (category == null) {
+					throw new IllegalStateException("Editor category has not been built: " + categoryBuilder.getName());
+				}
+				resolvedCategories.add(category);
+			}
+		}
+		if (!unresolvedCategoryBuilders.isEmpty()) {
+			String categoryNames = String.join(", ", unresolvedCategoryBuilders.stream()
+				.map(ConfigEditorCategoryBuilder::getName)
+				.toList());
+			throw new IllegalStateException("Editor categories have not been built: " + categoryNames);
+		}
+		this.editorCategories = List.copyOf(resolvedCategories);
 	}
 
 	@Override
@@ -102,8 +133,8 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	@Override
-	public List<String> getEditorCategoryNames() {
-		return editorCategoryNames;
+	public List<? extends IConfigEditorCategory> getEditorCategories() {
+		return editorCategories;
 	}
 
 	@Override
@@ -201,9 +232,11 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	public void notifyListeners(List<? extends AppliedConfigValueChange<?>> changes) {
 		AppliedConfigValueChange<T> change = getChange(changes);
 		if (listeners != null) {
+			List<IConfigValueChangeListener<T>> listeners = List.copyOf(this.listeners);
 			listeners.forEach(listener -> listener.onChange(change));
 		}
 		if (batchListeners != null) {
+			List<IConfigValueBatchChangeListener> batchListeners = List.copyOf(this.batchListeners);
 			batchListeners.forEach(listener -> listener.onChange(changes));
 		}
 	}
@@ -225,19 +258,31 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	@Override
-	public void addListener(IConfigValueChangeListener<T> listener) {
+	public Runnable addListener(IConfigValueChangeListener<T> listener) {
+		ErrorUtil.checkNotNull(listener, "listener");
 		if (this.listeners == null) {
 			this.listeners = new ArrayList<>();
 		}
 		this.listeners.add(listener);
+		return () -> {
+			if (this.listeners != null) {
+				this.listeners.remove(listener);
+			}
+		};
 	}
 
 	@Override
-	public void addBatchListener(IConfigValueBatchChangeListener listener) {
+	public Runnable addBatchListener(IConfigValueBatchChangeListener listener) {
+		ErrorUtil.checkNotNull(listener, "listener");
 		if (this.batchListeners == null) {
 			this.batchListeners = new ArrayList<>();
 		}
 		this.batchListeners.add(listener);
+		return () -> {
+			if (this.batchListeners != null) {
+				this.batchListeners.remove(listener);
+			}
+		};
 	}
 
 	public void clearListeners() {

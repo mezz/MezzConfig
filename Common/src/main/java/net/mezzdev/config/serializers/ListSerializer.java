@@ -6,9 +6,7 @@ import net.mezzdev.config.util.ErrorUtil;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -70,10 +68,5 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 	public boolean isValid(List<T> value) {
 		return value.stream()
 			.allMatch(elementSerializer::isValid);
-	}
-
-	@Override
-	public Optional<Collection<List<T>>> getAllValidValues() {
-		return Optional.empty();
 	}
 }

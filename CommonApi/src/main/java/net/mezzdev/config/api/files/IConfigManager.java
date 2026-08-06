@@ -24,5 +24,5 @@ public interface IConfigManager {
 	 * @since 0.1.0
 	 */
 	@Unmodifiable
-	Collection<? extends IConfigSchema> getConfigFiles();
+	Collection<? extends IConfigSchema> getSchemas();
 }

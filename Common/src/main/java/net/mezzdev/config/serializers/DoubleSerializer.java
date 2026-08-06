@@ -4,7 +4,6 @@ import net.mezzdev.config.api.value.ConfigValueRange;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collection;
 import java.util.Optional;
 
 /**
@@ -69,10 +68,5 @@ public final class DoubleSerializer implements IConfigValueSerializer<Double> {
 			Double.isFinite(value) &&
 			value >= range.min() &&
 			value <= range.max();
-	}
-
-	@Override
-	public Optional<Collection<Double>> getAllValidValues() {
-		return Optional.empty();
 	}
 }

@@ -17,7 +17,7 @@ import java.util.List;
  * @since 0.1.0
  */
 @ApiStatus.NonExtendable
-public interface IConfigCategoryBuilder {
+public interface IConfigCategoryBuilder extends IConfigEditorCategoryBuilder {
 	/**
 	 * Create a builder for a config value with a custom serializer.
 	 * Use this method with an {@link IConfigListValueSerializer} for custom list storage formats that expose their

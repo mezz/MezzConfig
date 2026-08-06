@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.Collection;
 
 /**
- * Categories organize {@link IConfigValue}s into groups.
+ * Storage categories organize {@link IConfigValue}s into config file groups.
  * An {@link IConfigSchema} can contain one or more categories.
  * <p>
  * Add a category to your schema here: {@link IConfigSchemaBuilder#addCategory(String)}.
@@ -16,21 +16,7 @@ import java.util.Collection;
  * @since 0.1.0
  */
 @ApiStatus.NonExtendable
-public interface IConfigCategory {
-	/**
-	 * The name of the category.
-	 *
-	 * @since 0.1.0
-	 */
-	String getName();
-
-	/**
-	 * Get the translation key used for this config category's name.
-	 *
-	 * @since 0.1.0
-	 */
-	String getLocalizationKey();
-
+public interface IConfigCategory extends IConfigEditorCategory {
 	/**
 	 * The config values in the category.
 	 *

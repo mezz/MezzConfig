@@ -4,6 +4,7 @@ package net.mezzdev.config.api.value;
  * Listener for config value changes.
  * <p>
  * Register your listener here: {@link IConfigValue#addListener(IConfigValueChangeListener)}.
+ * The registration method returns a callback that unsubscribes the listener.
  *
  * @since 0.1.0
  */
