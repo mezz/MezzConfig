@@ -73,6 +73,20 @@ public interface IConfigValueBuilder<T> {
 	IConfigValueBuilder<T> setEditMode(ConfigValueEditMode editMode);
 
 	/**
+	 * Set the restart requirement hint for this value.
+	 * <p>
+	 * Config editors can use this to explain when changed values take effect. MezzConfig still updates the value when
+	 * it changes through the API or config file. If this is not called, values use
+	 * {@link ConfigValueRestartRequirement#NONE}.
+	 *
+	 * @param restartRequirement restart requirement hint for config editors
+	 * @return this builder
+	 *
+	 * @since 0.1.0
+	 */
+	IConfigValueBuilder<T> setRestartRequirement(ConfigValueRestartRequirement restartRequirement);
+
+	/**
 	 * Add a category where config editors should show this value.
 	 * <p>
 	 * Pass an editor category builder or storage category builder from the same schema. The category does not need to

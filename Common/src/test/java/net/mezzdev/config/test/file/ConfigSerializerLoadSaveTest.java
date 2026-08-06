@@ -1,6 +1,7 @@
 package net.mezzdev.config.test.file;
 
 import net.mezzdev.config.api.value.ConfigValueEditMode;
+import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
@@ -39,6 +40,21 @@ public class ConfigSerializerLoadSaveTest {
 
 		assertFalse(enabled.getValue());
 		assertEquals(7, count.getValue());
+	}
+
+	@Test
+	public void loadUpdatesValuesWithRestartRequirements(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[current]",
+			"enabled = false"
+		));
+		ConfigValue<Boolean> enabled = createBooleanValue(true, ConfigValueRestartRequirement.GAME_RESTART);
+		ConfigCategory category = createCategory(enabled);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertFalse(enabled.getValue());
 	}
 
 	@Test
@@ -126,6 +142,7 @@ public class ConfigSerializerLoadSaveTest {
 		assertTrue(lines.contains("\t# Description: mezz_config.config.test.current.enabled.description"));
 		assertTrue(lines.contains("\t# Valid Values: [true, false]"));
 		assertTrue(lines.contains("\t# Default Value: true"));
+		assertFalse(lines.contains("\t# Requires a world restart to take effect."));
 		assertFalse(lines.contains("\t# Requires a game restart to take effect."));
 		assertTrue(lines.contains("\tenabled = false"));
 		assertTrue(lines.contains("\tcount = 7"));
@@ -134,7 +151,7 @@ public class ConfigSerializerLoadSaveTest {
 	@Test
 	public void saveNotesWhenValueRequiresGameRestart(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
-		ConfigValue<Boolean> enabled = createBooleanValue(true, ConfigValueEditMode.RESTART);
+		ConfigValue<Boolean> enabled = createBooleanValue(true, ConfigValueRestartRequirement.GAME_RESTART);
 		ConfigCategory category = createCategory(enabled);
 
 		ConfigSerializer.save(path, List.of(category));
@@ -143,17 +160,42 @@ public class ConfigSerializerLoadSaveTest {
 		assertTrue(lines.contains("\t# Requires a game restart to take effect."));
 	}
 
+	@Test
+	public void saveNotesWhenValueRequiresWorldRestart(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		ConfigValue<Boolean> enabled = createBooleanValue(true, ConfigValueRestartRequirement.WORLD_RESTART);
+		ConfigCategory category = createCategory(enabled);
+
+		ConfigSerializer.save(path, List.of(category));
+
+		List<String> lines = Files.readAllLines(path);
+		assertTrue(lines.contains("\t# Requires a world restart to take effect."));
+	}
+
 	private static ConfigValue<Boolean> createBooleanValue(boolean defaultValue) {
 		return createBooleanValue(defaultValue, ConfigValueEditMode.BATCH);
 	}
 
 	private static ConfigValue<Boolean> createBooleanValue(boolean defaultValue, ConfigValueEditMode editMode) {
+		return createBooleanValue(defaultValue, editMode, ConfigValueRestartRequirement.NONE);
+	}
+
+	private static ConfigValue<Boolean> createBooleanValue(boolean defaultValue, ConfigValueRestartRequirement restartRequirement) {
+		return createBooleanValue(defaultValue, ConfigValueEditMode.BATCH, restartRequirement);
+	}
+
+	private static ConfigValue<Boolean> createBooleanValue(
+		boolean defaultValue,
+		ConfigValueEditMode editMode,
+		ConfigValueRestartRequirement restartRequirement
+	) {
 		return new ConfigValue<>(
 			LOCALIZATION_PATH,
 			"enabled",
 			defaultValue,
 			BooleanSerializer.INSTANCE,
 			editMode,
+			restartRequirement,
 			List.of()
 		);
 	}

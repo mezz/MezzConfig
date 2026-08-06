@@ -3,6 +3,7 @@ package net.mezzdev.config.test.schema;
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
+import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
@@ -218,12 +219,13 @@ public class ConfigSchemaTest {
 
 		// Assertions: editors can batch by default and use the value's storage category when no editor category is set.
 		assertEquals(ConfigValueEditMode.BATCH, enabled.getEditMode());
+		assertEquals(ConfigValueRestartRequirement.NONE, enabled.getRestartRequirement());
 		assertEquals(List.of(), enabled.getEditorCategories());
 	}
 
 	@Test
 	public void configValueBuilderResolvesEditorOnlyCategoriesInSchemaOrder() {
-		// Setup: values can declare when editors should save them and which editor categories should show them.
+		// Setup: values can declare when editors should save them, when changes take effect, and where editors should show them.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigEditorCategoryBuilder quick = new ConfigEditorCategoryBuilder("mezz_config.config.test", "quick");
 		ConfigEditorCategoryBuilder advanced = new ConfigEditorCategoryBuilder("mezz_config.config.test", "advanced");
@@ -235,7 +237,7 @@ public class ConfigSchemaTest {
 			.addEditorCategory(quick)
 			.build();
 		ConfigValue<Boolean> requiresRestart = builder.addBoolean("requiresRestart", false)
-			.setEditMode(ConfigValueEditMode.RESTART)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 		ConfigSchema schema = createSchema(
 			List.of(builder),
@@ -246,10 +248,12 @@ public class ConfigSchemaTest {
 		assertEquals(List.of("category"), getCategoryNames(schema.getCategories()));
 		assertEquals(List.of("category", "quick", "advanced"), getCategoryNames(schema.getEditorCategories()));
 		assertEquals(ConfigValueEditMode.IMMEDIATE, enabled.getEditMode());
+		assertEquals(ConfigValueRestartRequirement.NONE, enabled.getRestartRequirement());
 		assertEquals(List.of("quick", "advanced"), getCategoryNames(enabled.getEditorCategories()));
 		assertSame(schema.getEditorCategories().get(1), enabled.getEditorCategories().get(0));
 		assertSame(schema.getEditorCategories().get(2), enabled.getEditorCategories().get(1));
-		assertEquals(ConfigValueEditMode.RESTART, requiresRestart.getEditMode());
+		assertEquals(ConfigValueEditMode.BATCH, requiresRestart.getEditMode());
+		assertEquals(ConfigValueRestartRequirement.GAME_RESTART, requiresRestart.getRestartRequirement());
 	}
 
 	@Test

@@ -2,6 +2,7 @@ package net.mezzdev.config.value;
 
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
+import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IConfigValueChangeListener;
@@ -31,6 +32,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	private final T defaultValue;
 	private final IConfigValueSerializer<T> serializer;
 	private final ConfigValueEditMode editMode;
+	private final ConfigValueRestartRequirement restartRequirement;
 	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders;
 	private List<ConfigEditorCategory> editorCategories = List.of();
 	private @Nullable List<IConfigValueChangeListener<T>> listeners;
@@ -45,7 +47,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		T defaultValue,
 		IConfigValueSerializer<T> serializer
 	) {
-		this(localizationPath, name, defaultValue, serializer, ConfigValueEditMode.BATCH, List.of());
+		this(localizationPath, name, defaultValue, serializer, ConfigValueEditMode.BATCH, ConfigValueRestartRequirement.NONE, List.of());
 	}
 
 	public ConfigValue(
@@ -56,6 +58,18 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		ConfigValueEditMode editMode,
 		Iterable<ConfigEditorCategoryBuilder> editorCategoryBuilders
 	) {
+		this(localizationPath, name, defaultValue, serializer, editMode, ConfigValueRestartRequirement.NONE, editorCategoryBuilders);
+	}
+
+	public ConfigValue(
+		String localizationPath,
+		String name,
+		T defaultValue,
+		IConfigValueSerializer<T> serializer,
+		ConfigValueEditMode editMode,
+		ConfigValueRestartRequirement restartRequirement,
+		Iterable<ConfigEditorCategoryBuilder> editorCategoryBuilders
+	) {
 		this.name = ConfigNameUtil.validateConfigName(name, "configValueName");
 
 		localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
@@ -63,6 +77,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		this.defaultValue = ErrorUtil.checkNotNull(defaultValue, "defaultValue");
 		this.serializer = ErrorUtil.checkNotNull(serializer, "serializer");
 		this.editMode = ErrorUtil.checkNotNull(editMode, "editMode");
+		this.restartRequirement = ErrorUtil.checkNotNull(restartRequirement, "restartRequirement");
 		this.editorCategoryBuilders = getEditorCategoryBuilders(editorCategoryBuilders);
 		if (!this.serializer.isValid(this.defaultValue)) {
 			throw new IllegalArgumentException("Default value for '%s' is invalid: %s".formatted(this.name, this.defaultValue));
@@ -130,6 +145,11 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	@Override
 	public ConfigValueEditMode getEditMode() {
 		return editMode;
+	}
+
+	@Override
+	public ConfigValueRestartRequirement getRestartRequirement() {
+		return restartRequirement;
 	}
 
 	@Override

@@ -1,6 +1,6 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.api.value.ConfigValueEditMode;
+import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.util.ErrorUtil;
@@ -67,7 +67,7 @@ public record ConfigFileWatcherSettings(
 		scheduler = ErrorUtil.checkNotNull(scheduler, "scheduler");
 		ConfigCategoryBuilder category = new ConfigCategoryBuilder(LOCALIZATION_PATH, CATEGORY_NAME);
 		ConfigValue<Boolean> enabled = category.addBoolean(ENABLED_NAME, true)
-			.setEditMode(ConfigValueEditMode.RESTART)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 		ConfigValue<Long> changeSettlingDelayMilliseconds = category.addLong(
 				CHANGE_SETTLING_DELAY_NAME,
@@ -75,7 +75,7 @@ public record ConfigFileWatcherSettings(
 				1L,
 				Long.MAX_VALUE
 			)
-			.setEditMode(ConfigValueEditMode.RESTART)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 		ConfigValue<Long> missingDirectoryRetryIntervalMilliseconds = category.addLong(
 				MISSING_DIRECTORY_RETRY_INTERVAL_NAME,
@@ -83,7 +83,7 @@ public record ConfigFileWatcherSettings(
 				1L,
 				Long.MAX_VALUE
 			)
-			.setEditMode(ConfigValueEditMode.RESTART)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 		ConfigSchema schema = new ConfigSchema(
 			getConfigFile(configRootDir),

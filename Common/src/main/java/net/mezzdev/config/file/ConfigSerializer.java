@@ -1,6 +1,6 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.api.value.ConfigValueEditMode;
+import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.value.ConfigValue;
@@ -32,6 +32,7 @@ public final class ConfigSerializer {
 	private static final String CONFIG_DESCRIPTION_KEY = "mezz_config.config.description";
 	private static final String CONFIG_VALUE_VALUES_KEY = "mezz_config.config.valueValues";
 	private static final String CONFIG_DEFAULT_VALUE_KEY = "mezz_config.config.defaultValue";
+	private static final String CONFIG_REQUIRES_WORLD_RESTART_KEY = "mezz_config.config.requiresWorldRestart";
 	private static final String CONFIG_REQUIRES_GAME_RESTART_KEY = "mezz_config.config.requiresGameRestart";
 	private static final Pattern commentRegex = Pattern.compile("\\s*#.*");
 	private static final Pattern categoryRegex = Pattern.compile("\\[(?<category>\\w+)]\\s*");
@@ -215,6 +216,7 @@ public final class ConfigSerializer {
 			language.has(CONFIG_DESCRIPTION_KEY) &&
 			language.has(CONFIG_VALUE_VALUES_KEY) &&
 			language.has(CONFIG_DEFAULT_VALUE_KEY) &&
+			language.has(CONFIG_REQUIRES_WORLD_RESTART_KEY) &&
 			language.has(CONFIG_REQUIRES_GAME_RESTART_KEY);
 	}
 
@@ -246,17 +248,32 @@ public final class ConfigSerializer {
 		String defaultValueString = getLocalizedComment(CONFIG_DEFAULT_VALUE_KEY, "Default Value: %s", defaultValueSerialized);
 		addCommentedStrings(serialized, defaultValueString);
 
-		if (configValue.getEditMode() == ConfigValueEditMode.RESTART) {
-			String requiresRestart = getLocalizedComment(
-				CONFIG_REQUIRES_GAME_RESTART_KEY,
-				"Requires a game restart to take effect."
-			);
-			addCommentedStrings(serialized, requiresRestart);
-		}
+		addRestartRequirementComment(serialized, configValue);
 
 		T value = configValue.getValue();
 		String valueString = serializer.serialize(value);
 		serialized.add("\t%s = %s".formatted(name, valueString));
+	}
+
+	private static void addRestartRequirementComment(List<String> serialized, ConfigValue<?> configValue) {
+		ConfigValueRestartRequirement restartRequirement = configValue.getRestartRequirement();
+		switch (restartRequirement) {
+			case NONE -> {}
+			case WORLD_RESTART -> {
+				String requiresRestart = getLocalizedComment(
+					CONFIG_REQUIRES_WORLD_RESTART_KEY,
+					"Requires a world restart to take effect."
+				);
+				addCommentedStrings(serialized, requiresRestart);
+			}
+			case GAME_RESTART -> {
+				String requiresRestart = getLocalizedComment(
+					CONFIG_REQUIRES_GAME_RESTART_KEY,
+					"Requires a game restart to take effect."
+				);
+				addCommentedStrings(serialized, requiresRestart);
+			}
+		}
 	}
 
 	private static String getLocalizedComment(String translationKey, String fallback) {

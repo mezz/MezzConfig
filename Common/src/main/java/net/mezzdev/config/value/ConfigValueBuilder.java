@@ -1,7 +1,8 @@
 package net.mezzdev.config.value;
 
-import net.mezzdev.config.api.value.IConfigValueBuilder;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
+import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.IConfigValueBuilder;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.schema.IConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
@@ -26,6 +27,7 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 	private final Map<ConfigValueReference, Function<String, T>> legacyValueMigrations = new LinkedHashMap<>();
 	private final Set<ConfigEditorCategoryBuilder> editorCategoryBuilders = new LinkedHashSet<>();
 	private ConfigValueEditMode editMode = ConfigValueEditMode.BATCH;
+	private ConfigValueRestartRequirement restartRequirement = ConfigValueRestartRequirement.NONE;
 	private @Nullable ConfigValue<T> configValue;
 
 	public ConfigValueBuilder(
@@ -100,6 +102,13 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 	}
 
 	@Override
+	public ConfigValueBuilder<T> setRestartRequirement(ConfigValueRestartRequirement restartRequirement) {
+		checkNotBuilt();
+		this.restartRequirement = ErrorUtil.checkNotNull(restartRequirement, "restartRequirement");
+		return this;
+	}
+
+	@Override
 	public ConfigValueBuilder<T> addEditorCategory(IConfigEditorCategoryBuilder categoryBuilder) {
 		checkNotBuilt();
 		ConfigEditorCategoryBuilder editorCategoryBuilder = getEditorCategoryBuilder(categoryBuilder);
@@ -133,6 +142,7 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 			defaultValue,
 			serializer,
 			editMode,
+			restartRequirement,
 			editorCategoryBuilders
 		);
 		this.configValue = categoryBuilder.addValue(

@@ -72,14 +72,22 @@ general.addBoolean("enabled", true)
 	.addEditorCategory(quick)
 	.addEditorCategory(advanced)
 	.build();
+
+general.addBoolean("needsRestart", false)
+	.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+	.build();
 ```
 
 Editor-only categories are presentation hints and are not written to the config
 file. The value is still stored in its schema category. Storage categories can
 also be used as editor categories. Config editors should use
-`IConfigSchema.getEditorCategories()` as the category display order. Use
-`ConfigValueEditMode.RESTART` only for values whose saved changes require a full
-game restart.
+`IConfigSchema.getEditorCategories()` as the category display order.
+`ConfigValueEditMode` describes when editors should save changes. Use
+`ConfigValueRestartRequirement.WORLD_RESTART` or
+`ConfigValueRestartRequirement.GAME_RESTART` only to explain when changed values
+take effect. MezzConfig still updates values when they change through the API or
+config file; mods that only apply a value at startup or world load should read
+it during that lifecycle.
 
 Use a batch updater when several config values should change together:
 

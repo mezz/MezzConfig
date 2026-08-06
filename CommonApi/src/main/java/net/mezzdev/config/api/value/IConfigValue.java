@@ -64,6 +64,17 @@ public interface IConfigValue<T> {
 	ConfigValueEditMode getEditMode();
 
 	/**
+	 * Get the restart requirement hint for this value.
+	 * <p>
+	 * Config editors can use this to explain when changed values take effect. MezzConfig still updates this value when
+	 * it changes through the API or config file. Mods that only apply a value at startup or world load should read it
+	 * during that lifecycle.
+	 *
+	 * @since 0.1.0
+	 */
+	ConfigValueRestartRequirement getRestartRequirement();
+
+	/**
 	 * Get the categories where config editors should show this value.
 	 * <p>
 	 * If this is empty, config editors can show the value in the category that contains it.
