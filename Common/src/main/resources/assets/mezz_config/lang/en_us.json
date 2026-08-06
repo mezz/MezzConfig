@@ -5,6 +5,8 @@
   "mezz_config.config.defaultValue": "Default Value: %s",
   "mezz_config.config.requiresWorldRestart": "Requires a world restart to take effect.",
   "mezz_config.config.requiresGameRestart": "Requires a game restart to take effect.",
+  "mezz_config.config.fileWatcher": "File Watching",
+  "mezz_config.config.fileWatcher.description": "Controls automatic config file watching and reload timing.",
   "mezz_config.config.fileWatcher.enabled": "Automatic File Watching",
   "mezz_config.config.fileWatcher.enabled.description": "Automatically watch config files and reload them when they are changed outside the game.",
   "mezz_config.config.fileWatcher.changeSettlingDelayMilliseconds": "Change Settling Delay",

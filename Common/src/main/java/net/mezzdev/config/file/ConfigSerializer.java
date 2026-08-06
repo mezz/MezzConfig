@@ -229,6 +229,7 @@ public final class ConfigSerializer {
 	}
 
 	private static void serializeCategory(List<String> serialized, ConfigCategory category) {
+		addLocalizedNameAndDescription(serialized, category.getLocalizationKey(), "");
 		serialized.add("[%s]".formatted(category.getName()));
 		for (ConfigValue<?> value : category.getConfigValues()) {
 			serializeConfigValue(serialized, value);
@@ -240,13 +241,7 @@ public final class ConfigSerializer {
 		String name = configValue.getName();
 		IConfigValueSerializer<T> serializer = configValue.getSerializer();
 
-		Component nameComponent = Component.translatable(configValue.getLocalizationKey());
-		String localizedName = getLocalizedComment(CONFIG_NAME_KEY, "Name: %s", nameComponent.getString());
-		addCommentedStrings(serialized, localizedName);
-
-		Component descriptionComponent = Component.translatable(configValue.getLocalizationKey() + ".description");
-		String description = getLocalizedComment(CONFIG_DESCRIPTION_KEY, "Description: %s", descriptionComponent.getString());
-		addCommentedStrings(serialized, description);
+		addLocalizedNameAndDescription(serialized, configValue.getLocalizationKey(), "\t");
 
 		String validValues = getLocalizedComment(CONFIG_VALUE_VALUES_KEY, "Valid Values: %s", serializer.getValidValuesDescription());
 		addCommentedStrings(serialized, validValues);
@@ -261,6 +256,16 @@ public final class ConfigSerializer {
 		T value = configValue.getValueWithoutLoading();
 		String valueString = serializer.serialize(value);
 		serialized.add("\t%s = %s".formatted(name, valueString));
+	}
+
+	private static void addLocalizedNameAndDescription(List<String> serialized, String localizationKey, String indentation) {
+		Component nameComponent = Component.translatable(localizationKey);
+		String localizedName = getLocalizedComment(CONFIG_NAME_KEY, "Name: %s", nameComponent.getString());
+		addCommentedStrings(serialized, localizedName, indentation);
+
+		Component descriptionComponent = Component.translatable(localizationKey + ".description");
+		String description = getLocalizedComment(CONFIG_DESCRIPTION_KEY, "Description: %s", descriptionComponent.getString());
+		addCommentedStrings(serialized, description, indentation);
 	}
 
 	private static void addRestartRequirementComment(List<String> serialized, ConfigValue<?> configValue) {
@@ -299,14 +304,18 @@ public final class ConfigSerializer {
 	}
 
 	private static void addCommentedStrings(List<String> serialized, String comment) {
+		addCommentedStrings(serialized, comment, "\t");
+	}
+
+	private static void addCommentedStrings(List<String> serialized, String comment, String indentation) {
 		String[] lines = comment.split("\n");
 		if (lines.length == 0) {
 			return;
 		}
-		serialized.add("\t# %s".formatted(lines[0]));
+		serialized.add("%s# %s".formatted(indentation, lines[0]));
 		if (lines.length > 1) {
 			for (int i = 1; i < lines.length; i++) {
-				serialized.add("\t# %s".formatted(lines[i]));
+				serialized.add("%s# %s".formatted(indentation, lines[i]));
 			}
 		}
 	}

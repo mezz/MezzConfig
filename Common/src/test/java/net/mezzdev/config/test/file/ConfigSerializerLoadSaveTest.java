@@ -137,6 +137,11 @@ public class ConfigSerializerLoadSaveTest {
 
 		List<String> lines = Files.readAllLines(path);
 		assertTrue(Files.exists(path));
+		assertEquals(List.of(
+			"# Name: mezz_config.config.test.current",
+			"# Description: mezz_config.config.test.current.description",
+			"[current]"
+		), lines.subList(0, 3));
 		assertTrue(lines.contains("[current]"));
 		assertTrue(lines.contains("\t# Name: mezz_config.config.test.current.enabled"));
 		assertTrue(lines.contains("\t# Description: mezz_config.config.test.current.enabled.description"));

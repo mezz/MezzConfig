@@ -22,6 +22,7 @@ public interface IConfigEditorCategory {
 
 	/**
 	 * Get the translation key used for this category's name.
+	 * The category description uses this key with {@code .description} appended.
 	 *
 	 * @since 0.1.0
 	 */

@@ -41,6 +41,12 @@ List helpers expose their element serializer through `IConfigListValueSerializer
 so integrations can edit list elements individually without GUI-specific API in
 MezzConfig.
 
+The localization path passed to the schema builder is combined with category
+and value names. Define `<path>.<category>` and
+`<path>.<category>.description` for each category's display name and
+description. Generated config files include these as comments above each
+storage section, while the stable category name remains in `[brackets]`.
+
 ```java
 general.addBoolean("enabled", true)
 	.addLegacyName("oldEnabled")
