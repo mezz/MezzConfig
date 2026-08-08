@@ -1,12 +1,15 @@
 package net.mezzdev.config.test.schema;
 
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
+import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
+import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.value.PackedColor;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
@@ -85,6 +88,29 @@ public class ConfigSchemaTest {
 		assertTrue(flags.getSerializer() instanceof IConfigListValueSerializer<?>);
 		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) flags.getSerializer();
 		assertSame(BooleanSerializer.INSTANCE, listSerializer.getElementSerializer());
+	}
+
+	@Test
+	public void customValueTypesUseThePublicSerializerExtensionPath() {
+		// Setup: define a value type and serializer outside MezzConfig's built-in types.
+		IConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ExtensionValueSerializer serializer = new ExtensionValueSerializer();
+		ExtensionValue defaultValue = new ExtensionValue("default");
+
+		// Operation: create scalar and list values through the same public methods available to extensions.
+		IConfigValue<ExtensionValue> value = builder.addValue("extensionValue", defaultValue, serializer)
+			.build();
+		IConfigValue<List<ExtensionValue>> values = builder.addList("extensionValues", List.of(defaultValue), serializer)
+			.build();
+
+		// Assertions: the custom type round-trips without any built-in type registration or special handling.
+		assertSame(serializer, value.getSerializer());
+		assertEquals(new ExtensionValue("updated"), value.getSerializer().deserialize("updated").getResult().orElseThrow());
+		assertEquals(
+			List.of(new ExtensionValue("first"), new ExtensionValue("second")),
+			values.getSerializer().deserialize("first, second").getResult().orElseThrow()
+		);
+		assertListElementSerializer(values, "element", new ExtensionValue("element"));
 	}
 
 	@Test
@@ -648,6 +674,30 @@ public class ConfigSchemaTest {
 		ADVANCED
 	}
 
+	private record ExtensionValue(String text) {}
+
+	private static final class ExtensionValueSerializer implements IConfigValueSerializer<ExtensionValue> {
+		@Override
+		public String serialize(ExtensionValue value) {
+			return value.text();
+		}
+
+		@Override
+		public IDeserializeResult<ExtensionValue> deserialize(String string) {
+			return IDeserializeResult.success(new ExtensionValue(string));
+		}
+
+		@Override
+		public boolean isValid(ExtensionValue value) {
+			return !value.text().isBlank();
+		}
+
+		@Override
+		public String getValidValuesDescription() {
+			return "A non-blank extension value";
+		}
+	}
+
 	private static ConfigSchema createSchema(ConfigCategoryBuilder... builders) {
 		return createSchema(Path.of("test.ini"), builders);
 	}
@@ -702,7 +752,7 @@ public class ConfigSchemaTest {
 
 	@SuppressWarnings("unchecked")
 	private static <T> void assertListElementSerializer(
-		ConfigValue<List<T>> configValue,
+		IConfigValue<List<T>> configValue,
 		String serializedValue,
 		T expectedValue
 	) {

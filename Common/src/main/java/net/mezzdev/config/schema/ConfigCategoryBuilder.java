@@ -108,7 +108,7 @@ public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implement
 		Class<T> enumClass
 	) {
 		EnumSerializer<T> serializer = new EnumSerializer<>(enumClass);
-		return addValue(name, defaultValue, new ListSerializer<>(serializer));
+		return addList(name, defaultValue, serializer);
 	}
 
 	@Override
@@ -123,7 +123,7 @@ public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implement
 		}
 		T firstValidValue = ErrorUtil.checkNotNull(validValues.getFirst(), "validValues[0]");
 		EnumSerializer<T> serializer = new EnumSerializer<>(firstValidValue.getDeclaringClass(), validValues);
-		return addValue(name, defaultValue, new ListSerializer<>(serializer));
+		return addList(name, defaultValue, serializer);
 	}
 
 	@Override

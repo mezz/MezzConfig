@@ -31,11 +31,15 @@ Supported built-in value helpers include:
 
 - strings
 - booleans
-- integers, ARGB colors, longs, and finite doubles
+- integers, packed RGB or ARGB colors, longs, and finite doubles
 - optional bounds for numeric values
 - enums, including restricted sets of enum values
-- typed lists of strings, booleans, integers, ARGB colors, longs, finite doubles, or enums
+- typed lists of strings, booleans, integers, packed colors, longs, finite doubles, or enums
 - custom serializers
+
+Built-in helpers use the same `addValue(...)` and `addList(...)` serializer paths
+as custom value types. Implement `IConfigValueSerializer<T>` and pass it to one
+of these methods to add a new type without registering it with MezzConfig.
 
 List helpers expose their element serializer through `IConfigListValueSerializer`,
 so integrations can edit list elements individually without GUI-specific API in
