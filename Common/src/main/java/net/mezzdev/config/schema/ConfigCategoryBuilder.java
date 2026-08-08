@@ -2,6 +2,7 @@ package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.PackedColor;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.ColorSerializer;
 import net.mezzdev.config.serializers.DoubleSerializer;
@@ -148,12 +149,12 @@ public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implement
 	}
 
 	@Override
-	public ConfigValueBuilder<Integer> addColor(String name, int defaultValue) {
+	public ConfigValueBuilder<PackedColor> addColor(String name, PackedColor defaultValue) {
 		return addValue(name, defaultValue, ColorSerializer.INSTANCE);
 	}
 
 	@Override
-	public ConfigValueBuilder<List<Integer>> addColorList(String name, List<Integer> defaultValue) {
+	public ConfigValueBuilder<List<PackedColor>> addColorList(String name, List<PackedColor> defaultValue) {
 		return addList(name, defaultValue, ColorSerializer.INSTANCE);
 	}
 

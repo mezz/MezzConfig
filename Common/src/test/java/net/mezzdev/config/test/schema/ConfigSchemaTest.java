@@ -7,6 +7,7 @@ import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
+import net.mezzdev.config.api.value.PackedColor;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
@@ -102,9 +103,9 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigValue<List<Integer>> boundedIntegers = builder.addIntegerList("boundedIntegers", List.of(1), 0, 10)
 			.build();
-		ConfigValue<Integer> color = builder.addColor("color", 0xFF112233)
+		ConfigValue<PackedColor> color = builder.addColor("color", PackedColor.argb(0xFF112233))
 			.build();
-		ConfigValue<List<Integer>> colors = builder.addColorList("colors", List.of(0xFF112233))
+		ConfigValue<List<PackedColor>> colors = builder.addColorList("colors", List.of(PackedColor.argb(0xFF112233)))
 			.build();
 		ConfigValue<Long> boundedLong = builder.addLong("boundedLong", 1L, 0L, 10L)
 			.build();
@@ -130,9 +131,15 @@ public class ConfigSchemaTest {
 		assertEquals(Integer.MIN_VALUE, unboundedInteger.getSerializer().getRange().orElseThrow().min());
 		assertEquals(List.of(1, 2), unboundedIntegers.getSerializer().deserialize("1, 2").getResult().orElseThrow());
 		assertEquals(List.of(1, 2), boundedIntegers.getSerializer().deserialize("1, 2").getResult().orElseThrow());
-		assertEquals("0xFF112233", color.getSerializer().serialize(0xFF112233));
-		assertEquals(0xFF445566, color.getSerializer().deserialize("0xFF445566").getResult().orElseThrow());
-		assertEquals(List.of(0xFF112233, 0x80445566), colors.getSerializer().deserialize("0xFF112233, 0x80445566").getResult().orElseThrow());
+		assertTrue(colors.getSerializer() instanceof IConfigListValueSerializer<?>);
+		IConfigListValueSerializer<?> colorsSerializer = (IConfigListValueSerializer<?>) colors.getSerializer();
+		assertEquals(PackedColor.rgb(0x112233), colorsSerializer.getElementSerializer().deserialize("0x112233").getResult().orElseThrow());
+		assertEquals("0xFF112233", color.getSerializer().serialize(PackedColor.argb(0xFF112233)));
+		assertEquals(PackedColor.argb(0xFF445566), color.getSerializer().deserialize("0xFF445566").getResult().orElseThrow());
+		assertEquals(
+			List.of(PackedColor.rgb(0x112233), PackedColor.argb(0x80445566)),
+			colors.getSerializer().deserialize("0x112233, 0x80445566").getResult().orElseThrow()
+		);
 		assertEquals(10L, boundedLong.getSerializer().getRange().orElseThrow().max());
 		assertEquals(List.of(1L, 2L), unboundedLongs.getSerializer().deserialize("1, 2").getResult().orElseThrow());
 		assertEquals(List.of(1L, 2L), boundedLongs.getSerializer().deserialize("1, 2").getResult().orElseThrow());
@@ -147,7 +154,7 @@ public class ConfigSchemaTest {
 		assertListElementSerializer(flags, "false", false);
 		assertListElementSerializer(unboundedIntegers, "2", 2);
 		assertListElementSerializer(boundedIntegers, "2", 2);
-		assertListElementSerializer(colors, "0xFF445566", 0xFF445566);
+		assertListElementSerializer(colors, "0xFF445566", PackedColor.argb(0xFF445566));
 		assertListElementSerializer(unboundedLongs, "2", 2L);
 		assertListElementSerializer(boundedLongs, "2", 2L);
 		assertListElementSerializer(unboundedDoubles, "2.5", 2.5);

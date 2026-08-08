@@ -1,8 +1,9 @@
 package net.mezzdev.config.api.schema;
 
-import net.mezzdev.config.api.value.IConfigValueBuilder;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
+import net.mezzdev.config.api.value.IConfigValueBuilder;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.PackedColor;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;
@@ -116,17 +117,17 @@ public interface IConfigCategoryBuilder extends IConfigEditorCategoryBuilder {
 	IConfigValueBuilder<List<Integer>> addIntegerList(String name, List<Integer> defaultValue, int minValue, int maxValue);
 
 	/**
-	 * Create a builder for an ARGB color config value stored as an integer and serialized as {@code 0xAARRGGBB}.
+	 * Create a builder for an RGB or ARGB color config value serialized as {@code 0xRRGGBB} or {@code 0xAARRGGBB}.
 	 *
 	 * @param name stable storage name for the value
 	 * @param defaultValue default value
 	 *
 	 * @since 0.1.0
 	 */
-	IConfigValueBuilder<Integer> addColor(String name, int defaultValue);
+	IConfigValueBuilder<PackedColor> addColor(String name, PackedColor defaultValue);
 
 	/**
-	 * Create a builder for a list config value containing ARGB colors stored as integers and serialized as
+	 * Create a builder for a list config value containing RGB or ARGB colors serialized as {@code 0xRRGGBB} or
 	 * {@code 0xAARRGGBB}.
 	 *
 	 * @param name stable storage name for the value
@@ -134,7 +135,7 @@ public interface IConfigCategoryBuilder extends IConfigEditorCategoryBuilder {
 	 *
 	 * @since 0.1.0
 	 */
-	IConfigValueBuilder<List<Integer>> addColorList(String name, List<Integer> defaultValue);
+	IConfigValueBuilder<List<PackedColor>> addColorList(String name, List<PackedColor> defaultValue);
 
 	/**
 	 * Create a builder for a long config value.

@@ -1,30 +1,35 @@
 package net.mezzdev.config.serializers;
 
+import net.mezzdev.config.api.value.ConfigColorFormat;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.PackedColor;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Serializer for ARGB color config values stored as 32-bit integers.
+ * Serializer for RGB and ARGB color config values stored as packed integers.
  */
-public final class ColorSerializer implements IConfigValueSerializer<Integer> {
+public final class ColorSerializer implements IConfigValueSerializer<PackedColor> {
 	/**
-	 * Shared ARGB color serializer instance.
+	 * Shared packed color serializer instance.
 	 */
 	public static final ColorSerializer INSTANCE = new ColorSerializer();
 
 	private static final String PREFIX = "0x";
-	private static final int HEX_DIGITS = 8;
-	private static final long MAX_UNSIGNED_INT = 0xFFFF_FFFFL;
+	private static final int RGB_HEX_DIGITS = 6;
+	private static final int ARGB_HEX_DIGITS = 8;
 
 	private ColorSerializer() {}
 
 	@Override
-	public String serialize(Integer value) {
-		return "0x%08X".formatted(value);
+	public String serialize(PackedColor value) {
+		return switch (value.format()) {
+			case RGB -> "0x%06X".formatted(value.packedValue());
+			case ARGB -> "0x%08X".formatted(value.packedValue());
+		};
 	}
 
 	@Override
-	public DeserializeResult<Integer> deserialize(String string) {
+	public DeserializeResult<PackedColor> deserialize(String string) {
 		string = string.trim();
 		if (string.startsWith("\"") && string.endsWith("\"")) {
 			string = string.substring(1, string.length() - 1);
@@ -34,16 +39,18 @@ public final class ColorSerializer implements IConfigValueSerializer<Integer> {
 		}
 
 		String hex = string.substring(PREFIX.length());
-		if (hex.length() != HEX_DIGITS) {
+		ConfigColorFormat format = switch (hex.length()) {
+			case RGB_HEX_DIGITS -> ConfigColorFormat.RGB;
+			case ARGB_HEX_DIGITS -> ConfigColorFormat.ARGB;
+			default -> null;
+		};
+		if (format == null) {
 			return new DeserializeResult<>(null, "Invalid color. Must be: " + getValidValuesDescription());
 		}
 
 		try {
 			long unsignedValue = Long.parseUnsignedLong(hex, 16);
-			if (unsignedValue > MAX_UNSIGNED_INT) {
-				return new DeserializeResult<>(null, "Invalid color. Must be: " + getValidValuesDescription());
-			}
-			return new DeserializeResult<>((int) unsignedValue);
+			return new DeserializeResult<>(new PackedColor((int) unsignedValue, format));
 		} catch (NumberFormatException e) {
 			String errorMessage = "Unable to parse color: '%s' with error:\n%s".formatted(string, e.getMessage());
 			return new DeserializeResult<>(null, errorMessage);
@@ -51,12 +58,12 @@ public final class ColorSerializer implements IConfigValueSerializer<Integer> {
 	}
 
 	@Override
-	public boolean isValid(@Nullable Integer value) {
+	public boolean isValid(@Nullable PackedColor value) {
 		return value != null;
 	}
 
 	@Override
 	public String getValidValuesDescription() {
-		return "An ARGB color serialized as 0xAARRGGBB";
+		return "An RGB or ARGB color serialized as 0xRRGGBB or 0xAARRGGBB";
 	}
 }

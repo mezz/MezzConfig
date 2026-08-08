@@ -4,6 +4,7 @@ import net.mezzdev.config.api.value.ConfigValueRange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.PackedColor;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.ColorSerializer;
 import net.mezzdev.config.serializers.DoubleSerializer;
@@ -81,26 +82,41 @@ public class ConfigValueSerializerTest {
 	}
 
 	@Test
-	public void colorSerializerParsesAndSerializesArgbHexColors() {
-		assertEquals("0xFF112233", ColorSerializer.INSTANCE.serialize(0xFF112233));
-		assertEquals("0x00112233", ColorSerializer.INSTANCE.serialize(0x00112233));
-		assertEquals(0xFF112233, deserializeValue(ColorSerializer.INSTANCE, "0xFF112233"));
-		assertEquals(0xFF112233, deserializeValue(ColorSerializer.INSTANCE, "0xff112233"));
-		assertEquals(0xFF112233, deserializeValue(ColorSerializer.INSTANCE, "\"0xFF112233\""));
-		assertTrue(ColorSerializer.INSTANCE.isValid(0));
+	public void colorSerializerParsesAndSerializesRgbAndArgbHexColors() {
+		PackedColor rgb = PackedColor.rgb(0x112233);
+		PackedColor argb = PackedColor.argb(0x80112233);
+
+		assertEquals("0x112233", ColorSerializer.INSTANCE.serialize(rgb));
+		assertEquals("0x80112233", ColorSerializer.INSTANCE.serialize(argb));
+		assertEquals(rgb, deserializeValue(ColorSerializer.INSTANCE, "0x112233"));
+		assertEquals(argb, deserializeValue(ColorSerializer.INSTANCE, "0x80112233"));
+		assertEquals(PackedColor.argb(0x80ABCDEF), deserializeValue(ColorSerializer.INSTANCE, "0x80abcdef"));
+		assertEquals(argb, deserializeValue(ColorSerializer.INSTANCE, "\"0x80112233\""));
+		assertTrue(ColorSerializer.INSTANCE.isValid(rgb));
 		assertFalse(ColorSerializer.INSTANCE.isValid(null));
 	}
 
 	@Test
+	public void packedColorRejectsArgbDataInRgbFormat() {
+		assertThrows(IllegalArgumentException.class, () -> PackedColor.rgb(0xFF112233));
+	}
+
+	@Test
 	public void colorSerializerRejectsInvalidColors() {
-		IDeserializeResult<Integer> missingPrefix = ColorSerializer.INSTANCE.deserialize("FF112233");
-		IDeserializeResult<Integer> shortColor = ColorSerializer.INSTANCE.deserialize("0x112233");
-		IDeserializeResult<Integer> invalidHex = ColorSerializer.INSTANCE.deserialize("0xGG112233");
+		IDeserializeResult<PackedColor> missingPrefix = ColorSerializer.INSTANCE.deserialize("FF112233");
+		IDeserializeResult<PackedColor> shortColor = ColorSerializer.INSTANCE.deserialize("0x12345");
+		IDeserializeResult<PackedColor> invalidHex = ColorSerializer.INSTANCE.deserialize("0xGG112233");
 
 		assertTrue(missingPrefix.getResult().isEmpty());
-		assertEquals(List.of("Invalid color. Must be: An ARGB color serialized as 0xAARRGGBB"), missingPrefix.getErrors());
+		assertEquals(
+			List.of("Invalid color. Must be: An RGB or ARGB color serialized as 0xRRGGBB or 0xAARRGGBB"),
+			missingPrefix.getErrors()
+		);
 		assertTrue(shortColor.getResult().isEmpty());
-		assertEquals(List.of("Invalid color. Must be: An ARGB color serialized as 0xAARRGGBB"), shortColor.getErrors());
+		assertEquals(
+			List.of("Invalid color. Must be: An RGB or ARGB color serialized as 0xRRGGBB or 0xAARRGGBB"),
+			shortColor.getErrors()
+		);
 		assertTrue(invalidHex.getResult().isEmpty());
 		assertTrue(invalidHex.getErrors().getFirst().contains("Unable to parse color: '0xGG112233'"));
 	}
