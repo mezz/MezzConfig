@@ -84,10 +84,7 @@ public record MezzConfigSettings(
 			.build();
 
 		ConfigCategoryBuilder loggingCategory = new ConfigCategoryBuilder(LOCALIZATION_PATH, LOGGING_CATEGORY_NAME);
-		ConfigValue<Boolean> logUntranslatedKeys = loggingCategory.addBoolean(
-				LOG_UNTRANSLATED_KEYS_NAME,
-				developmentEnvironment
-			)
+		ConfigValue<Boolean> logUntranslatedKeys = loggingCategory.addBoolean(LOG_UNTRANSLATED_KEYS_NAME, developmentEnvironment)
 			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 
