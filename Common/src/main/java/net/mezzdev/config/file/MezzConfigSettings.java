@@ -1,0 +1,107 @@
+package net.mezzdev.config.file;
+
+import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.mezzdev.config.schema.ConfigCategoryBuilder;
+import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.util.ErrorUtil;
+import net.mezzdev.config.value.ConfigValue;
+import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
+import net.mezzdev.filewatcher.FileWatcher;
+import org.jetbrains.annotations.ApiStatus;
+
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+
+@ApiStatus.Internal
+public record MezzConfigSettings(ConfigFileWatcherSettings fileWatcherSettings) {
+	private static final String MOD_ID = "mezz_config";
+	private static final String CONFIG_DIRECTORY_NAME = "mezz_config";
+	private static final String CONFIG_FILE_NAME = "settings.ini";
+	private static final String LOCALIZATION_PATH = "mezz_config.config";
+	private static final String FILE_WATCHER_CATEGORY_NAME = "fileWatcher";
+	private static final String ENABLED_NAME = "enabled";
+	private static final String CHANGE_SETTLING_DELAY_NAME = "changeSettlingDelayMilliseconds";
+	private static final String MISSING_DIRECTORY_RETRY_INTERVAL_NAME = "missingDirectoryRetryIntervalMilliseconds";
+	private static final DelayedTaskScheduler NO_SAVE_SCHEDULER = (command, delay) -> CompletableFuture.completedFuture(null);
+
+	public MezzConfigSettings {
+		fileWatcherSettings = ErrorUtil.checkNotNull(fileWatcherSettings, "fileWatcherSettings");
+	}
+
+	public static MezzConfigSettings load(Path configRootDir) {
+		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir");
+		SchemaData schemaData = createSchema(configRootDir, NO_SAVE_SCHEDULER);
+		schemaData.schema()
+			.loadIfNeeded();
+		return schemaData.settings();
+	}
+
+	public static ConfigSchema registerSchema(ConfigManager configManager, Path configRootDir) {
+		configManager = ErrorUtil.checkNotNull(configManager, "configManager");
+		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir");
+		SchemaData schemaData = createSchema(configRootDir, configManager.getSaveScheduler());
+		ConfigSchema schema = schemaData.schema();
+		configManager.registerSchema(schema);
+		return schema;
+	}
+
+	private static SchemaData createSchema(Path configRootDir, DelayedTaskScheduler scheduler) {
+		scheduler = ErrorUtil.checkNotNull(scheduler, "scheduler");
+		ConfigCategoryBuilder fileWatcherCategory = new ConfigCategoryBuilder(LOCALIZATION_PATH, FILE_WATCHER_CATEGORY_NAME);
+		ConfigValue<Boolean> enabled = fileWatcherCategory.addBoolean(ENABLED_NAME, true)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigValue<Long> changeSettlingDelayMilliseconds = fileWatcherCategory.addLong(
+				CHANGE_SETTLING_DELAY_NAME,
+				FileWatcher.DEFAULT_CHANGE_SETTLING_DELAY.toMillis(),
+				1L,
+				Long.MAX_VALUE
+			)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigValue<Long> missingDirectoryRetryIntervalMilliseconds = fileWatcherCategory.addLong(
+				MISSING_DIRECTORY_RETRY_INTERVAL_NAME,
+				FileWatcher.DEFAULT_MISSING_DIRECTORY_RETRY_INTERVAL.toMillis(),
+				1L,
+				Long.MAX_VALUE
+			)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+
+		ConfigSchema schema = new ConfigSchema(
+			MOD_ID,
+			getConfigFile(configRootDir),
+			List.of(fileWatcherCategory),
+			scheduler
+		);
+		return new SchemaData(
+			schema,
+			enabled,
+			changeSettlingDelayMilliseconds,
+			missingDirectoryRetryIntervalMilliseconds
+		);
+	}
+
+	private static Path getConfigFile(Path configRootDir) {
+		return configRootDir.resolve(CONFIG_DIRECTORY_NAME)
+			.resolve(CONFIG_FILE_NAME);
+	}
+
+	private record SchemaData(
+		ConfigSchema schema,
+		ConfigValue<Boolean> enabled,
+		ConfigValue<Long> changeSettlingDelayMilliseconds,
+		ConfigValue<Long> missingDirectoryRetryIntervalMilliseconds
+	) {
+		private MezzConfigSettings settings() {
+			ConfigFileWatcherSettings fileWatcherSettings = new ConfigFileWatcherSettings(
+				enabled.getValue(),
+				Duration.ofMillis(changeSettlingDelayMilliseconds.getValue()),
+				Duration.ofMillis(missingDirectoryRetryIntervalMilliseconds.getValue())
+			);
+			return new MezzConfigSettings(fileWatcherSettings);
+		}
+	}
+}
