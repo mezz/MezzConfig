@@ -26,6 +26,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 	private final @Nullable FileWatcher fileWatcher;
 	private final DelayedExecutor saveExecutor;
 	private final List<ConfigSchema> configFiles = new ArrayList<>();
+	private final boolean logUntranslatedKeys;
 
 	public ConfigManager() {
 		this("Config File Watcher");
@@ -36,9 +37,18 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 	}
 
 	public ConfigManager(String fileWatcherThreadName, ConfigFileWatcherSettings fileWatcherSettings) {
+		this(fileWatcherThreadName, fileWatcherSettings, false);
+	}
+
+	public ConfigManager(
+		String fileWatcherThreadName,
+		ConfigFileWatcherSettings fileWatcherSettings,
+		boolean logUntranslatedKeys
+	) {
 		fileWatcherThreadName = ErrorUtil.checkNotNull(fileWatcherThreadName, "fileWatcherThreadName");
 		fileWatcherSettings = ErrorUtil.checkNotNull(fileWatcherSettings, "fileWatcherSettings");
 		this.fileWatcher = createFileWatcher(fileWatcherThreadName, fileWatcherSettings);
+		this.logUntranslatedKeys = logUntranslatedKeys;
 		this.saveExecutor = new DelayedExecutor(SAVE_SHUTDOWN_TIMEOUT, SAVE_SCHEDULER_THREAD_NAME);
 		Runtime.getRuntime()
 			.addShutdownHook(new Thread(saveExecutor::shutdown, SAVE_SCHEDULER_THREAD_NAME + " Shutdown"));
@@ -69,7 +79,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 	}
 
 	public void registerSchema(ConfigSchema configFile) {
-		configFile.register(fileWatcher, this);
+		configFile.register(fileWatcher, this, logUntranslatedKeys);
 	}
 
 	@Override

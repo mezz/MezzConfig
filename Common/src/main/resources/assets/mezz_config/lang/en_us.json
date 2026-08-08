@@ -12,5 +12,9 @@
   "mezz_config.config.fileWatcher.changeSettlingDelayMilliseconds": "Change Settling Delay",
   "mezz_config.config.fileWatcher.changeSettlingDelayMilliseconds.description": "Milliseconds to wait after the last filesystem event before reloading changed config files.",
   "mezz_config.config.fileWatcher.missingDirectoryRetryIntervalMilliseconds": "Missing Directory Retry Interval",
-  "mezz_config.config.fileWatcher.missingDirectoryRetryIntervalMilliseconds.description": "Milliseconds between attempts to start watching config directories that do not exist yet."
+  "mezz_config.config.fileWatcher.missingDirectoryRetryIntervalMilliseconds.description": "Milliseconds between attempts to start watching config directories that do not exist yet.",
+  "mezz_config.config.logging": "Logging",
+  "mezz_config.config.logging.description": "Controls optional MezzConfig diagnostic logging.",
+  "mezz_config.config.logging.logUntranslatedKeys": "Log Untranslated Keys",
+  "mezz_config.config.logging.logUntranslatedKeys.description": "Log category and value localization keys that are missing from the active language. Enabled by default in development environments."
 }

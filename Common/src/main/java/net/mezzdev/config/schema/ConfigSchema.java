@@ -51,6 +51,8 @@ public class ConfigSchema implements IConfigSchema {
 	private @Nullable Runnable removeFileWatcherCallback;
 	private @Nullable List<IConfigValueBatchChangeListener> listeners;
 	private boolean registered;
+	private boolean logUntranslatedKeys;
+	private boolean translationKeysChecked;
 
 	public ConfigSchema(
 		Path path,
@@ -270,8 +272,13 @@ public class ConfigSchema implements IConfigSchema {
 		needsLoad.set(true);
 	}
 
-	public void register(@Nullable FileWatcher fileWatcher, IConfigFileRegistrar configFileRegistrar) {
+	public void register(
+		@Nullable FileWatcher fileWatcher,
+		IConfigFileRegistrar configFileRegistrar,
+		boolean logUntranslatedKeys
+	) {
 		this.fileWatcher = fileWatcher;
+		this.logUntranslatedKeys = logUntranslatedKeys;
 		this.registered = true;
 		loadIfNeeded();
 		configFileRegistrar.addConfigFile(this);
@@ -298,6 +305,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	private void save(Path path) {
 		try {
+			logUntranslatedKeysIfNeeded(path);
 			ConfigSerializer.save(path, categories);
 		} catch (IOException e) {
 			LOGGER.error("Failed to save config file: '{}'", path, e);
@@ -306,6 +314,14 @@ public class ConfigSchema implements IConfigSchema {
 				pendingSavePath = null;
 			}
 		}
+	}
+
+	private void logUntranslatedKeysIfNeeded(Path path) {
+		if (!logUntranslatedKeys || translationKeysChecked || !ConfigSerializer.canLocalizeComments()) {
+			return;
+		}
+		translationKeysChecked = true;
+		ConfigTranslationChecker.logUntranslatedKeys(path, editorCategories, categories);
 	}
 
 	public void markDirty() {

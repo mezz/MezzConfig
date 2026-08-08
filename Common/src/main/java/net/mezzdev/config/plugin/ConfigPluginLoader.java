@@ -36,11 +36,16 @@ public final class ConfigPluginLoader {
 	public static IConfigManager createConfigManager(
 		String fileWatcherThreadName,
 		Path configRootDir,
+		boolean developmentEnvironment,
 		List<? extends IConfigPlugin> plugins
 	) {
-		MezzConfigSettings settings = MezzConfigSettings.load(configRootDir);
-		ConfigManager configManager = new ConfigManager(fileWatcherThreadName, settings.fileWatcherSettings());
-		MezzConfigSettings.registerSchema(configManager, configRootDir);
+		MezzConfigSettings settings = MezzConfigSettings.load(configRootDir, developmentEnvironment);
+		ConfigManager configManager = new ConfigManager(
+			fileWatcherThreadName,
+			settings.fileWatcherSettings(),
+			settings.logUntranslatedKeys()
+		);
+		MezzConfigSettings.registerSchema(configManager, configRootDir, developmentEnvironment);
 		for (IConfigPlugin plugin : plugins) {
 			addPlugin(configManager, configRootDir, plugin);
 		}

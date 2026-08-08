@@ -15,7 +15,10 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @ApiStatus.Internal
-public record MezzConfigSettings(ConfigFileWatcherSettings fileWatcherSettings) {
+public record MezzConfigSettings(
+	ConfigFileWatcherSettings fileWatcherSettings,
+	boolean logUntranslatedKeys
+) {
 	private static final String MOD_ID = "mezz_config";
 	private static final String CONFIG_DIRECTORY_NAME = "mezz_config";
 	private static final String CONFIG_FILE_NAME = "settings.ini";
@@ -24,30 +27,40 @@ public record MezzConfigSettings(ConfigFileWatcherSettings fileWatcherSettings) 
 	private static final String ENABLED_NAME = "enabled";
 	private static final String CHANGE_SETTLING_DELAY_NAME = "changeSettlingDelayMilliseconds";
 	private static final String MISSING_DIRECTORY_RETRY_INTERVAL_NAME = "missingDirectoryRetryIntervalMilliseconds";
+	private static final String LOGGING_CATEGORY_NAME = "logging";
+	private static final String LOG_UNTRANSLATED_KEYS_NAME = "logUntranslatedKeys";
 	private static final DelayedTaskScheduler NO_SAVE_SCHEDULER = (command, delay) -> CompletableFuture.completedFuture(null);
 
 	public MezzConfigSettings {
 		fileWatcherSettings = ErrorUtil.checkNotNull(fileWatcherSettings, "fileWatcherSettings");
 	}
 
-	public static MezzConfigSettings load(Path configRootDir) {
+	public static MezzConfigSettings load(Path configRootDir, boolean developmentEnvironment) {
 		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir");
-		SchemaData schemaData = createSchema(configRootDir, NO_SAVE_SCHEDULER);
+		SchemaData schemaData = createSchema(configRootDir, NO_SAVE_SCHEDULER, developmentEnvironment);
 		schemaData.schema()
 			.loadIfNeeded();
 		return schemaData.settings();
 	}
 
-	public static ConfigSchema registerSchema(ConfigManager configManager, Path configRootDir) {
+	public static ConfigSchema registerSchema(
+		ConfigManager configManager,
+		Path configRootDir,
+		boolean developmentEnvironment
+	) {
 		configManager = ErrorUtil.checkNotNull(configManager, "configManager");
 		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir");
-		SchemaData schemaData = createSchema(configRootDir, configManager.getSaveScheduler());
+		SchemaData schemaData = createSchema(configRootDir, configManager.getSaveScheduler(), developmentEnvironment);
 		ConfigSchema schema = schemaData.schema();
 		configManager.registerSchema(schema);
 		return schema;
 	}
 
-	private static SchemaData createSchema(Path configRootDir, DelayedTaskScheduler scheduler) {
+	private static SchemaData createSchema(
+		Path configRootDir,
+		DelayedTaskScheduler scheduler,
+		boolean developmentEnvironment
+	) {
 		scheduler = ErrorUtil.checkNotNull(scheduler, "scheduler");
 		ConfigCategoryBuilder fileWatcherCategory = new ConfigCategoryBuilder(LOCALIZATION_PATH, FILE_WATCHER_CATEGORY_NAME);
 		ConfigValue<Boolean> enabled = fileWatcherCategory.addBoolean(ENABLED_NAME, true)
@@ -70,17 +83,26 @@ public record MezzConfigSettings(ConfigFileWatcherSettings fileWatcherSettings) 
 			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 
+		ConfigCategoryBuilder loggingCategory = new ConfigCategoryBuilder(LOCALIZATION_PATH, LOGGING_CATEGORY_NAME);
+		ConfigValue<Boolean> logUntranslatedKeys = loggingCategory.addBoolean(
+				LOG_UNTRANSLATED_KEYS_NAME,
+				developmentEnvironment
+			)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+
 		ConfigSchema schema = new ConfigSchema(
 			MOD_ID,
 			getConfigFile(configRootDir),
-			List.of(fileWatcherCategory),
+			List.of(fileWatcherCategory, loggingCategory),
 			scheduler
 		);
 		return new SchemaData(
 			schema,
 			enabled,
 			changeSettlingDelayMilliseconds,
-			missingDirectoryRetryIntervalMilliseconds
+			missingDirectoryRetryIntervalMilliseconds,
+			logUntranslatedKeys
 		);
 	}
 
@@ -93,7 +115,8 @@ public record MezzConfigSettings(ConfigFileWatcherSettings fileWatcherSettings) 
 		ConfigSchema schema,
 		ConfigValue<Boolean> enabled,
 		ConfigValue<Long> changeSettlingDelayMilliseconds,
-		ConfigValue<Long> missingDirectoryRetryIntervalMilliseconds
+		ConfigValue<Long> missingDirectoryRetryIntervalMilliseconds,
+		ConfigValue<Boolean> logUntranslatedKeys
 	) {
 		private MezzConfigSettings settings() {
 			ConfigFileWatcherSettings fileWatcherSettings = new ConfigFileWatcherSettings(
@@ -101,7 +124,7 @@ public record MezzConfigSettings(ConfigFileWatcherSettings fileWatcherSettings) 
 				Duration.ofMillis(changeSettlingDelayMilliseconds.getValue()),
 				Duration.ofMillis(missingDirectoryRetryIntervalMilliseconds.getValue())
 			);
-			return new MezzConfigSettings(fileWatcherSettings);
+			return new MezzConfigSettings(fileWatcherSettings, logUntranslatedKeys.getValue());
 		}
 	}
 }

@@ -12,8 +12,14 @@ import java.nio.file.Path;
 public final class ConfigFabricClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
-		Path configRootDir = FabricLoader.getInstance()
+		FabricLoader fabricLoader = FabricLoader.getInstance();
+		Path configRootDir = fabricLoader
 			.getConfigDir();
-		ConfigPluginLoader.createConfigManager("MezzConfig File Watcher", configRootDir, ConfigFabricPluginFinder.getPlugins());
+		ConfigPluginLoader.createConfigManager(
+			"MezzConfig File Watcher",
+			configRootDir,
+			fabricLoader.isDevelopmentEnvironment(),
+			ConfigFabricPluginFinder.getPlugins()
+		);
 	}
 }
