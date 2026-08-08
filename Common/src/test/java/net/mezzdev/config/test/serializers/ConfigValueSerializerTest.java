@@ -1,7 +1,9 @@
 package net.mezzdev.config.test.serializers;
 
+import net.mezzdev.config.api.value.ConfigColorFormat;
 import net.mezzdev.config.api.value.ConfigValueRange;
 import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.IConfigKeyValueSerializer;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.value.PackedColor;
@@ -261,6 +263,31 @@ public class ConfigValueSerializerTest {
 	}
 
 	@Test
+	public void keyValueSerializerExposesComponentsWithoutChangingStorageFormat() {
+		// Setup: model JEI's ordered named colors as domain values instead of changing them to a map.
+		NamedColorSerializer serializer = new NamedColorSerializer();
+		ListSerializer<NamedColor> listSerializer = new ListSerializer<>(serializer);
+		NamedColor lightBlue = new NamedColor("LightBlue", PackedColor.rgb(0x7492CC));
+
+		// Operation: serialize the containing value with its existing custom format.
+		String serialized = serializer.serialize(lightBlue);
+		NamedColor deserialized = deserializeValue(serializer, serialized);
+
+		// Assertions: integrations can edit each component with its own serializer and rebuild the domain value.
+		assertEquals("LightBlue:7492CC", serialized);
+		assertEquals(lightBlue, deserialized);
+		assertSame(StringSerializer.INSTANCE, serializer.getKeySerializer());
+		assertSame(ColorSerializer.INSTANCE, serializer.getValueSerializer());
+		assertSame(serializer, listSerializer.getElementSerializer());
+		assertEquals("LightBlue", serializer.getKey(lightBlue));
+		assertEquals(PackedColor.rgb(0x7492CC), serializer.getValue(lightBlue));
+		assertEquals(
+			new NamedColor("Blue", PackedColor.rgb(0x2222DD)),
+			serializer.createEntry("Blue", PackedColor.rgb(0x2222DD))
+		);
+	}
+
+	@Test
 	public void deserializeResultFactoriesCreateStandardResults() {
 		IDeserializeResult<String> success = IDeserializeResult.success("value");
 		IDeserializeResult<String> failure = IDeserializeResult.failure("error");
@@ -283,5 +310,63 @@ public class ConfigValueSerializerTest {
 	private enum TestEnum {
 		FIRST_VALUE,
 		SECOND_VALUE
+	}
+
+	private record NamedColor(String name, PackedColor color) {}
+
+	private static final class NamedColorSerializer implements IConfigKeyValueSerializer<NamedColor, String, PackedColor> {
+		@Override
+		public IConfigValueSerializer<String> getKeySerializer() {
+			return StringSerializer.INSTANCE;
+		}
+
+		@Override
+		public IConfigValueSerializer<PackedColor> getValueSerializer() {
+			return ColorSerializer.INSTANCE;
+		}
+
+		@Override
+		public String getKey(NamedColor entry) {
+			return entry.name();
+		}
+
+		@Override
+		public PackedColor getValue(NamedColor entry) {
+			return entry.color();
+		}
+
+		@Override
+		public NamedColor createEntry(String key, PackedColor value) {
+			return new NamedColor(key, value);
+		}
+
+		@Override
+		public String serialize(NamedColor value) {
+			return "%s:%06X".formatted(value.name(), value.color().packedValue());
+		}
+
+		@Override
+		public IDeserializeResult<NamedColor> deserialize(String string) {
+			String[] parts = string.split(":", 2);
+			if (parts.length != 2 || parts[0].isBlank() || parts[1].length() != 6) {
+				return IDeserializeResult.failure("Named colors must contain a name and RGB value separated by ':'");
+			}
+			try {
+				int color = Integer.parseInt(parts[1], 16);
+				return IDeserializeResult.success(new NamedColor(parts[0], PackedColor.rgb(color)));
+			} catch (NumberFormatException e) {
+				return IDeserializeResult.failure("Named colors must contain an RGB hex value");
+			}
+		}
+
+		@Override
+		public boolean isValid(NamedColor value) {
+			return !value.name().isBlank() && value.color().format() == ConfigColorFormat.RGB;
+		}
+
+		@Override
+		public String getValidValuesDescription() {
+			return "A name and RGB hex color separated by ':'";
+		}
 	}
 }

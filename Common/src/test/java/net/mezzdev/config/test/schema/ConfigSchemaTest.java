@@ -7,6 +7,7 @@ import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.IConfigKeyValueSerializer;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
@@ -17,6 +18,7 @@ import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaPathResolver;
 import net.mezzdev.config.serializers.BooleanSerializer;
+import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -92,25 +94,28 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void customValueTypesUseThePublicSerializerExtensionPath() {
-		// Setup: define a value type and serializer outside MezzConfig's built-in types.
+		// Setup: define a key-value entry type and serializer outside MezzConfig's built-in types.
 		IConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
-		ExtensionValueSerializer serializer = new ExtensionValueSerializer();
-		ExtensionValue defaultValue = new ExtensionValue("default");
+		ExtensionEntrySerializer serializer = new ExtensionEntrySerializer();
+		ExtensionEntry defaultValue = new ExtensionEntry("defaultKey", "defaultValue");
 
-		// Operation: create scalar and list values through the same public methods available to extensions.
-		IConfigValue<ExtensionValue> value = builder.addValue("extensionValue", defaultValue, serializer)
+		// Operation: create scalar and ordered list values through the public methods available to extensions.
+		IConfigValue<ExtensionEntry> value = builder.addValue("extensionValue", defaultValue, serializer)
 			.build();
-		IConfigValue<List<ExtensionValue>> values = builder.addList("extensionValues", List.of(defaultValue), serializer)
+		IConfigValue<List<ExtensionEntry>> values = builder.addKeyValueList("extensionValues", List.of(defaultValue), serializer)
 			.build();
 
-		// Assertions: the custom type round-trips without any built-in type registration or special handling.
+		// Assertions: the custom entry round-trips and remains discoverable inside the list serializer.
 		assertSame(serializer, value.getSerializer());
-		assertEquals(new ExtensionValue("updated"), value.getSerializer().deserialize("updated").getResult().orElseThrow());
 		assertEquals(
-			List.of(new ExtensionValue("first"), new ExtensionValue("second")),
-			values.getSerializer().deserialize("first, second").getResult().orElseThrow()
+			new ExtensionEntry("updatedKey", "updatedValue"),
+			value.getSerializer().deserialize("updatedKey=updatedValue").getResult().orElseThrow()
 		);
-		assertListElementSerializer(values, "element", new ExtensionValue("element"));
+		assertEquals(
+			List.of(new ExtensionEntry("first", "one"), new ExtensionEntry("second", "two")),
+			values.getSerializer().deserialize("first=one, second=two").getResult().orElseThrow()
+		);
+		assertListElementSerializer(values, "element=value", new ExtensionEntry("element", "value"));
 	}
 
 	@Test
@@ -674,27 +679,56 @@ public class ConfigSchemaTest {
 		ADVANCED
 	}
 
-	private record ExtensionValue(String text) {}
+	private record ExtensionEntry(String key, String value) {}
 
-	private static final class ExtensionValueSerializer implements IConfigValueSerializer<ExtensionValue> {
+	private static final class ExtensionEntrySerializer implements IConfigKeyValueSerializer<ExtensionEntry, String, String> {
 		@Override
-		public String serialize(ExtensionValue value) {
-			return value.text();
+		public IConfigValueSerializer<String> getKeySerializer() {
+			return StringSerializer.INSTANCE;
 		}
 
 		@Override
-		public IDeserializeResult<ExtensionValue> deserialize(String string) {
-			return IDeserializeResult.success(new ExtensionValue(string));
+		public IConfigValueSerializer<String> getValueSerializer() {
+			return StringSerializer.INSTANCE;
 		}
 
 		@Override
-		public boolean isValid(ExtensionValue value) {
-			return !value.text().isBlank();
+		public String getKey(ExtensionEntry entry) {
+			return entry.key();
+		}
+
+		@Override
+		public String getValue(ExtensionEntry entry) {
+			return entry.value();
+		}
+
+		@Override
+		public ExtensionEntry createEntry(String key, String value) {
+			return new ExtensionEntry(key, value);
+		}
+
+		@Override
+		public String serialize(ExtensionEntry value) {
+			return "%s=%s".formatted(value.key(), value.value());
+		}
+
+		@Override
+		public IDeserializeResult<ExtensionEntry> deserialize(String string) {
+			String[] parts = string.split("=", 2);
+			if (parts.length != 2) {
+				return IDeserializeResult.failure("Extension entries must contain a key and value separated by '='");
+			}
+			return IDeserializeResult.success(new ExtensionEntry(parts[0], parts[1]));
+		}
+
+		@Override
+		public boolean isValid(ExtensionEntry value) {
+			return !value.key().isBlank() && !value.value().isBlank();
 		}
 
 		@Override
 		public String getValidValuesDescription() {
-			return "A non-blank extension value";
+			return "A non-blank key and value separated by '='";
 		}
 	}
 

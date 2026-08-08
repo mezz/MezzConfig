@@ -45,6 +45,13 @@ List helpers expose their element serializer through `IConfigListValueSerializer
 so integrations can edit list elements individually without GUI-specific API in
 MezzConfig.
 
+Custom key-value entry types can implement
+`IConfigKeyValueSerializer`. It exposes serializers for both components and
+methods to split and rebuild the entry. This supports map-style
+editors while preserving ordered lists, domain value types, and custom storage
+formats. Use `addKeyValueList(...)` to create an ordered list with this
+structure.
+
 Colors use the `PackedColor` value type, which identifies whether its packed
 integer uses `0xRRGGBB` or `0xAARRGGBB`. This lets integrations add standard
 color swatches and pickers, including alpha controls only for ARGB colors.

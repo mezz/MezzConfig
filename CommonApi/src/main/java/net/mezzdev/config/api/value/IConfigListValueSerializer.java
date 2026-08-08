@@ -13,6 +13,8 @@ import java.util.List;
  * Pass your serializer to {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)} for custom
  * list storage formats. Values created with {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)}
  * use a list serializer that exposes the element serializer this way.
+ * Element serializers may implement {@link IConfigKeyValueSerializer} to expose map-style rows without changing the
+ * ordered list to a map.
  *
  * @since 0.1.0
  */

@@ -1,6 +1,7 @@
 package net.mezzdev.config.api.schema;
 
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
+import net.mezzdev.config.api.value.IConfigKeyValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueBuilder;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.value.PackedColor;
@@ -292,5 +293,24 @@ public interface IConfigCategoryBuilder extends IConfigEditorCategoryBuilder {
 		String name,
 		List<T> defaultValue,
 		IConfigValueSerializer<T> elementSerializer
+	);
+
+	/**
+	 * Create a builder for an ordered list of key-value entries.
+	 * <p>
+	 * The resulting config value's serializer implements {@link IConfigListValueSerializer}, and its element serializer
+	 * is the supplied {@link IConfigKeyValueSerializer}. Integrations can use both interfaces to provide reorderable,
+	 * map-style rows while the element serializer preserves its domain type and storage format.
+	 *
+	 * @param name stable storage name for the value
+	 * @param defaultValue default value
+	 * @param elementSerializer serializer that exposes each entry's key and value components
+	 *
+	 * @since 0.1.0
+	 */
+	<T, K, V> IConfigValueBuilder<List<T>> addKeyValueList(
+		String name,
+		List<T> defaultValue,
+		IConfigKeyValueSerializer<T, K, V> elementSerializer
 	);
 }

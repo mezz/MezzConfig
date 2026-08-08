@@ -16,6 +16,7 @@ import java.util.Optional;
  * {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)}.
  * <p>
  * For list config values that should expose their element serializer, implement {@link IConfigListValueSerializer}.
+ * For values composed of independently editable key and value components, implement {@link IConfigKeyValueSerializer}.
  *
  * @since 0.1.0
  */
