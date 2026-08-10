@@ -21,6 +21,7 @@
   "depends": {
     "fabricloader": "${fabricLoaderVersionRange}",
     "${configModId}": "*",
+    "minecraft": "${minecraftVersion}",
     "java": ">=${modJavaVersion}"
   }
 }

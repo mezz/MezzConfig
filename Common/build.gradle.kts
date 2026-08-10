@@ -11,6 +11,23 @@ plugins {
 
 repositories {
     mavenCentral()
+    exclusiveContent {
+        forRepository {
+            ivy {
+                name = "shadedDependencyLicenses"
+                url = uri("https://raw.githubusercontent.com")
+                patternLayout {
+                    artifact("[organisation]/[module]/v[revision]/LICENSE")
+                }
+                metadataSources {
+                    artifact()
+                }
+            }
+        }
+        filter {
+            includeGroup("mezz")
+        }
+    }
 }
 
 // gradle.properties
@@ -35,6 +52,16 @@ base {
 val dependencyProjects: List<Project> = listOf(
     project(":CommonApi"),
 )
+val fileWatcherLicense by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+val deduplicatingRunnerLicense by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
 
 dependencyProjects.forEach {
     project.evaluationDependsOn(it.path)
@@ -53,6 +80,8 @@ sourceSets {
 }
 
 dependencies {
+    fileWatcherLicense("mezz:FileWatcher:$fileWatcherVersion")
+    deduplicatingRunnerLicense("mezz:DeduplicatingRunner:$deduplicatingRunnerVersion")
     modShadeImplementation("net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
         isTransitive = false
     }
@@ -91,6 +120,25 @@ java {
 modShade {
     shadeJar()
     shadeSourcesJar()
+}
+
+tasks.withType<Jar>().configureEach {
+    from(fileWatcherLicense) {
+        into("META-INF")
+        rename(".*", "LICENSE-FileWatcher")
+    }
+    from(deduplicatingRunnerLicense) {
+        into("META-INF")
+        rename(".*", "LICENSE-DeduplicatingRunner")
+    }
+}
+
+tasks.named<Jar>("modShadeJar") {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.named<Jar>("modShadeSourcesJar") {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.withType<JavaCompile> {

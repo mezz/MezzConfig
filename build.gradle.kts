@@ -1,6 +1,8 @@
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.provider.Property
+import org.gradle.api.publish.PublishingExtension
+import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.TaskAction
@@ -108,6 +110,37 @@ subprojects {
     version = projectVersion
     group = modGroup
 
+    plugins.withId("maven-publish") {
+        extensions.configure<PublishingExtension> {
+            publications.withType<MavenPublication>().configureEach {
+                pom {
+                    name.set("$modName ${project.name}")
+                    description.set(modDescription)
+                    url.set(githubUrl)
+
+                    licenses {
+                        license {
+                            name.set("MIT License")
+                            url.set("https://opensource.org/license/mit")
+                            distribution.set("repo")
+                        }
+                    }
+                    developers {
+                        developer {
+                            id.set(modAuthor)
+                            name.set(modAuthor)
+                        }
+                    }
+                    scm {
+                        connection.set("scm:git:$githubUrl.git")
+                        developerConnection.set("scm:git:$githubUrl.git")
+                        url.set(githubUrl)
+                    }
+                }
+            }
+        }
+    }
+
     if (configuredReleaseVersion != null) {
         tasks.withType<PublishToMavenRepository>().configureEach {
             dependsOn(rootProject.tasks.named("validateReleaseVersion"))
@@ -127,6 +160,10 @@ subprojects {
     }
 
     tasks.withType<Jar> {
+        from(rootProject.file("LICENSE")) {
+            into("META-INF")
+            rename("LICENSE", "LICENSE-MezzConfig")
+        }
         manifest {
             attributes(mapOf(
                 "Specification-Title" to modName,

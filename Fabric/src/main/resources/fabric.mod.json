@@ -23,6 +23,7 @@
 
   "depends": {
     "fabricloader": "${fabricLoaderVersionRange}",
+    "minecraft": "${minecraftVersion}",
     "java": ">=${modJavaVersion}"
   }
 }
