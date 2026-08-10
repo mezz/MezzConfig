@@ -14,11 +14,25 @@ import java.util.List;
  * list storage formats. Values created with {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)}
  * use a list serializer that exposes the element serializer this way.
  * Element serializers may implement {@link IConfigKeyValueSerializer} to expose map-style rows without changing the
- * ordered list to a map.
+ * list to a map.
  *
  * @since 0.1.0
  */
 public interface IConfigListValueSerializer<T> extends IConfigValueSerializer<List<T>> {
+	/**
+	 * Get whether the order of entries changes the meaning of this config value.
+	 * <p>
+	 * MezzConfig preserves the physical order in the config file either way. Integrations can use this metadata to
+	 * decide whether reordering controls are useful.
+	 *
+	 * @return ordering semantics for this list
+	 *
+	 * @since 0.1.0
+	 */
+	default ConfigListOrdering getOrdering() {
+		return ConfigListOrdering.ORDERED;
+	}
+
 	/**
 	 * Get the serializer for each list element.
 	 *

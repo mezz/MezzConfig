@@ -1,5 +1,6 @@
 package net.mezzdev.config.serializers;
 
+import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.util.ErrorUtil;
@@ -14,9 +15,20 @@ import java.util.stream.Collectors;
  */
 public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 	private final IConfigValueSerializer<T> elementSerializer;
+	private final ConfigListOrdering ordering;
 
 	public ListSerializer(IConfigValueSerializer<T> elementSerializer) {
+		this(elementSerializer, ConfigListOrdering.ORDERED);
+	}
+
+	public ListSerializer(IConfigValueSerializer<T> elementSerializer, ConfigListOrdering ordering) {
 		this.elementSerializer = ErrorUtil.checkNotNull(elementSerializer, "elementSerializer");
+		this.ordering = ErrorUtil.checkNotNull(ordering, "ordering");
+	}
+
+	@Override
+	public ConfigListOrdering getOrdering() {
+		return ordering;
 	}
 
 	@Override

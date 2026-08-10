@@ -1,5 +1,6 @@
 package net.mezzdev.config.api.schema;
 
+import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigKeyValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueBuilder;
@@ -296,6 +297,23 @@ public interface IConfigCategoryBuilder extends IConfigEditorCategoryBuilder {
 	);
 
 	/**
+	 * Create a builder for a list config value using a serializer for each list element and explicit ordering semantics.
+	 *
+	 * @param name stable storage name for the value
+	 * @param defaultValue default value
+	 * @param elementSerializer serializer for each list element
+	 * @param ordering whether entry order changes the meaning of the value
+	 *
+	 * @since 0.1.0
+	 */
+	<T> IConfigValueBuilder<List<T>> addList(
+		String name,
+		List<T> defaultValue,
+		IConfigValueSerializer<T> elementSerializer,
+		ConfigListOrdering ordering
+	);
+
+	/**
 	 * Create a builder for an ordered list of key-value entries.
 	 * <p>
 	 * The resulting config value's serializer implements {@link IConfigListValueSerializer}, and its element serializer
@@ -312,5 +330,22 @@ public interface IConfigCategoryBuilder extends IConfigEditorCategoryBuilder {
 		String name,
 		List<T> defaultValue,
 		IConfigKeyValueSerializer<T, K, V> elementSerializer
+	);
+
+	/**
+	 * Create a builder for a list of key-value entries with explicit ordering semantics.
+	 *
+	 * @param name stable storage name for the value
+	 * @param defaultValue default value
+	 * @param elementSerializer serializer that exposes each entry's key and value components
+	 * @param ordering whether entry order changes the meaning of the value
+	 *
+	 * @since 0.1.0
+	 */
+	<T, K, V> IConfigValueBuilder<List<T>> addKeyValueList(
+		String name,
+		List<T> defaultValue,
+		IConfigKeyValueSerializer<T, K, V> elementSerializer,
+		ConfigListOrdering ordering
 	);
 }

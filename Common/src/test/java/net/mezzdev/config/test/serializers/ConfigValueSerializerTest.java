@@ -1,6 +1,7 @@
 package net.mezzdev.config.test.serializers;
 
 import net.mezzdev.config.api.value.ConfigColorFormat;
+import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.ConfigValueRange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigKeyValueSerializer;
@@ -245,12 +246,18 @@ public class ConfigValueSerializerTest {
 	@Test
 	public void listSerializerWrapsElementSerializer() {
 		IConfigValueSerializer<List<Boolean>> serializer = new ListSerializer<>(BooleanSerializer.INSTANCE);
+		IConfigListValueSerializer<Boolean> unorderedSerializer = new ListSerializer<>(
+			BooleanSerializer.INSTANCE,
+			ConfigListOrdering.UNORDERED
+		);
 
 		assertEquals(List.of(true, false), deserializeValue(serializer, "true, false"));
 		assertEquals("true, false", serializer.serialize(List.of(true, false)));
 		assertTrue(serializer instanceof IConfigListValueSerializer<?>);
 		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) serializer;
 		assertSame(BooleanSerializer.INSTANCE, listSerializer.getElementSerializer());
+		assertEquals(ConfigListOrdering.ORDERED, listSerializer.getOrdering());
+		assertEquals(ConfigListOrdering.UNORDERED, unorderedSerializer.getOrdering());
 	}
 
 	@Test

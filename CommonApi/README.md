@@ -52,6 +52,11 @@ editors while preserving ordered lists, domain value types, and custom storage
 formats. Use `addKeyValueList(...)` to create an ordered list with this
 structure.
 
+List serializers expose `ConfigListOrdering`. Lists are ordered by default;
+pass `ConfigListOrdering.UNORDERED` to `addList(...)` or
+`addKeyValueList(...)` when integrations do not need to offer reordering
+controls. MezzConfig still preserves the physical order in the file.
+
 Colors use the `PackedColor` value type, which identifies whether its packed
 integer uses `0xRRGGBB` or `0xAARRGGBB`. This lets integrations add standard
 color swatches and pickers, including alpha controls only for ARGB colors.

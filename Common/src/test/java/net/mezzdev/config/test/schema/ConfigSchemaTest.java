@@ -3,6 +3,7 @@ package net.mezzdev.config.test.schema;
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
+import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
@@ -102,7 +103,12 @@ public class ConfigSchemaTest {
 		// Operation: create scalar and ordered list values through the public methods available to extensions.
 		IConfigValue<ExtensionEntry> value = builder.addValue("extensionValue", defaultValue, serializer)
 			.build();
-		IConfigValue<List<ExtensionEntry>> values = builder.addKeyValueList("extensionValues", List.of(defaultValue), serializer)
+		IConfigValue<List<ExtensionEntry>> values = builder.addKeyValueList(
+				"extensionValues",
+				List.of(defaultValue),
+				serializer,
+				ConfigListOrdering.UNORDERED
+			)
 			.build();
 
 		// Assertions: the custom entry round-trips and remains discoverable inside the list serializer.
@@ -115,6 +121,9 @@ public class ConfigSchemaTest {
 			List.of(new ExtensionEntry("first", "one"), new ExtensionEntry("second", "two")),
 			values.getSerializer().deserialize("first=one, second=two").getResult().orElseThrow()
 		);
+		assertTrue(values.getSerializer() instanceof IConfigListValueSerializer<?>);
+		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) values.getSerializer();
+		assertEquals(ConfigListOrdering.UNORDERED, listSerializer.getOrdering());
 		assertListElementSerializer(values, "element=value", new ExtensionEntry("element", "value"));
 	}
 
