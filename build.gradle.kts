@@ -17,6 +17,9 @@ plugins {
     // https://plugins.gradle.org/plugin/com.dorongold.task-tree
     id("com.dorongold.task-tree") version("4.0.0")
 
+    // https://github.com/neoforged/JarCompatibilityChecker
+    id("net.neoforged.jarcompatibilitychecker") version("0.1.16") apply(false)
+
     // https://maven.fabricmc.net/fabric-loom/fabric-loom.gradle.plugin/maven-metadata.xml
     id("fabric-loom") version("1.11.0-alpha.26") apply(false)
 
@@ -106,12 +109,23 @@ tasks.register<ValidateReleaseVersion>("validateReleaseVersion") {
     specificationVersion.set(releaseSpecificationVersion)
 }
 
+val validatePublishing = tasks.register("validatePublishing") {
+    group = "verification"
+    description = "Publishes every Maven publication to a local validation repository."
+}
+
 subprojects {
     version = projectVersion
     group = modGroup
 
     plugins.withId("maven-publish") {
         extensions.configure<PublishingExtension> {
+            repositories {
+                maven {
+                    name = "validation"
+                    url = rootProject.layout.buildDirectory.dir("publication-validation").get().asFile.toURI()
+                }
+            }
             publications.withType<MavenPublication>().configureEach {
                 pom {
                     name.set("$modName ${project.name}")
@@ -138,6 +152,11 @@ subprojects {
                     }
                 }
             }
+        }
+
+        val validationPublicationTaskPath = "$path:publishAllPublicationsToValidationRepository"
+        validatePublishing.configure {
+            dependsOn(validationPublicationTaskPath)
         }
     }
 

@@ -30,3 +30,13 @@ Use the included Gradle wrapper with Java 21:
 ```
 
 Build outputs are written beneath each module's `build/libs` directory.
+
+Run the same release-blocking validation used by CI with:
+
+```text
+./gradlew spotlessCheck build :CommonApi:javadoc :CommonApi:checkJarCompatibility validatePublishing
+```
+
+Publication validation writes every Maven publication to
+`build/publication-validation`. JarCompatibilityChecker compares CommonApi with
+the fixed 0.1.0 baseline once that release is available.

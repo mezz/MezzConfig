@@ -1,8 +1,31 @@
+import groovy.json.JsonSlurper
+import net.neoforged.jarcompatibilitychecker.gradle.CompatibilityTask
+import org.gradle.api.Action
+import org.gradle.api.GradleException
+import org.gradle.api.Task
+
+class VerifyJccReport : Action<Task> {
+    override fun execute(task: Task) {
+        val compatibilityTask = task as CompatibilityTask
+        val report = JsonSlurper().parse(compatibilityTask.output.get().asFile)
+        if (containsErrors(report)) {
+            throw GradleException("JarCompatibilityChecker found incompatible CommonApi changes.")
+        }
+    }
+
+    private fun containsErrors(value: Any?): Boolean = when (value) {
+        is Map<*, *> -> value["isError"] == true || value.values.any(::containsErrors)
+        is Iterable<*> -> value.any(::containsErrors)
+        else -> false
+    }
+}
+
 plugins {
     id("idea")
     id("java")
     id("net.neoforged.moddev")
     id("maven-publish")
+    id("net.neoforged.jarcompatibilitychecker")
 }
 
 
@@ -13,6 +36,9 @@ val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
+val apiBaselineVersion: String by extra
+val apiBaselineRequired: String by extra
+val requireApiBaseline = apiBaselineRequired.toBooleanStrict()
 
 group = configModGroup
 
@@ -23,6 +49,17 @@ base {
 
 neoForge {
     neoFormVersion = "$minecraftVersion-$neoformTimestamp"
+}
+
+repositories {
+    maven {
+        name = "publicationValidation"
+        url = rootProject.layout.buildDirectory.dir("publication-validation").get().asFile.toURI()
+        content {
+            includeGroup(configModGroup)
+        }
+    }
+    mavenCentral()
 }
 
 sourceSets {
@@ -40,6 +77,24 @@ dependencies {
     implementation("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
 }
 
+val apiBaseline by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
+dependencies {
+    apiBaseline("$group:$baseArchivesName:$apiBaselineVersion")
+}
+
+val apiBaselineArchives = apiBaseline.incoming.artifactView {
+    isLenient = !requireApiBaseline
+}.files
+val missingApiBaselineArchive = layout.buildDirectory.file("api-baseline/missing-$apiBaselineVersion.jar")
+val apiBaselineArchive = layout.file(apiBaselineArchives.elements.map { archives ->
+    archives.singleOrNull()?.asFile ?: missingApiBaselineArchive.get().asFile
+})
+
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(modJavaVersion))
@@ -55,6 +110,24 @@ tasks.withType<JavaCompile> {
             languageVersion.set(JavaLanguageVersion.of(modJavaVersion))
         }
     }
+}
+
+tasks.named<CompatibilityTask>("checkJarCompatibility") {
+    group = "verification"
+    description = "Checks CommonApi API compatibility with the first released baseline."
+    dependsOn(tasks.jar)
+
+    baseJar.set(apiBaselineArchive)
+    isAPI.set(true)
+    isBinary.set(false)
+    doLast(VerifyJccReport())
+    onlyIf("CommonApi $apiBaselineVersion has been published") {
+        baseJar.get().asFile.exists()
+    }
+}
+
+tasks.check {
+    dependsOn(tasks.named("checkJarCompatibility"))
 }
 
 publishing {
