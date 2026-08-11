@@ -18,6 +18,8 @@ import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaPathResolver;
+import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
+import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.value.ConfigValue;
@@ -28,6 +30,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -639,6 +643,72 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void layeredSchemaLoadsPlayerValuesOverPackDefaults(@TempDir Path tempDir) throws IOException {
+		Path defaultPath = tempDir.resolve("test.ini");
+		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("test.ini");
+		Files.write(defaultPath, List.of(
+			"[category]",
+			"enabled = false",
+			"count = 2"
+		));
+		Files.createDirectories(playerPath.getParent());
+		Files.write(playerPath, List.of(
+			"[category]",
+			"count = 3"
+		));
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
+			.build();
+		ConfigSchema schema = createSchema(
+			new LayeredConfigSchemaPathResolver(
+				defaultPath,
+				new StaticConfigSchemaPathResolver(playerPath)
+			),
+			builder
+		);
+
+		assertFalse(enabled.getValue());
+		assertEquals(3, count.getValue());
+		assertEquals(Optional.of(playerPath), schema.getPath());
+	}
+
+	@Test
+	public void layeredSchemaCreatesDefaultAndWritesChangesOnlyForPlayer(@TempDir Path tempDir) throws IOException {
+		Path defaultPath = tempDir.resolve("test.ini");
+		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("test.ini");
+		Deque<Runnable> scheduledTasks = new ArrayDeque<>();
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = new ConfigSchema(
+			new LayeredConfigSchemaPathResolver(
+				defaultPath,
+				new StaticConfigSchemaPathResolver(playerPath)
+			),
+			List.of(builder),
+			List.of(builder),
+			(command, delay) -> {
+				scheduledTasks.add(command);
+				return CompletableFuture.completedFuture(null);
+			}
+		);
+
+		schema.register(null, ignored -> {}, false);
+		runScheduledTasks(scheduledTasks);
+
+		assertTrue(Files.readString(defaultPath).contains("enabled = true"));
+		assertFalse(Files.exists(playerPath));
+
+		assertTrue(enabled.set(false));
+		runScheduledTasks(scheduledTasks);
+
+		assertTrue(Files.readString(defaultPath).contains("enabled = true"));
+		assertTrue(Files.readString(playerPath).contains("enabled = false"));
+	}
+
+	@Test
 	public void contextSchemaIsInactiveUntilPathResolves(@TempDir Path tempDir) {
 		// Setup: a context-specific schema has no active backing file until the game context can resolve one.
 		Path activePath = tempDir.resolve("world").resolve("local").resolve("test").resolve("test.ini");
@@ -875,6 +945,15 @@ public class ConfigSchemaTest {
 				return resolvedPath.get();
 			}
 		};
+	}
+
+	private static void runScheduledTasks(Deque<Runnable> scheduledTasks) {
+		int attempts = 0;
+		while (!scheduledTasks.isEmpty() && attempts++ < 100) {
+			scheduledTasks.removeFirst()
+				.run();
+		}
+		assertTrue(scheduledTasks.isEmpty(), "Scheduled config saves did not settle.");
 	}
 
 	private static List<String> getCategoryNames(List<? extends IConfigEditorCategory> categories) {

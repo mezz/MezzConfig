@@ -58,11 +58,28 @@ public final class ConfigSerializer {
 		Path path,
 		List<ConfigCategory> categories
 	) throws IOException {
-		FileTime lastModifiedTime = Files.getLastModifiedTime(path);
-		FileTime savedTime = saveTimes.get(path);
-		if (savedTime != null && savedTime.compareTo(lastModifiedTime) >= 0) {
-			LOGGER.debug("Skipping loading config file, it was just saved by us: {}", path);
-			return List.of();
+		return loadWithoutNotifying(path, categories, true);
+	}
+
+	public static List<AppliedConfigValueChange<?>> loadWithoutNotifyingUnconditionally(
+		Path path,
+		List<ConfigCategory> categories
+	) throws IOException {
+		return loadWithoutNotifying(path, categories, false);
+	}
+
+	private static List<AppliedConfigValueChange<?>> loadWithoutNotifying(
+		Path path,
+		List<ConfigCategory> categories,
+		boolean skipFilesJustSaved
+	) throws IOException {
+		if (skipFilesJustSaved) {
+			FileTime lastModifiedTime = Files.getLastModifiedTime(path);
+			FileTime savedTime = saveTimes.get(path);
+			if (savedTime != null && savedTime.compareTo(lastModifiedTime) >= 0) {
+				LOGGER.debug("Skipping loading config file, it was just saved by us: {}", path);
+				return List.of();
+			}
 		}
 
 		LOGGER.debug("Loading config file: {}", path);
@@ -207,9 +224,17 @@ public final class ConfigSerializer {
 	}
 
 	public static void save(Path path, List<ConfigCategory> categories) throws IOException {
+		save(path, categories, false);
+	}
+
+	public static void saveDefaults(Path path, List<ConfigCategory> categories) throws IOException {
+		save(path, categories, true);
+	}
+
+	private static void save(Path path, List<ConfigCategory> categories, boolean saveDefaults) throws IOException {
 		List<String> serialized = new ArrayList<>();
 		categories.forEach(category -> {
-			serializeCategory(serialized, category);
+			serializeCategory(serialized, category, saveDefaults);
 			serialized.add("");
 		});
 		LOGGER.debug("Saving config file: {}", path);
@@ -228,16 +253,20 @@ public final class ConfigSerializer {
 			language.has(CONFIG_REQUIRES_GAME_RESTART_KEY);
 	}
 
-	private static void serializeCategory(List<String> serialized, ConfigCategory category) {
+	private static void serializeCategory(List<String> serialized, ConfigCategory category, boolean saveDefaults) {
 		addLocalizedNameAndDescription(serialized, category.getLocalizationKey(), "");
 		serialized.add("[%s]".formatted(category.getName()));
 		for (ConfigValue<?> value : category.getConfigValues()) {
-			serializeConfigValue(serialized, value);
+			serializeConfigValue(serialized, value, saveDefaults);
 			serialized.add("");
 		}
 	}
 
-	private static <T> void serializeConfigValue(List<String> serialized, ConfigValue<T> configValue) {
+	private static <T> void serializeConfigValue(
+		List<String> serialized,
+		ConfigValue<T> configValue,
+		boolean saveDefaults
+	) {
 		String name = configValue.getName();
 		IConfigValueSerializer<T> serializer = configValue.getSerializer();
 
@@ -253,7 +282,10 @@ public final class ConfigSerializer {
 
 		addRestartRequirementComment(serialized, configValue);
 
-		T value = configValue.getValueWithoutLoading();
+		T value = defaultValue;
+		if (!saveDefaults) {
+			value = configValue.getValueWithoutLoading();
+		}
 		String valueString = serializer.serialize(value);
 		serialized.add("\t%s = %s".formatted(name, valueString));
 	}

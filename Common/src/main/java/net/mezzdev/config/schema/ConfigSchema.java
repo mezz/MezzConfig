@@ -46,8 +46,10 @@ public class ConfigSchema implements IConfigSchema {
 	private final AtomicBoolean needsLoad = new AtomicBoolean(true);
 	private final DeduplicatingRunner delayedSave;
 	private @Nullable FileWatcher fileWatcher;
+	private @Nullable Path activeDefaultPath;
 	private @Nullable Path activePath;
 	private @Nullable Path pendingSavePath;
+	private @Nullable Runnable removeDefaultFileWatcherCallback;
 	private @Nullable Runnable removeFileWatcherCallback;
 	private @Nullable List<IConfigValueBatchChangeListener> listeners;
 	private boolean registered;
@@ -164,49 +166,82 @@ public class ConfigSchema implements IConfigSchema {
 			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
 			notifyListeners(immutableChanges);
 		}
-		if (loadResult.activePathChanged() && registered && activePath != null) {
-			saveAfterLocalizationLoads(activePath, 0);
+		InitialSave initialSave = loadResult.initialSave();
+		if (registered && initialSave != null) {
+			saveInitialFileAfterLocalizationLoads(initialSave, 0);
 		}
 	}
 
 	private synchronized LoadResult loadIfNeededWithoutNotifying() {
 		Map<ConfigValue<?>, Object> previousValues = getCurrentValues();
+		Path previousDefaultPath = activeDefaultPath;
 		Path previousPath = activePath;
+		Path defaultPath = pathResolver.resolveDefaultPath()
+			.map(Path::normalize)
+			.orElse(null);
 		Optional<Path> resolvedPath = pathResolver.resolvePath()
 			.map(Path::normalize);
-		if (resolvedPath.isEmpty()) {
-			if (previousPath != null) {
-				setActivePath(null);
-				resetValuesToDefaults();
-				needsLoad.set(true);
-				return new LoadResult(getChanges(previousValues), true);
-			}
-			return LoadResult.EMPTY;
-		}
-
-		Path path = resolvedPath.get();
-		boolean pathChanged = !path.equals(previousPath);
-		if (pathChanged) {
-			setActivePath(path);
-			resetValuesToDefaults();
+		Path path = resolvedPath.orElse(null);
+		boolean defaultPathChanged = !Objects.equals(defaultPath, previousDefaultPath);
+		boolean activePathChanged = !Objects.equals(path, previousPath);
+		boolean pathsChanged = defaultPathChanged || activePathChanged;
+		if (pathsChanged) {
+			setActivePaths(defaultPath, path);
 			needsLoad.set(true);
 		}
 
-		if (!needsLoad.compareAndSet(true, false)) {
-			if (pathChanged) {
-				return new LoadResult(getChanges(previousValues), true);
+		if (resolvedPath.isEmpty()) {
+			boolean shouldInitializeDefault = needsLoad.getAndSet(false);
+			InitialSave initialSave = null;
+			if (shouldInitializeDefault) {
+				initialSave = getInitialSave(defaultPath, null, activePathChanged);
 			}
-			return LoadResult.EMPTY;
+			if (previousPath != null) {
+				resetValuesToDefaults();
+				return new LoadResult(getChanges(previousValues), initialSave);
+			}
+			return new LoadResult(List.of(), initialSave);
 		}
 
-		if (Files.exists(path)) {
-			try {
-				ConfigSerializer.loadWithoutNotifying(path, categories);
-			} catch (IOException e) {
-				LOGGER.error("Failed to load config schema for: {}", path, e);
+		if (!needsLoad.compareAndSet(true, false)) {
+			if (pathsChanged) {
+				return new LoadResult(getChanges(previousValues), null);
 			}
+			return new LoadResult(List.of(), null);
 		}
-		return new LoadResult(getChanges(previousValues), pathChanged);
+
+		resetValuesToDefaults();
+		load(defaultPath);
+		load(path);
+		return new LoadResult(
+			getChanges(previousValues),
+			getInitialSave(defaultPath, path, activePathChanged)
+		);
+	}
+
+	private void load(@Nullable Path path) {
+		if (path == null || !Files.exists(path)) {
+			return;
+		}
+		try {
+			ConfigSerializer.loadWithoutNotifyingUnconditionally(path, categories);
+		} catch (IOException e) {
+			LOGGER.error("Failed to load config schema for: {}", path, e);
+		}
+	}
+
+	private static @Nullable InitialSave getInitialSave(
+		@Nullable Path defaultPath,
+		@Nullable Path activePath,
+		boolean activePathChanged
+	) {
+		if (defaultPath != null && !Files.exists(defaultPath)) {
+			return new InitialSave(defaultPath, true);
+		}
+		if (activePath != null && activePathChanged && (defaultPath == null || Files.exists(activePath))) {
+			return new InitialSave(activePath, false);
+		}
+		return null;
 	}
 
 	private Map<ConfigValue<?>, Object> getCurrentValues() {
@@ -246,17 +281,25 @@ public class ConfigSchema implements IConfigSchema {
 		getConfigValues().forEach(ConfigValue::resetToDefaultWithoutNotifying);
 	}
 
-	private void setActivePath(@Nullable Path path) {
-		if (Objects.equals(activePath, path)) {
+	private void setActivePaths(@Nullable Path defaultPath, @Nullable Path path) {
+		if (Objects.equals(activeDefaultPath, defaultPath) && Objects.equals(activePath, path)) {
 			return;
 		}
 		flushPendingSaveIfNeeded();
+		if (removeDefaultFileWatcherCallback != null) {
+			removeDefaultFileWatcherCallback.run();
+			removeDefaultFileWatcherCallback = null;
+		}
 		if (removeFileWatcherCallback != null) {
 			removeFileWatcherCallback.run();
 			removeFileWatcherCallback = null;
 		}
+		activeDefaultPath = defaultPath;
 		activePath = path;
-		if (path != null && fileWatcher != null) {
+		if (defaultPath != null && fileWatcher != null) {
+			removeDefaultFileWatcherCallback = fileWatcher.addCallback(defaultPath, this::onFileChanged);
+		}
+		if (path != null && !path.equals(defaultPath) && fileWatcher != null) {
 			removeFileWatcherCallback = fileWatcher.addCallback(path, this::onFileChanged);
 		}
 	}
@@ -303,8 +346,48 @@ public class ConfigSchema implements IConfigSchema {
 		delayedSave.run(() -> saveAfterLocalizationLoads(path, attempt + 1));
 	}
 
+	private void saveInitialFileAfterLocalizationLoads(InitialSave initialSave, int attempt) {
+		Path path = initialSave.path();
+		if (initialSave.defaults()) {
+			if (!Objects.equals(path, activeDefaultPath) || Files.exists(path)) {
+				return;
+			}
+		} else if (!Objects.equals(path, activePath)) {
+			return;
+		}
+		if (ConfigSerializer.canLocalizeComments()) {
+			saveInitialFile(initialSave);
+			return;
+		}
+		if (attempt == 0) {
+			LOGGER.debug("Localization has not loaded yet, waiting to save the config file: {}", path);
+		}
+		if (attempt >= LOCALIZATION_SAVE_RETRY_LIMIT) {
+			LOGGER.debug("Localization did not load before the config save retry limit, saving with translation keys: {}", path);
+			saveInitialFile(initialSave);
+			return;
+		}
+		delayedSave.run(() -> saveInitialFileAfterLocalizationLoads(initialSave, attempt + 1));
+	}
+
+	private void saveInitialFile(InitialSave initialSave) {
+		if (initialSave.defaults()) {
+			try {
+				saveDefaultIfMissing(initialSave.path());
+			} catch (IOException e) {
+				LOGGER.error("Failed to save default config file: '{}'", initialSave.path(), e);
+			}
+		} else {
+			save(initialSave.path());
+		}
+	}
+
 	private void save(Path path) {
 		try {
+			Path defaultPath = activeDefaultPath;
+			if (defaultPath != null) {
+				saveDefaultIfMissing(defaultPath);
+			}
 			logUntranslatedKeysIfNeeded(path);
 			ConfigSerializer.save(path, categories);
 		} catch (IOException e) {
@@ -313,6 +396,12 @@ public class ConfigSchema implements IConfigSchema {
 			if (Objects.equals(pendingSavePath, path)) {
 				pendingSavePath = null;
 			}
+		}
+	}
+
+	private void saveDefaultIfMissing(Path path) throws IOException {
+		if (!Files.exists(path)) {
+			ConfigSerializer.saveDefaults(path, categories);
 		}
 	}
 
@@ -443,8 +532,11 @@ public class ConfigSchema implements IConfigSchema {
 
 	private record LoadResult(
 		List<AppliedConfigValueChange<?>> changes,
-		boolean activePathChanged
-	) {
-		private static final LoadResult EMPTY = new LoadResult(List.of(), false);
-	}
+		@Nullable InitialSave initialSave
+	) {}
+
+	private record InitialSave(
+		Path path,
+		boolean defaults
+	) {}
 }

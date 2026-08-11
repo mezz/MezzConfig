@@ -177,6 +177,20 @@ public class ConfigSerializerLoadSaveTest {
 	}
 
 	@Test
+	public void saveDefaultsUsesDeclaredValuesInsteadOfPlayerValues(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		ConfigValue<Boolean> enabled = createBooleanValue(true);
+		ConfigCategory category = createCategory(enabled);
+		enabled.set(false);
+
+		ConfigSerializer.saveDefaults(path, List.of(category));
+
+		List<String> lines = Files.readAllLines(path);
+		assertTrue(lines.contains("\tenabled = true"));
+		assertFalse(lines.contains("\tenabled = false"));
+	}
+
+	@Test
 	public void saveNotesWhenValueRequiresGameRestart(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		ConfigValue<Boolean> enabled = createBooleanValue(true, ConfigValueRestartRequirement.GAME_RESTART);

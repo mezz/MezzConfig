@@ -5,4 +5,8 @@ import java.util.Optional;
 
 public interface ConfigSchemaPathResolver {
 	Optional<Path> resolvePath();
+
+	default Optional<Path> resolveDefaultPath() {
+		return Optional.empty();
+	}
 }
