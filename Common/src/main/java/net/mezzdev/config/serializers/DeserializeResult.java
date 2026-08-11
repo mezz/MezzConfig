@@ -34,6 +34,10 @@ public final class DeserializeResult<T> implements IDeserializeResult<T> {
 		return new DeserializeResult<>(IDeserializeResult.failure(diagnostic));
 	}
 
+	public static <T> DeserializeResult<T> failure(List<String> diagnostics) {
+		return new DeserializeResult<>(IDeserializeResult.failure(diagnostics));
+	}
+
 	@Override
 	public DeserializeResultState getState() {
 		return state;

@@ -167,3 +167,11 @@ integration layer.
 Use `IConfigRegistration.createSortingConfig(...)` for string-backed sort-order
 files. Saved sort orders can either preserve missing values by appending them
 from the default comparator, or allow values to be removed.
+
+Sortable values must be effectively immutable with stable equality and hash
+codes. Sorting methods return unmodifiable, duplicate-free snapshots and
+reconcile the saved preference against the runtime values supplied to each
+call. `ISortingConfig.setSortedValues(...)` returns `true` only for a change,
+returns `false` for an unchanged order, and rejects duplicate values. Change
+listeners run synchronously after persistence is attempted; a failing listener
+is logged without preventing later listeners from running.

@@ -7,6 +7,7 @@ import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.IntegerSerializer;
+import net.mezzdev.config.serializers.ListSerializer;
 import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -73,6 +74,28 @@ public class ConfigSerializerLoadSaveTest {
 
 		assertTrue(enabled.getValue());
 		assertEquals(1, count.getValue());
+	}
+
+	@Test
+	public void loadLeavesListUnchangedWhenNoElementsCanBeDeserialized(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[current]",
+			"values = invalid, also-invalid"
+		));
+		ConfigValue<List<Integer>> values = new ConfigValue<>(
+			LOCALIZATION_PATH,
+			"values",
+			List.of(1, 2),
+			new ListSerializer<>(new IntegerSerializer(0, 10))
+		);
+		values.set(List.of(3, 4));
+		ConfigCategory category = createCategory(values);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertEquals(List.of(3, 4), values.getValue());
+		assertEquals(List.of(1, 2), values.getDefaultValue());
 	}
 
 	@Test

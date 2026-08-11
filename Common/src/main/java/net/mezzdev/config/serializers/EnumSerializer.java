@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
  */
 public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer<T> {
 	private final Class<T> enumClass;
-	private final Collection<T> validValues;
+	private final List<T> validValues;
 
 	public EnumSerializer(Class<T> enumClass) {
 		this.enumClass = Objects.requireNonNull(enumClass, "enumClass");
@@ -77,7 +77,7 @@ public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer
 	}
 
 	@Override
-	public Optional<Collection<T>> getAllValidValues() {
+	public Optional<List<T>> getAllValidValues() {
 		return Optional.of(validValues);
 	}
 

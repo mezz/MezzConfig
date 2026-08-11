@@ -3,7 +3,6 @@ package net.mezzdev.config.serializers;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,7 +45,7 @@ public final class BooleanSerializer implements IConfigValueSerializer<Boolean> 
 	}
 
 	@Override
-	public Optional<Collection<Boolean>> getAllValidValues() {
+	public Optional<List<Boolean>> getAllValidValues() {
 		return Optional.of(List.of(true, false));
 	}
 

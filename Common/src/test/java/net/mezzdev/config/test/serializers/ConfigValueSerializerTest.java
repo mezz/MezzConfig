@@ -257,6 +257,20 @@ public class ConfigValueSerializerTest {
 	}
 
 	@Test
+	public void listSerializerReportsFailureWhenNoElementsAreRecovered() {
+		ListSerializer<Boolean> serializer = new ListSerializer<>(BooleanSerializer.INSTANCE);
+
+		IDeserializeResult<List<Boolean>> result = serializer.deserialize("invalid, also-invalid");
+
+		assertEquals(DeserializeResultState.FAILURE, result.getState());
+		assertTrue(result.getResult().isEmpty());
+		assertEquals(
+			List.of("string must be 'true' or 'false'", "string must be 'true' or 'false'"),
+			result.getDiagnostics()
+		);
+	}
+
+	@Test
 	public void listSerializerWrapsElementSerializer() {
 		IConfigValueSerializer<List<Boolean>> serializer = new ListSerializer<>(BooleanSerializer.INSTANCE);
 		IConfigListValueSerializer<Boolean> unorderedSerializer = new ListSerializer<>(

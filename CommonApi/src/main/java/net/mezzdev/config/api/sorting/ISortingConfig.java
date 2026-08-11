@@ -1,6 +1,7 @@
 package net.mezzdev.config.api.sorting;
 
 import net.mezzdev.config.api.plugin.IConfigRegistration;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Collection;
 import java.util.Comparator;
@@ -12,35 +13,48 @@ import java.util.List;
  * Create and register a string sort order here:
  * {@link IConfigRegistration#createSortingConfig(String, Comparator, boolean)}.
  * You can also pass your own implementation to APIs that explicitly accept {@link ISortingConfig}.
+ * <p>
+ * Values must be non-null and effectively immutable while held by the sorting config. Their
+ * {@link Object#equals(Object)} and {@link Object#hashCode()} results must remain stable, because equality identifies
+ * the same sortable value across saved preferences and runtime value collections.
+ *
+ * @param <T> effectively immutable value type with stable equality and hash codes
  *
  * @since 0.1.0
  */
 public interface ISortingConfig<T> {
 	/**
 	 * Get the sorted visible values from the given complete value set.
+	 * The saved preference is reconciled against the values supplied to each call, so newly added and removed runtime
+	 * values are reflected in the result.
 	 *
 	 * @param allValues every value that may be sorted
-	 * @return the sorted visible values
+	 * @return an unmodifiable, duplicate-free snapshot of the sorted visible values
 	 *
 	 * @since 0.1.0
 	 */
+	@Unmodifiable
 	List<T> getSortedValues(Collection<T> allValues);
 
 	/**
 	 * Get the default sorted visible values from the given complete value set.
 	 *
 	 * @param allValues every value that may be sorted
-	 * @return the default sorted visible values
+	 * @return an unmodifiable, duplicate-free snapshot of the default sorted visible values
 	 *
 	 * @since 0.1.0
 	 */
+	@Unmodifiable
 	List<T> getDefaultSortedValues(Collection<T> allValues);
 
 	/**
-	 * Save a new sorted value list.
+	 * Set and persist a new sorted value list.
+	 * The list is copied to an unmodifiable snapshot before this method returns.
 	 *
-	 * @param sortedValues the sorted values to save
-	 * @return true if the value was saved
+	 * @param sortedValues the non-null, duplicate-free sorted values to save
+	 * @return {@code true} if the sort order changed, or {@code false} if it was equal to the saved sort order
+	 *
+	 * @throws IllegalArgumentException if the list contains null or duplicate values
 	 *
 	 * @since 0.1.0
 	 */
@@ -77,6 +91,10 @@ public interface ISortingConfig<T> {
 
 	/**
 	 * Register a callback invoked when this sort order changes.
+	 * <p>
+	 * Callbacks run synchronously on the thread calling {@link #setSortedValues(List)}, after the new in-memory order is
+	 * committed and persistence has been attempted. A runtime exception from one callback is logged and does not
+	 * prevent later callbacks from running.
 	 *
 	 * @param listener callback to run after the sort order changes
 	 * @return a callback that removes this listener

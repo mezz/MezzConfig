@@ -3,7 +3,6 @@ package net.mezzdev.config.api.value;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -64,15 +63,15 @@ public interface IConfigValueSerializer<T> {
 
 	/**
 	 * If this config value only has a limited number of valid values,
-	 * this returns them all.
+	 * this returns them all in a stable presentation order.
 	 * <p>
-	 * If there are many or unlimited valid values, this will return
-	 * {@link Optional#empty()}
+	 * The returned list must be unmodifiable and duplicate-free. Its order must remain stable while the set of valid
+	 * values is unchanged. If there are many or unlimited valid values, this will return {@link Optional#empty()}.
 	 *
 	 * @since 0.1.0
 	 */
 	@Unmodifiable
-	default Optional<Collection<T>> getAllValidValues() {
+	default Optional<List<T>> getAllValidValues() {
 		return Optional.empty();
 	}
 

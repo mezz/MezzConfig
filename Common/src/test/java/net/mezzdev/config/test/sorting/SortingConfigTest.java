@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SortingConfigTest {
@@ -43,16 +44,74 @@ public class SortingConfigTest {
 	}
 
 	@Test
+	public void savedPreferenceIsReconciledAgainstEveryRuntimeCollection(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("sort-order.txt");
+		Files.write(path, List.of("second"));
+		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), false);
+
+		List<String> firstResult = sortingConfig.getSortedValues(List.of("third", "first", "second"));
+		List<String> secondResult = sortingConfig.getSortedValues(List.of("fourth", "second"));
+
+		assertEquals(List.of("second", "first", "third"), firstResult);
+		assertEquals(List.of("second", "fourth"), secondResult);
+		assertEquals(List.of("second", "fourth"), Files.readAllLines(path));
+		assertThrows(UnsupportedOperationException.class, () -> secondResult.add("fifth"));
+	}
+
+	@Test
+	public void duplicatePersistedValuesAreReconciledAndRewritten(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("sort-order.txt");
+		Files.write(path, List.of("second", "second", "first"));
+		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), false);
+
+		List<String> sortedValues = sortingConfig.getSortedValues(List.of("third", "first", "second"));
+
+		assertEquals(List.of("second", "first", "third"), sortedValues);
+		assertEquals(List.of("second", "first", "third"), Files.readAllLines(path));
+	}
+
+	@Test
 	public void setSortedValuesWritesFileAndNotifiesListeners(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("nested").resolve("sort-order.txt");
 		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), false);
 		List<String> notifications = new ArrayList<>();
 		sortingConfig.addChangeListener(() -> notifications.add("changed"));
 
-		boolean saved = sortingConfig.setSortedValues(List.of("third", "first"));
+		boolean changed = sortingConfig.setSortedValues(List.of("third", "first"));
+		boolean unchanged = sortingConfig.setSortedValues(List.of("third", "first"));
 
-		assertTrue(saved);
+		assertTrue(changed);
+		assertFalse(unchanged);
 		assertEquals(List.of("third", "first"), Files.readAllLines(path));
+		assertEquals(List.of("changed"), notifications);
+	}
+
+	@Test
+	public void setSortedValuesRejectsDuplicates(@TempDir Path tempDir) {
+		Path path = tempDir.resolve("sort-order.txt");
+		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), false);
+
+		assertThrows(
+			IllegalArgumentException.class,
+			() -> sortingConfig.setSortedValues(List.of("first", "first"))
+		);
+		assertFalse(Files.exists(path));
+	}
+
+	@Test
+	public void throwingListenerDoesNotPreventLaterListeners(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("sort-order.txt");
+		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), false);
+		List<String> notifications = new ArrayList<>();
+		sortingConfig.addChangeListener(() -> {
+			throw new IllegalStateException("expected test failure");
+		});
+		sortingConfig.addChangeListener(() -> notifications.add("changed"));
+
+		boolean changed = sortingConfig.setSortedValues(List.of("second", "first"));
+
+		assertTrue(changed);
+		assertEquals(List.of("second", "first"), Files.readAllLines(path));
 		assertEquals(List.of("changed"), notifications);
 	}
 

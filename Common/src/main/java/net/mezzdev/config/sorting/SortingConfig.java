@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -25,7 +26,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 	private final boolean allowsRemovingValues;
 	private final List<Runnable> changeListeners = new ArrayList<>();
 	@Nullable
-	private List<String> sorted;
+	private Optional<List<String>> savedValues;
 
 	public SortingConfig(
 		Path path,
@@ -39,20 +40,22 @@ public final class SortingConfig implements ISortingConfig<String> {
 
 	@Override
 	public List<String> getSortedValues(Collection<String> allValues) {
-		Objects.requireNonNull(allValues, "allValues");
-		List<String> sorted = this.sorted;
-		if (sorted == null) {
-			sorted = load(allValues);
-			this.sorted = sorted;
+		List<String> allValuesSnapshot = getDistinctValues(allValues, "allValues");
+		Optional<List<String>> previousSavedValues = getSavedValues();
+		List<String> sortedValues = reconcile(allValuesSnapshot, previousSavedValues);
+		boolean changed = previousSavedValues
+			.map(saved -> !saved.equals(sortedValues))
+			.orElse(true);
+		if (changed) {
+			this.savedValues = Optional.of(sortedValues);
+			save(sortedValues);
 		}
-		return sorted;
+		return sortedValues;
 	}
 
 	@Override
 	public List<String> getDefaultSortedValues(Collection<String> allValues) {
-		Objects.requireNonNull(allValues, "allValues");
-		return allValues.stream()
-			.distinct()
+		return getDistinctValues(allValues, "allValues").stream()
 			.sorted(defaultSortOrder)
 			.toList();
 	}
@@ -60,39 +63,54 @@ public final class SortingConfig implements ISortingConfig<String> {
 	@Override
 	public boolean setSortedValues(List<String> sortedValues) {
 		Objects.requireNonNull(sortedValues, "sortedValues");
-		List<String> sortedValuesCopy = List.copyOf(sortedValues);
-		try {
-			write(sortedValuesCopy);
-			this.sorted = sortedValuesCopy;
-			notifyListeners();
-			return true;
-		} catch (IOException e) {
-			LOGGER.error("Failed to save sort order config to file {}", path, e);
+		List<String> sortedValuesCopy = copySortedValues(sortedValues);
+		Optional<List<String>> previousSavedValues = getSavedValues();
+		if (previousSavedValues.filter(sortedValuesCopy::equals).isPresent()) {
 			return false;
 		}
+		this.savedValues = Optional.of(sortedValuesCopy);
+		save(sortedValuesCopy);
+		notifyListeners();
+		return true;
 	}
 
-	private List<String> load(Collection<String> allValues) {
-		final Optional<List<String>> previousSorted = loadSortedFromFile();
-		final Comparator<String> sortOrder = previousSorted
+	private List<String> reconcile(List<String> allValues, Optional<List<String>> previousSavedValues) {
+		final Comparator<String> sortOrder = previousSavedValues
 			.map(s -> {
 				Comparator<String> existingOrder = Comparator.comparingInt(t -> indexOfSort(s.indexOf(t)));
 				return existingOrder.thenComparing(defaultSortOrder);
 			})
 			.orElse(defaultSortOrder);
 
-		List<String> sortedValues = getValuesToSort(allValues, previousSorted).stream()
+		return getValuesToSort(allValues, previousSavedValues).stream()
 			.distinct()
 			.sorted(sortOrder)
 			.toList();
+	}
 
-		boolean changed = previousSorted
-			.map(s -> !Objects.equals(s, sortedValues))
-			.orElse(true);
-		if (changed) {
-			save(sortedValues);
+	private static List<String> copySortedValues(List<String> sortedValues) {
+		final List<String> copy;
+		try {
+			copy = List.copyOf(sortedValues);
+		} catch (NullPointerException e) {
+			throw new IllegalArgumentException("sortedValues must not contain null values.", e);
 		}
-		return sortedValues;
+		if (new HashSet<>(copy).size() != copy.size()) {
+			throw new IllegalArgumentException("sortedValues must not contain duplicate values.");
+		}
+		return copy;
+	}
+
+	private static List<String> getDistinctValues(Collection<String> values, String parameterName) {
+		Objects.requireNonNull(values, parameterName);
+		Set<String> distinctValues = new LinkedHashSet<>();
+		for (String value : values) {
+			if (value == null) {
+				throw new IllegalArgumentException(parameterName + " must not contain null values.");
+			}
+			distinctValues.add(value);
+		}
+		return List.copyOf(distinctValues);
 	}
 
 	private void save(List<String> sortedValues) {
@@ -111,7 +129,16 @@ public final class SortingConfig implements ISortingConfig<String> {
 		Files.write(path, sortedValues, StandardCharsets.UTF_8);
 	}
 
-	private Optional<List<String>> loadSortedFromFile() {
+	private Optional<List<String>> getSavedValues() {
+		Optional<List<String>> savedValues = this.savedValues;
+		if (savedValues == null) {
+			savedValues = loadSavedValuesFromFile();
+			this.savedValues = savedValues;
+		}
+		return savedValues;
+	}
+
+	private Optional<List<String>> loadSavedValuesFromFile() {
 		if (Files.exists(path)) {
 			try {
 				List<String> result = Files.readAllLines(path, StandardCharsets.UTF_8)
@@ -149,14 +176,14 @@ public final class SortingConfig implements ISortingConfig<String> {
 
 	@Override
 	public Comparator<String> getComparator(Collection<String> allValues) {
-		Objects.requireNonNull(allValues, "allValues");
-		Comparator<String> savedOrder = Comparator.comparingInt(value -> indexOfSort(getSortedValues(allValues).indexOf(value)));
+		List<String> sortedValues = getSortedValues(allValues);
+		Comparator<String> savedOrder = Comparator.comparingInt(value -> indexOfSort(sortedValues.indexOf(value)));
 		return savedOrder.thenComparing(defaultSortOrder);
 	}
 
 	@Override
 	public boolean isVisible(Collection<String> allValues, String value) {
-		Objects.requireNonNull(allValues, "allValues");
+		Objects.requireNonNull(value, "value");
 		return getSortedValues(allValues).contains(value);
 	}
 
@@ -175,7 +202,11 @@ public final class SortingConfig implements ISortingConfig<String> {
 	private void notifyListeners() {
 		List<Runnable> listeners = List.copyOf(changeListeners);
 		for (Runnable listener : listeners) {
-			listener.run();
+			try {
+				listener.run();
+			} catch (RuntimeException e) {
+				LOGGER.error("Sort order config listener failed for {}.", path, e);
+			}
 		}
 	}
 }

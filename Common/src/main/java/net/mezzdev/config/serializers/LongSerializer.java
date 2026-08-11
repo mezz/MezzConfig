@@ -5,7 +5,6 @@ import net.mezzdev.config.api.value.IConfigValueSerializer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -68,7 +67,7 @@ public final class LongSerializer implements IConfigValueSerializer<Long> {
 	}
 
 	@Override
-	public Optional<Collection<Long>> getAllValidValues() {
+	public Optional<List<Long>> getAllValidValues() {
 		long min = range.min();
 		long max = range.max();
 		List<Long> values = new ArrayList<>();
@@ -77,7 +76,7 @@ public final class LongSerializer implements IConfigValueSerializer<Long> {
 			values.add(value);
 			if (value == max) {
 				if (values.size() < 20) {
-					return Optional.of(values);
+					return Optional.of(List.copyOf(values));
 				}
 				return Optional.empty();
 			}

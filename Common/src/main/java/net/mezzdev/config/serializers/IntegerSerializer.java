@@ -4,7 +4,6 @@ import net.mezzdev.config.api.value.ConfigValueRange;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
@@ -68,7 +67,7 @@ public final class IntegerSerializer implements IConfigValueSerializer<Integer> 
 	}
 
 	@Override
-	public Optional<Collection<Integer>> getAllValidValues() {
+	public Optional<List<Integer>> getAllValidValues() {
 		int min = range.min();
 		int max = range.max();
 		int count = max - min + 1;

@@ -71,6 +71,9 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 		if (diagnostics.isEmpty()) {
 			return DeserializeResult.success(results);
 		}
+		if (results.isEmpty()) {
+			return DeserializeResult.failure(diagnostics);
+		}
 		return DeserializeResult.partialSuccess(results, diagnostics);
 	}
 
