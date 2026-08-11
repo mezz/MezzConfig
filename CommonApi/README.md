@@ -175,3 +175,8 @@ call. `ISortingConfig.setSortedValues(...)` returns `true` only for a change,
 returns `false` for an unchanged order, and rejects duplicate values. Change
 listeners run synchronously after persistence is attempted; a failing listener
 is logged without preventing later listeners from running.
+
+When removal is enabled, sorting configs persist explicitly hidden known values
+separately from the visible order. A value omitted from an update is hidden only
+if it was present in the latest runtime collection. Values discovered later are
+visible by default.

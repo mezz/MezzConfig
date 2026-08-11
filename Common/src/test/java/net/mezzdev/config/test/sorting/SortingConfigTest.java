@@ -20,33 +20,48 @@ public class SortingConfigTest {
 	@Test
 	public void missingValuesAreAppendedUsingDefaultOrder(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("sort-order.txt");
-		Files.write(path, List.of("second"));
+		Files.write(path, List.of("[visible]", "second", "[hidden]"));
 		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), false);
 
 		List<String> sortedValues = sortingConfig.getSortedValues(List.of("third", "first", "second"));
 
 		assertEquals(List.of("second", "first", "third"), sortedValues);
-		assertEquals(List.of("second", "first", "third"), Files.readAllLines(path));
+		assertEquals("[visible]", Files.readAllLines(path).getFirst());
+		SortingConfig reloaded = new SortingConfig(path, Comparator.naturalOrder(), false);
+		assertEquals(List.of("second", "first", "third"), reloaded.getSortedValues(List.of("third", "first", "second")));
 	}
 
 	@Test
-	public void allowingRemovalKeepsOnlySavedVisibleValues(@TempDir Path tempDir) throws IOException {
+	public void removableConfigShowsNewRuntimeValues(@TempDir Path tempDir) {
 		Path path = tempDir.resolve("sort-order.txt");
-		Files.write(path, List.of("second", "missing"));
 		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), true);
 
-		List<String> sortedValues = sortingConfig.getSortedValues(List.of("third", "first", "second"));
+		List<String> firstResult = sortingConfig.getSortedValues(List.of("a"));
+		List<String> secondResult = sortingConfig.getSortedValues(List.of("a", "b"));
 
-		assertEquals(List.of("second"), sortedValues);
-		assertTrue(sortingConfig.isVisible(List.of("third", "first", "second"), "second"));
-		assertFalse(sortingConfig.isVisible(List.of("third", "first", "second"), "first"));
-		assertEquals(List.of("second"), Files.readAllLines(path));
+		assertEquals(List.of("a"), firstResult);
+		assertEquals(List.of("a", "b"), secondResult);
+	}
+
+	@Test
+	public void removableConfigPersistsHiddenValuesSeparatelyFromNewValues(@TempDir Path tempDir) {
+		Path path = tempDir.resolve("sort-order.txt");
+		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), true);
+		assertEquals(List.of("a", "b"), sortingConfig.getSortedValues(List.of("a", "b")));
+
+		assertTrue(sortingConfig.setSortedValues(List.of("a")));
+		assertEquals(List.of("a", "c"), sortingConfig.getSortedValues(List.of("a", "b", "c")));
+		assertFalse(sortingConfig.isVisible(List.of("a", "b", "c"), "b"));
+
+		SortingConfig reloaded = new SortingConfig(path, Comparator.naturalOrder(), true);
+		assertEquals(List.of("a", "c", "d"), reloaded.getSortedValues(List.of("a", "b", "c", "d")));
+		assertFalse(reloaded.isVisible(List.of("a", "b", "c", "d"), "b"));
 	}
 
 	@Test
 	public void savedPreferenceIsReconciledAgainstEveryRuntimeCollection(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("sort-order.txt");
-		Files.write(path, List.of("second"));
+		Files.write(path, List.of("[visible]", "second", "[hidden]"));
 		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), false);
 
 		List<String> firstResult = sortingConfig.getSortedValues(List.of("third", "first", "second"));
@@ -54,20 +69,21 @@ public class SortingConfigTest {
 
 		assertEquals(List.of("second", "first", "third"), firstResult);
 		assertEquals(List.of("second", "fourth"), secondResult);
-		assertEquals(List.of("second", "fourth"), Files.readAllLines(path));
+		SortingConfig reloaded = new SortingConfig(path, Comparator.naturalOrder(), false);
+		assertEquals(List.of("second", "fourth"), reloaded.getSortedValues(List.of("fourth", "second")));
 		assertThrows(UnsupportedOperationException.class, () -> secondResult.add("fifth"));
 	}
 
 	@Test
 	public void duplicatePersistedValuesAreReconciledAndRewritten(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("sort-order.txt");
-		Files.write(path, List.of("second", "second", "first"));
+		Files.write(path, List.of("[visible]", "second", "second", "first", "[hidden]"));
 		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), false);
 
 		List<String> sortedValues = sortingConfig.getSortedValues(List.of("third", "first", "second"));
 
 		assertEquals(List.of("second", "first", "third"), sortedValues);
-		assertEquals(List.of("second", "first", "third"), Files.readAllLines(path));
+		assertEquals(1, Files.readAllLines(path).stream().filter("second"::equals).count());
 	}
 
 	@Test
@@ -82,7 +98,8 @@ public class SortingConfigTest {
 
 		assertTrue(changed);
 		assertFalse(unchanged);
-		assertEquals(List.of("third", "first"), Files.readAllLines(path));
+		SortingConfig reloaded = new SortingConfig(path, Comparator.naturalOrder(), false);
+		assertEquals(List.of("third", "first"), reloaded.getSortedValues(List.of("first", "third")));
 		assertEquals(List.of("changed"), notifications);
 	}
 
@@ -111,14 +128,29 @@ public class SortingConfigTest {
 		boolean changed = sortingConfig.setSortedValues(List.of("second", "first"));
 
 		assertTrue(changed);
-		assertEquals(List.of("second", "first"), Files.readAllLines(path));
+		SortingConfig reloaded = new SortingConfig(path, Comparator.naturalOrder(), false);
+		assertEquals(List.of("second", "first"), reloaded.getSortedValues(List.of("first", "second")));
 		assertEquals(List.of("changed"), notifications);
+	}
+
+	@Test
+	public void persistedStateEscapesReservedAndBlankValues(@TempDir Path tempDir) {
+		Path path = tempDir.resolve("sort-order.txt");
+		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), true);
+		List<String> allValues = List.of("", "[hidden]", "\\value");
+		assertEquals(allValues, sortingConfig.getSortedValues(allValues));
+
+		assertTrue(sortingConfig.setSortedValues(List.of("", "\\value")));
+
+		SortingConfig reloaded = new SortingConfig(path, Comparator.naturalOrder(), true);
+		assertEquals(List.of("", "\\value", "new"), reloaded.getSortedValues(List.of("", "[hidden]", "\\value", "new")));
+		assertFalse(reloaded.isVisible(allValues, "[hidden]"));
 	}
 
 	@Test
 	public void comparatorUsesSavedOrderAndDefaultOrderForUnknownValues(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("sort-order.txt");
-		Files.write(path, List.of("second"));
+		Files.write(path, List.of("[visible]", "second", "[hidden]"));
 		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), false);
 		Comparator<String> comparator = sortingConfig.getComparator(List.of("third", "first", "second"));
 

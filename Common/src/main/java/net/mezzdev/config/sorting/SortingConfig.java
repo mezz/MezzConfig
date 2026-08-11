@@ -16,17 +16,21 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 public final class SortingConfig implements ISortingConfig<String> {
 	private static final Logger LOGGER = LogManager.getLogger();
+	private static final String VISIBLE_SECTION = "[visible]";
+	private static final String HIDDEN_SECTION = "[hidden]";
+
 	private final Path path;
 	private final Comparator<String> defaultSortOrder;
 	private final boolean allowsRemovingValues;
 	private final List<Runnable> changeListeners = new ArrayList<>();
+	private List<String> lastAllValues = List.of();
 	@Nullable
-	private Optional<List<String>> savedValues;
+	private SavedValues savedValues;
+	private boolean savedValuesNeedWrite;
 
 	public SortingConfig(
 		Path path,
@@ -41,16 +45,14 @@ public final class SortingConfig implements ISortingConfig<String> {
 	@Override
 	public List<String> getSortedValues(Collection<String> allValues) {
 		List<String> allValuesSnapshot = getDistinctValues(allValues, "allValues");
-		Optional<List<String>> previousSavedValues = getSavedValues();
-		List<String> sortedValues = reconcile(allValuesSnapshot, previousSavedValues);
-		boolean changed = previousSavedValues
-			.map(saved -> !saved.equals(sortedValues))
-			.orElse(true);
-		if (changed) {
-			this.savedValues = Optional.of(sortedValues);
-			save(sortedValues);
+		SavedValues previousSavedValues = getSavedValues();
+		SavedValues reconciledSavedValues = addDiscoveredValues(previousSavedValues, allValuesSnapshot);
+		this.lastAllValues = allValuesSnapshot;
+		if (savedValuesNeedWrite || !previousSavedValues.equals(reconciledSavedValues)) {
+			this.savedValues = reconciledSavedValues;
+			this.savedValuesNeedWrite = !save(reconciledSavedValues);
 		}
-		return sortedValues;
+		return getCurrentVisibleValues(reconciledSavedValues, allValuesSnapshot);
 	}
 
 	@Override
@@ -64,28 +66,82 @@ public final class SortingConfig implements ISortingConfig<String> {
 	public boolean setSortedValues(List<String> sortedValues) {
 		Objects.requireNonNull(sortedValues, "sortedValues");
 		List<String> sortedValuesCopy = copySortedValues(sortedValues);
-		Optional<List<String>> previousSavedValues = getSavedValues();
-		if (previousSavedValues.filter(sortedValuesCopy::equals).isPresent()) {
+		SavedValues previousSavedValues = getSavedValues();
+		SavedValues updatedSavedValues = updateSavedValues(previousSavedValues, sortedValuesCopy);
+		boolean changed = !previousSavedValues.equals(updatedSavedValues);
+		if (savedValuesNeedWrite || changed) {
+			this.savedValues = updatedSavedValues;
+			this.savedValuesNeedWrite = !save(updatedSavedValues);
+		}
+		if (!changed) {
 			return false;
 		}
-		this.savedValues = Optional.of(sortedValuesCopy);
-		save(sortedValuesCopy);
 		notifyListeners();
 		return true;
 	}
 
-	private List<String> reconcile(List<String> allValues, Optional<List<String>> previousSavedValues) {
-		final Comparator<String> sortOrder = previousSavedValues
-			.map(s -> {
-				Comparator<String> existingOrder = Comparator.comparingInt(t -> indexOfSort(s.indexOf(t)));
-				return existingOrder.thenComparing(defaultSortOrder);
-			})
-			.orElse(defaultSortOrder);
-
-		return getValuesToSort(allValues, previousSavedValues).stream()
-			.distinct()
-			.sorted(sortOrder)
+	private SavedValues addDiscoveredValues(SavedValues savedValues, List<String> allValues) {
+		Set<String> knownValues = getKnownValues(savedValues);
+		List<String> discoveredValues = allValues.stream()
+			.filter(knownValues::add)
+			.sorted(defaultSortOrder)
 			.toList();
+		if (discoveredValues.isEmpty()) {
+			return savedValues;
+		}
+		List<String> visibleValues = new ArrayList<>(savedValues.visibleValues());
+		visibleValues.addAll(discoveredValues);
+		return new SavedValues(visibleValues, savedValues.hiddenValues());
+	}
+
+	private SavedValues updateSavedValues(SavedValues savedValues, List<String> sortedValues) {
+		Set<String> sortedValuesSet = new HashSet<>(sortedValues);
+		Set<String> currentValues = new HashSet<>(lastAllValues);
+		List<String> visibleValues = new ArrayList<>(sortedValues);
+		for (String previouslyVisible : savedValues.visibleValues()) {
+			if (!sortedValuesSet.contains(previouslyVisible) && !currentValues.contains(previouslyVisible)) {
+				visibleValues.add(previouslyVisible);
+			}
+		}
+
+		if (!allowsRemovingValues) {
+			Set<String> visibleValuesSet = new HashSet<>(visibleValues);
+			List<String> requiredVisibleValues = new ArrayList<>();
+			for (String value : lastAllValues) {
+				if (visibleValuesSet.add(value)) {
+					requiredVisibleValues.add(value);
+				}
+			}
+			for (String value : savedValues.hiddenValues()) {
+				if (visibleValuesSet.add(value)) {
+					requiredVisibleValues.add(value);
+				}
+			}
+			requiredVisibleValues.sort(defaultSortOrder);
+			visibleValues.addAll(requiredVisibleValues);
+			return new SavedValues(visibleValues, List.of());
+		}
+
+		Set<String> hiddenValues = new LinkedHashSet<>(savedValues.hiddenValues());
+		hiddenValues.removeAll(sortedValuesSet);
+		lastAllValues.stream()
+			.filter(value -> !sortedValuesSet.contains(value))
+			.sorted(defaultSortOrder)
+			.forEach(hiddenValues::add);
+		return new SavedValues(visibleValues, List.copyOf(hiddenValues));
+	}
+
+	private static List<String> getCurrentVisibleValues(SavedValues savedValues, List<String> allValues) {
+		Set<String> currentValues = new HashSet<>(allValues);
+		return savedValues.visibleValues().stream()
+			.filter(currentValues::contains)
+			.toList();
+	}
+
+	private static Set<String> getKnownValues(SavedValues savedValues) {
+		Set<String> knownValues = new HashSet<>(savedValues.visibleValues());
+		knownValues.addAll(savedValues.hiddenValues());
+		return knownValues;
 	}
 
 	private static List<String> copySortedValues(List<String> sortedValues) {
@@ -113,58 +169,100 @@ public final class SortingConfig implements ISortingConfig<String> {
 		return List.copyOf(distinctValues);
 	}
 
-	private void save(List<String> sortedValues) {
+	private boolean save(SavedValues savedValues) {
 		try {
-			write(sortedValues);
+			write(savedValues);
+			return true;
 		} catch (IOException e) {
 			LOGGER.error("Failed to save sort order config to file {}", this.path, e);
+			return false;
 		}
 	}
 
-	private void write(List<String> sortedValues) throws IOException {
+	private void write(SavedValues savedValues) throws IOException {
 		Path parent = path.getParent();
 		if (parent != null) {
 			Files.createDirectories(parent);
 		}
-		Files.write(path, sortedValues, StandardCharsets.UTF_8);
+		List<String> serialized = new ArrayList<>();
+		serialized.add(VISIBLE_SECTION);
+		savedValues.visibleValues().stream()
+			.map(SortingConfig::encodeValue)
+			.forEach(serialized::add);
+		serialized.add(HIDDEN_SECTION);
+		savedValues.hiddenValues().stream()
+			.map(SortingConfig::encodeValue)
+			.forEach(serialized::add);
+		Files.write(path, serialized, StandardCharsets.UTF_8);
 	}
 
-	private Optional<List<String>> getSavedValues() {
-		Optional<List<String>> savedValues = this.savedValues;
+	private SavedValues getSavedValues() {
+		SavedValues savedValues = this.savedValues;
 		if (savedValues == null) {
-			savedValues = loadSavedValuesFromFile();
+			SavedValues loadedSavedValues = loadSavedValuesFromFile();
+			savedValues = normalizeSavedValues(loadedSavedValues);
 			this.savedValues = savedValues;
+			this.savedValuesNeedWrite = !loadedSavedValues.equals(savedValues);
 		}
 		return savedValues;
 	}
 
-	private Optional<List<String>> loadSavedValuesFromFile() {
-		if (Files.exists(path)) {
-			try {
-				List<String> result = Files.readAllLines(path, StandardCharsets.UTF_8)
-					.stream()
-					.filter(value -> !value.isBlank())
-					.toList();
-				return Optional.of(result);
-			} catch (IOException e) {
-				LOGGER.error("Failed to load sort order config from file: {}", path, e);
-			}
+	private SavedValues loadSavedValuesFromFile() {
+		if (!Files.exists(path)) {
+			return SavedValues.EMPTY;
 		}
-		return Optional.empty();
+		try {
+			List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
+			return parseSavedValues(lines);
+		} catch (IOException e) {
+			LOGGER.error("Failed to load sort order config from file: {}", path, e);
+			return SavedValues.EMPTY;
+		}
 	}
 
-	private Collection<String> getValuesToSort(Collection<String> allValues, Optional<List<String>> previousSorted) {
-		if (!allowsRemovingValues) {
-			return allValues;
+	private static SavedValues parseSavedValues(List<String> lines) {
+		List<String> visibleValues = new ArrayList<>();
+		List<String> hiddenValues = new ArrayList<>();
+		List<String> currentSection = null;
+		for (String line : lines) {
+			if (VISIBLE_SECTION.equals(line)) {
+				currentSection = visibleValues;
+			} else if (HIDDEN_SECTION.equals(line)) {
+				currentSection = hiddenValues;
+			} else if (currentSection != null && !line.isBlank()) {
+				currentSection.add(decodeValue(line));
+			}
 		}
-		return previousSorted
-			.<Collection<String>>map(sortedValues -> {
-				Set<String> validValues = new HashSet<>(allValues);
-				return sortedValues.stream()
-					.filter(validValues::contains)
-					.toList();
-			})
-			.orElse(allValues);
+		return new SavedValues(visibleValues, hiddenValues);
+	}
+
+	private SavedValues normalizeSavedValues(SavedValues savedValues) {
+		Set<String> visibleValues = new LinkedHashSet<>(savedValues.visibleValues());
+		Set<String> hiddenValues = new LinkedHashSet<>(savedValues.hiddenValues());
+		hiddenValues.removeAll(visibleValues);
+		if (!allowsRemovingValues && !hiddenValues.isEmpty()) {
+			List<String> previouslyHiddenValues = new ArrayList<>(hiddenValues);
+			previouslyHiddenValues.sort(defaultSortOrder);
+			visibleValues.addAll(previouslyHiddenValues);
+			hiddenValues.clear();
+		}
+		return new SavedValues(List.copyOf(visibleValues), List.copyOf(hiddenValues));
+	}
+
+	private static String encodeValue(String value) {
+		if (value.isEmpty() || value.startsWith("\\") ||
+			VISIBLE_SECTION.equals(value) || HIDDEN_SECTION.equals(value)
+		) {
+			return "\\" + value;
+		}
+		return value;
+	}
+
+	private static String decodeValue(String value) {
+		if (value.startsWith("\\")) {
+			return value.substring(1);
+		}
+		return value;
 	}
 
 	private static int indexOfSort(int index) {
@@ -209,4 +307,17 @@ public final class SortingConfig implements ISortingConfig<String> {
 			}
 		}
 	}
+
+	private record SavedValues(
+		List<String> visibleValues,
+		List<String> hiddenValues
+	) {
+		private static final SavedValues EMPTY = new SavedValues(List.of(), List.of());
+
+		private SavedValues {
+			visibleValues = List.copyOf(visibleValues);
+			hiddenValues = List.copyOf(hiddenValues);
+		}
+	}
+
 }

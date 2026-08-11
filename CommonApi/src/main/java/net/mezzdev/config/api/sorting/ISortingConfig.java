@@ -26,7 +26,8 @@ public interface ISortingConfig<T> {
 	/**
 	 * Get the sorted visible values from the given complete value set.
 	 * The saved preference is reconciled against the values supplied to each call, so newly added and removed runtime
-	 * values are reflected in the result.
+	 * values are reflected in the result. Newly discovered values are visible by default, including when
+	 * {@link #allowsRemovingValues()} is {@code true}; only values that have been explicitly removed remain hidden.
 	 *
 	 * @param allValues every value that may be sorted
 	 * @return an unmodifiable, duplicate-free snapshot of the sorted visible values
@@ -50,6 +51,9 @@ public interface ISortingConfig<T> {
 	/**
 	 * Set and persist a new sorted value list.
 	 * The list is copied to an unmodifiable snapshot before this method returns.
+	 * <p>
+	 * When removal is allowed, a value from the most recent {@code allValues} collection is explicitly hidden when it is
+	 * omitted from this list. Previously hidden values are made visible again when they are included.
 	 *
 	 * @param sortedValues the non-null, duplicate-free sorted values to save
 	 * @return {@code true} if the sort order changed, or {@code false} if it was equal to the saved sort order
@@ -83,7 +87,8 @@ public interface ISortingConfig<T> {
 
 	/**
 	 * Return whether values may be removed from this sort order.
-	 * Removed values are not returned by {@link #getSortedValues(Collection)} until they are added back.
+	 * Explicitly removed values are not returned by {@link #getSortedValues(Collection)} until they are added back with
+	 * {@link #setSortedValues(List)}. Values discovered after an order was saved remain visible by default.
 	 *
 	 * @since 0.1.0
 	 */
