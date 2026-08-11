@@ -117,12 +117,7 @@ java {
     withSourcesJar()
 }
 
-modShade {
-    shadeJar()
-    shadeSourcesJar()
-}
-
-tasks.withType<Jar>().configureEach {
+val shadedDependencyLicenses = copySpec {
     from(fileWatcherLicense) {
         into("META-INF")
         rename(".*", "LICENSE-FileWatcher")
@@ -133,12 +128,15 @@ tasks.withType<Jar>().configureEach {
     }
 }
 
-tasks.named<Jar>("modShadeJar") {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-tasks.named<Jar>("modShadeSourcesJar") {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+modShade {
+    shadeJar().configure {
+        with(shadedDependencyLicenses)
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    }
+    shadeSourcesJar().configure {
+        with(shadedDependencyLicenses)
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    }
 }
 
 tasks.withType<JavaCompile> {
