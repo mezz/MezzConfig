@@ -3,6 +3,7 @@ package net.mezzdev.config.test.serializers;
 import net.mezzdev.config.api.value.ConfigColorFormat;
 import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.ConfigValueRange;
+import net.mezzdev.config.api.value.DeserializeResultState;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigKeyValueSerializer;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
@@ -39,7 +40,7 @@ public class ConfigValueSerializerTest {
 		IDeserializeResult<Boolean> result = BooleanSerializer.INSTANCE.deserialize("enabled");
 
 		assertTrue(result.getResult().isEmpty());
-		assertEquals(List.of("string must be 'true' or 'false'"), result.getErrors());
+		assertEquals(List.of("string must be 'true' or 'false'"), result.getDiagnostics());
 	}
 
 	@Test
@@ -72,9 +73,9 @@ public class ConfigValueSerializerTest {
 		IDeserializeResult<Integer> notAnInteger = serializer.deserialize("five");
 
 		assertTrue(outOfRange.getResult().isEmpty());
-		assertEquals(List.of("Invalid integer. Must be: An integer in the range [2, 4] (inclusive)"), outOfRange.getErrors());
+		assertEquals(List.of("Invalid integer. Must be: An integer in the range [2, 4] (inclusive)"), outOfRange.getDiagnostics());
 		assertTrue(notAnInteger.getResult().isEmpty());
-		assertTrue(notAnInteger.getErrors().getFirst().contains("Unable to parse int: 'five'"));
+		assertTrue(notAnInteger.getDiagnostics().getFirst().contains("Unable to parse int: 'five'"));
 	}
 
 	@Test
@@ -113,15 +114,15 @@ public class ConfigValueSerializerTest {
 		assertTrue(missingPrefix.getResult().isEmpty());
 		assertEquals(
 			List.of("Invalid color. Must be: An RGB or ARGB color serialized as 0xRRGGBB or 0xAARRGGBB"),
-			missingPrefix.getErrors()
+			missingPrefix.getDiagnostics()
 		);
 		assertTrue(shortColor.getResult().isEmpty());
 		assertEquals(
 			List.of("Invalid color. Must be: An RGB or ARGB color serialized as 0xRRGGBB or 0xAARRGGBB"),
-			shortColor.getErrors()
+			shortColor.getDiagnostics()
 		);
 		assertTrue(invalidHex.getResult().isEmpty());
-		assertTrue(invalidHex.getErrors().getFirst().contains("Unable to parse color: '0xGG112233'"));
+		assertTrue(invalidHex.getDiagnostics().getFirst().contains("Unable to parse color: '0xGG112233'"));
 	}
 
 	@Test
@@ -145,9 +146,9 @@ public class ConfigValueSerializerTest {
 		IDeserializeResult<Long> notALong = serializer.deserialize("five");
 
 		assertTrue(outOfRange.getResult().isEmpty());
-		assertEquals(List.of("Invalid long. Must be: A long in the range [2, 4] (inclusive)"), outOfRange.getErrors());
+		assertEquals(List.of("Invalid long. Must be: A long in the range [2, 4] (inclusive)"), outOfRange.getDiagnostics());
 		assertTrue(notALong.getResult().isEmpty());
-		assertTrue(notALong.getErrors().getFirst().contains("Unable to parse long: 'five'"));
+		assertTrue(notALong.getDiagnostics().getFirst().contains("Unable to parse long: 'five'"));
 	}
 
 	@Test
@@ -180,9 +181,9 @@ public class ConfigValueSerializerTest {
 		IDeserializeResult<Double> notADouble = serializer.deserialize("many");
 
 		assertTrue(outOfRange.getResult().isEmpty());
-		assertEquals(List.of("Invalid double. Must be: A finite double in the range [0.5, 2.5] (inclusive)"), outOfRange.getErrors());
+		assertEquals(List.of("Invalid double. Must be: A finite double in the range [0.5, 2.5] (inclusive)"), outOfRange.getDiagnostics());
 		assertTrue(notADouble.getResult().isEmpty());
-		assertTrue(notADouble.getErrors().getFirst().contains("Unable to parse double: 'many'"));
+		assertTrue(notADouble.getDiagnostics().getFirst().contains("Unable to parse double: 'many'"));
 	}
 
 	@Test
@@ -201,7 +202,7 @@ public class ConfigValueSerializerTest {
 		IDeserializeResult<TestEnum> result = serializer.deserialize("MISSING");
 
 		assertTrue(result.getResult().isEmpty());
-		assertTrue(result.getErrors().getFirst().contains("Invalid enum name"));
+		assertTrue(result.getDiagnostics().getFirst().contains("Invalid enum name"));
 	}
 
 	@Test
@@ -212,7 +213,7 @@ public class ConfigValueSerializerTest {
 		assertEquals("[SECOND_VALUE]", serializer.getValidValuesDescription());
 		assertEquals(List.of(TestEnum.SECOND_VALUE), List.copyOf(serializer.getAllValidValues().orElseThrow()));
 		assertFalse(serializer.isValid(TestEnum.FIRST_VALUE));
-		assertTrue(serializer.deserialize("FIRST_VALUE").getErrors().getFirst().contains("Invalid enum name"));
+		assertTrue(serializer.deserialize("FIRST_VALUE").getDiagnostics().getFirst().contains("Invalid enum name"));
 	}
 
 	@Test
@@ -239,8 +240,20 @@ public class ConfigValueSerializerTest {
 		IDeserializeResult<List<Boolean>> result = serializer.deserialize("[true, false");
 
 		assertTrue(result.getResult().isEmpty());
-		assertEquals(1, result.getErrors().size());
-		assertTrue(result.getErrors().getFirst().contains("No closing brace found."));
+		assertEquals(DeserializeResultState.FAILURE, result.getState());
+		assertEquals(1, result.getDiagnostics().size());
+		assertTrue(result.getDiagnostics().getFirst().contains("No closing brace found."));
+	}
+
+	@Test
+	public void listSerializerReportsPartialSuccessForRecoveredElements() {
+		ListSerializer<Boolean> serializer = new ListSerializer<>(BooleanSerializer.INSTANCE);
+
+		IDeserializeResult<List<Boolean>> result = serializer.deserialize("true, invalid, false");
+
+		assertEquals(DeserializeResultState.PARTIAL_SUCCESS, result.getState());
+		assertEquals(List.of(true, false), result.getResult().orElseThrow());
+		assertEquals(List.of("string must be 'true' or 'false'"), result.getDiagnostics());
 	}
 
 	@Test
@@ -298,19 +311,31 @@ public class ConfigValueSerializerTest {
 	public void deserializeResultFactoriesCreateStandardResults() {
 		IDeserializeResult<String> success = IDeserializeResult.success("value");
 		IDeserializeResult<String> failure = IDeserializeResult.failure("error");
-		IDeserializeResult<String> partial = IDeserializeResult.of("partial", List.of("warning"));
+		IDeserializeResult<String> partial = IDeserializeResult.partialSuccess("partial", List.of("warning"));
 
+		assertEquals(DeserializeResultState.SUCCESS, success.getState());
 		assertEquals("value", success.getResult().orElseThrow());
-		assertEquals(List.of(), success.getErrors());
+		assertEquals(List.of(), success.getDiagnostics());
+		assertEquals(DeserializeResultState.FAILURE, failure.getState());
 		assertTrue(failure.getResult().isEmpty());
-		assertEquals(List.of("error"), failure.getErrors());
+		assertEquals(List.of("error"), failure.getDiagnostics());
+		assertEquals(DeserializeResultState.PARTIAL_SUCCESS, partial.getState());
 		assertEquals("partial", partial.getResult().orElseThrow());
-		assertEquals(List.of("warning"), partial.getErrors());
+		assertEquals(List.of("warning"), partial.getDiagnostics());
+	}
+
+	@Test
+	public void deserializeResultFactoriesRejectInvalidStates() {
+		assertThrows(NullPointerException.class, () -> IDeserializeResult.success(null));
+		assertThrows(NullPointerException.class, () -> IDeserializeResult.partialSuccess(null, "diagnostic"));
+		assertThrows(IllegalArgumentException.class, () -> IDeserializeResult.partialSuccess("value", List.of()));
+		assertThrows(IllegalArgumentException.class, () -> IDeserializeResult.failure(List.of()));
+		assertThrows(IllegalArgumentException.class, () -> IDeserializeResult.failure(" "));
 	}
 
 	private static <T> T deserializeValue(IConfigValueSerializer<T> serializer, String string) {
 		IDeserializeResult<T> result = serializer.deserialize(string);
-		assertEquals(List.of(), result.getErrors());
+		assertEquals(List.of(), result.getDiagnostics());
 		return result.getResult().orElseThrow();
 	}
 

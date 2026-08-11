@@ -40,11 +40,12 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 		this.categoryBuilder = ErrorUtil.checkNotNull(categoryBuilder, "categoryBuilder");
 		this.localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 		this.name = ConfigNameUtil.validateConfigName(name, "configValueName");
-		this.defaultValue = ErrorUtil.checkNotNull(defaultValue, "defaultValue");
 		this.serializer = ErrorUtil.checkNotNull(serializer, "serializer");
-		if (!this.serializer.isValid(this.defaultValue)) {
-			throw new IllegalArgumentException("Default value for '%s' is invalid: %s".formatted(this.name, this.defaultValue));
+		defaultValue = ErrorUtil.checkNotNull(defaultValue, "defaultValue");
+		if (!this.serializer.isValid(defaultValue)) {
+			throw new IllegalArgumentException("Default value for '%s' is invalid: %s".formatted(this.name, defaultValue));
 		}
+		this.defaultValue = ConfigValue.snapshotValue(this.serializer, defaultValue);
 	}
 
 	public String getName() {

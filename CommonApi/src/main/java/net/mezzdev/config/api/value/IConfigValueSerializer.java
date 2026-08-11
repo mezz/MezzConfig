@@ -17,6 +17,12 @@ import java.util.Optional;
  * <p>
  * For list config values that should expose their element serializer, implement {@link IConfigListValueSerializer}.
  * For values composed of independently editable key and value components, implement {@link IConfigKeyValueSerializer}.
+ * <p>
+ * Config values must be effectively immutable while held by MezzConfig, and their {@link Object#equals(Object)} result
+ * must remain stable. Custom serializers must return immutable values from {@link #deserialize(String)}, and callers
+ * must not pass mutable values to config value builders or updates.
+ *
+ * @param <T> effectively immutable value type with stable equality
  *
  * @since 0.1.0
  */
@@ -30,6 +36,7 @@ public interface IConfigValueSerializer<T> {
 
 	/**
 	 * Deserialize the config value from a string.
+	 * The returned result must obey the state invariants documented by {@link IDeserializeResult}.
 	 *
 	 * @since 0.1.0
 	 */

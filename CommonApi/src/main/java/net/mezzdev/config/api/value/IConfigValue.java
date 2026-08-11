@@ -21,6 +21,8 @@ import java.util.function.Consumer;
  * Add a value to your category with the add methods on {@link IConfigCategoryBuilder}.
  * Get registered values here: {@link IConfigCategory#getConfigValues()}.
  *
+ * @param <T> an effectively immutable value type with stable {@link Object#equals(Object)} behavior
+ *
  * @since 0.1.0
  */
 @ApiStatus.NonExtendable
@@ -42,6 +44,8 @@ public interface IConfigValue<T> {
 	/**
 	 * Get the current value.
 	 * This will automatically update and load from the config file if there are changes.
+	 * <p>
+	 * Values are immutable by contract. Built-in list values return an unmodifiable snapshot.
 	 *
 	 * @since 0.1.0
 	 */
@@ -49,6 +53,8 @@ public interface IConfigValue<T> {
 
 	/**
 	 * Get the default value.
+	 * <p>
+	 * Values are immutable by contract. Built-in list values return an unmodifiable snapshot.
 	 *
 	 * @since 0.1.0
 	 */
@@ -88,10 +94,17 @@ public interface IConfigValue<T> {
 
 	/**
 	 * Set the config value to the given value.
-	 * This will automatically mark the config file as dirty so that it will save the new values.
+	 * This will automatically mark the config file as dirty so that it will save the new value.
+	 * Built-in list values are copied to an unmodifiable snapshot before this method returns.
 	 * <p>
 	 * Use {@link IConfigSchema#batchUpdate(Consumer)} to update
 	 * several config values together.
+	 *
+	 * @param value new value
+	 * @return {@code true} if the value changed, or {@code false} if the value was valid but equal to the current value
+	 *
+	 * @throws IllegalArgumentException if the value is invalid
+	 * @throws IllegalStateException if this value's context-specific schema is currently inactive
 	 *
 	 * @since 0.1.0
 	 */
@@ -99,6 +112,7 @@ public interface IConfigValue<T> {
 
 	/**
 	 * Add a listener that is called with the applied change when this config value changes.
+	 * See {@link IConfigValueChangeListener} for callback execution and failure behavior.
 	 *
 	 * @param listener callback accepting the applied change
 	 * @return a callback that removes this listener
@@ -111,6 +125,7 @@ public interface IConfigValue<T> {
 	 * Add a listener that is called with all changes from a batch containing this config value.
 	 * <p>
 	 * Use this when the listener needs to observe other config values updated in the same batch.
+	 * See {@link IConfigValueBatchChangeListener} for callback execution and failure behavior.
 	 *
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener

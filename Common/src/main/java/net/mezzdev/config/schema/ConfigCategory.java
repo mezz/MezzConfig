@@ -74,10 +74,4 @@ public class ConfigCategory extends ConfigEditorCategory implements IConfigCateg
 			.stream()
 			.anyMatch(reference -> reference.categoryName().equals(categoryName));
 	}
-
-	public void clearListeners() {
-		for (ConfigValue<?> configValue : this.valueMap.values()) {
-			configValue.clearListeners();
-		}
-	}
 }

@@ -39,12 +39,12 @@ public final class LongSerializer implements IConfigValueSerializer<Long> {
 			long value = Long.parseLong(string);
 			if (!isValid(value)) {
 				String errorMessage = "Invalid long. Must be: " + getValidValuesDescription();
-				return new DeserializeResult<>(null, errorMessage);
+				return DeserializeResult.failure(errorMessage);
 			}
-			return new DeserializeResult<>(value);
+			return DeserializeResult.success(value);
 		} catch (NumberFormatException e) {
 			String errorMessage = "Unable to parse long: '%s' with error:\n%s".formatted(string, e.getMessage());
-			return new DeserializeResult<>(null, errorMessage);
+			return DeserializeResult.failure(errorMessage);
 		}
 	}
 

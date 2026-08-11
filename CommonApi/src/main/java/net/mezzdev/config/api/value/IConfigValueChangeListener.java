@@ -5,6 +5,11 @@ package net.mezzdev.config.api.value;
  * <p>
  * Register your listener here: {@link IConfigValue#addListener(IConfigValueChangeListener)}.
  * The registration method returns a callback that unsubscribes the listener.
+ * <p>
+ * Callbacks run synchronously on the thread applying the change; MezzConfig does not dispatch them to another thread.
+ * API updates use the thread calling {@link IConfigValue#set(Object)}, while file-backed updates use the thread that
+ * next loads the changed schema. A runtime exception from one callback is logged and does not prevent persistence or
+ * later callbacks.
  *
  * @since 0.1.0
  */

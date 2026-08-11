@@ -35,7 +35,7 @@ public final class ColorSerializer implements IConfigValueSerializer<PackedColor
 			string = string.substring(1, string.length() - 1);
 		}
 		if (!string.regionMatches(true, 0, PREFIX, 0, PREFIX.length())) {
-			return new DeserializeResult<>(null, "Invalid color. Must be: " + getValidValuesDescription());
+			return DeserializeResult.failure("Invalid color. Must be: " + getValidValuesDescription());
 		}
 
 		String hex = string.substring(PREFIX.length());
@@ -45,15 +45,15 @@ public final class ColorSerializer implements IConfigValueSerializer<PackedColor
 			default -> null;
 		};
 		if (format == null) {
-			return new DeserializeResult<>(null, "Invalid color. Must be: " + getValidValuesDescription());
+			return DeserializeResult.failure("Invalid color. Must be: " + getValidValuesDescription());
 		}
 
 		try {
 			long unsignedValue = Long.parseUnsignedLong(hex, 16);
-			return new DeserializeResult<>(new PackedColor((int) unsignedValue, format));
+			return DeserializeResult.success(new PackedColor((int) unsignedValue, format));
 		} catch (NumberFormatException e) {
 			String errorMessage = "Unable to parse color: '%s' with error:\n%s".formatted(string, e.getMessage());
-			return new DeserializeResult<>(null, errorMessage);
+			return DeserializeResult.failure(errorMessage);
 		}
 	}
 

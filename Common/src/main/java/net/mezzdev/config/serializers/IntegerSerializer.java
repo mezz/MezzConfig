@@ -39,12 +39,12 @@ public final class IntegerSerializer implements IConfigValueSerializer<Integer> 
 			int value = Integer.parseInt(string);
 			if (!isValid(value)) {
 				String errorMessage = "Invalid integer. Must be: " + getValidValuesDescription();
-				return new DeserializeResult<>(null, errorMessage);
+				return DeserializeResult.failure(errorMessage);
 			}
-			return new DeserializeResult<>(value);
+			return DeserializeResult.success(value);
 		} catch (NumberFormatException e) {
 			String errorMessage = "Unable to parse int: '%s' with error:\n%s".formatted(string, e.getMessage());
-			return new DeserializeResult<>(null, errorMessage);
+			return DeserializeResult.failure(errorMessage);
 		}
 	}
 

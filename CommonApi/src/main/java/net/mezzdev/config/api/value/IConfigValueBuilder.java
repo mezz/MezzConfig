@@ -12,6 +12,8 @@ import java.util.function.Function;
  * An instance is returned when your plugin creates a config value here:
  * {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)}.
  *
+ * @param <T> effectively immutable value type with stable equality
+ *
  * @since 0.1.0
  */
 @ApiStatus.NonExtendable

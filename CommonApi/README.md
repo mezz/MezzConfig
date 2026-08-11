@@ -40,6 +40,15 @@ Supported built-in value helpers include:
 Built-in helpers use the same `addValue(...)` and `addList(...)` serializer paths
 as custom value types. Implement `IConfigValueSerializer<T>` and pass it to one
 of these methods to add a new type without registering it with MezzConfig.
+Config value types must be effectively immutable and have stable `equals`
+behavior while MezzConfig holds them. Built-in list containers are copied when
+created, loaded, or updated and are exposed as unmodifiable snapshots.
+
+Deserializer results have three explicit states: success has a value and no
+diagnostics, partial success has a usable value and one or more diagnostics,
+and failure has no value and one or more diagnostics. Use the corresponding
+`IDeserializeResult.success(...)`, `partialSuccess(...)`, or `failure(...)`
+factory; invalid state combinations are rejected.
 
 List helpers expose their element serializer through `IConfigListValueSerializer`,
 so integrations can edit list elements individually without GUI-specific API in
@@ -138,7 +147,15 @@ List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(update
 ```
 
 The batch is validated before any values are changed, and listeners are notified
-after all changed values have updated.
+after all changed values have updated and persistence has been scheduled.
+`IConfigValue.set(...)` returns `true` for a change and `false` for a valid
+unchanged value. It throws `IllegalArgumentException` for invalid values and
+`IllegalStateException` when a context-specific schema is inactive.
+
+Listener registration returns an unsubscribe callback. Each owner should retain
+and invoke its callbacks during teardown. Listeners run synchronously on the
+thread applying the change; a failing listener is logged without preventing
+persistence or later listeners from running.
 
 The core API exposes serialization, validation, storage names, localization
 keys, lightweight editor category hints, and edit-mode hints. GUI-specific

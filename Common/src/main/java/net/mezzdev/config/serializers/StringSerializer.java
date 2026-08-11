@@ -21,7 +21,7 @@ public final class StringSerializer implements IConfigValueSerializer<String> {
 
 	@Override
 	public DeserializeResult<String> deserialize(String string) {
-		return new DeserializeResult<>(string);
+		return DeserializeResult.success(string);
 	}
 
 	@Override

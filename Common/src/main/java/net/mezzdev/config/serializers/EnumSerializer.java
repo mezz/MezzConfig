@@ -56,10 +56,10 @@ public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer
 		String enumName = normalizeSerializedEnumName(string);
 		T enumValue = getEnumValue(enumClass, enumName);
 		if (enumValue != null && isValid(enumValue)) {
-			return new DeserializeResult<>(enumValue);
+			return DeserializeResult.success(enumValue);
 		}
 
-		return new DeserializeResult<>(null, "Invalid enum name. Must be: " + getValidValuesDescription());
+		return DeserializeResult.failure("Invalid enum name. Must be: " + getValidValuesDescription());
 	}
 
 	@Override

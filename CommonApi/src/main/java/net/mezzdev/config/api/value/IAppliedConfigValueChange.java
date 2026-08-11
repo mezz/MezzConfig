@@ -12,6 +12,8 @@ import java.util.function.Consumer;
  * Get changes from {@link IConfigSchema#batchUpdate(Consumer)},
  * {@link IConfigValueChangeListener#onChange(IAppliedConfigValueChange)}, or
  * {@link IConfigValueBatchChangeListener#onChange(List)}.
+ * Old and new values satisfy the immutable value contract of {@link IConfigValue}; built-in lists are unmodifiable
+ * snapshots and cannot be used to mutate config state.
  *
  * @param <T> config value type
  *

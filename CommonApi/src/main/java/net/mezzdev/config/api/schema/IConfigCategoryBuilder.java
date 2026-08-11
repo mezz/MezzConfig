@@ -16,6 +16,7 @@ import java.util.List;
  * Create a builder for your category here: {@link IConfigSchemaBuilder#addCategory(String)}.
  * Value methods return a builder. Add any optional legacy migrations, then call {@link IConfigValueBuilder#build()}.
  * List value helpers create values whose serializers implement {@link IConfigListValueSerializer}.
+ * Their default lists are copied immediately and stored as unmodifiable snapshots.
  *
  * @since 0.1.0
  */
@@ -25,6 +26,7 @@ public interface IConfigCategoryBuilder extends IConfigEditorCategoryBuilder {
 	 * Create a builder for a config value with a custom serializer.
 	 * Use this method with an {@link IConfigListValueSerializer} for custom list storage formats that expose their
 	 * element serializer.
+	 * The value type must be effectively immutable with stable equality.
 	 *
 	 * @param name stable storage name for the value
 	 * @param defaultValue default value

@@ -15,6 +15,9 @@ import java.util.List;
  * use a list serializer that exposes the element serializer this way.
  * Element serializers may implement {@link IConfigKeyValueSerializer} to expose map-style rows without changing the
  * list to a map.
+ * <p>
+ * MezzConfig stores list containers as unmodifiable snapshots. Each element type must still satisfy the effectively
+ * immutable value contract from {@link IConfigValueSerializer}.
  *
  * @since 0.1.0
  */

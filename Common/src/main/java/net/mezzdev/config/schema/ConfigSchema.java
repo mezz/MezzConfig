@@ -368,9 +368,9 @@ public class ConfigSchema implements IConfigSchema {
 			return List.of();
 		}
 
+		markDirty();
 		List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
 		notifyListeners(immutableChanges);
-		markDirty();
 		return immutableChanges;
 	}
 
@@ -384,7 +384,6 @@ public class ConfigSchema implements IConfigSchema {
 			if (!updatedValues.add(configValue)) {
 				throw new IllegalArgumentException("Config value cannot be updated more than once in one batch: " + configValue.getName());
 			}
-			update.validate();
 		}
 	}
 
@@ -411,15 +410,13 @@ public class ConfigSchema implements IConfigSchema {
 	private void notifyListeners(List<? extends IAppliedConfigValueChange<?>> changes) {
 		if (listeners != null && !changes.isEmpty()) {
 			List<IConfigValueBatchChangeListener> listeners = List.copyOf(this.listeners);
-			listeners.forEach(listener -> listener.onChange(changes));
-		}
-	}
-
-	@Override
-	public void clearListeners() {
-		this.listeners = null;
-		for (ConfigCategory configCategory : categories) {
-			configCategory.clearListeners();
+			for (IConfigValueBatchChangeListener listener : listeners) {
+				try {
+					listener.onChange(changes);
+				} catch (RuntimeException e) {
+					LOGGER.error("Config schema listener failed for '{}'.", activePath, e);
+				}
+			}
 		}
 	}
 

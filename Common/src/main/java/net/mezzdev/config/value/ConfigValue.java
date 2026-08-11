@@ -3,6 +3,7 @@ package net.mezzdev.config.value;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IConfigValueChangeListener;
@@ -74,15 +75,31 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 
 		localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 		this.localizationKey = localizationPath + "." + this.name;
-		this.defaultValue = ErrorUtil.checkNotNull(defaultValue, "defaultValue");
 		this.serializer = ErrorUtil.checkNotNull(serializer, "serializer");
+		defaultValue = ErrorUtil.checkNotNull(defaultValue, "defaultValue");
 		this.editMode = ErrorUtil.checkNotNull(editMode, "editMode");
 		this.restartRequirement = ErrorUtil.checkNotNull(restartRequirement, "restartRequirement");
 		this.editorCategoryBuilders = getEditorCategoryBuilders(editorCategoryBuilders);
-		if (!this.serializer.isValid(this.defaultValue)) {
-			throw new IllegalArgumentException("Default value for '%s' is invalid: %s".formatted(this.name, this.defaultValue));
+		if (!this.serializer.isValid(defaultValue)) {
+			throw new IllegalArgumentException("Default value for '%s' is invalid: %s".formatted(this.name, defaultValue));
 		}
+		this.defaultValue = snapshotValue(this.serializer, defaultValue);
 		this.currentValue = this.defaultValue;
+	}
+
+	@SuppressWarnings("unchecked")
+	static <T> T snapshotValue(IConfigValueSerializer<T> serializer, T value) {
+		if (serializer instanceof IConfigListValueSerializer<?>) {
+			if (!(value instanceof List<?> list)) {
+				throw new IllegalArgumentException("List config serializers require list values.");
+			}
+			try {
+				return (T) List.copyOf(list);
+			} catch (NullPointerException e) {
+				throw new IllegalArgumentException("List config values must not contain null elements.", e);
+			}
+		}
+		return value;
 	}
 
 	private static List<ConfigEditorCategoryBuilder> getEditorCategoryBuilders(Iterable<ConfigEditorCategoryBuilder> editorCategoryBuilders) {
@@ -189,14 +206,11 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 					changes.add(change);
 				}
 			});
-		return deserializeResult.getErrors();
+		return deserializeResult.getDiagnostics();
 	}
 
 	@Override
 	public boolean set(T value) {
-		if (!canSet(value)) {
-			return false;
-		}
 		if (schema != null) {
 			return !schema.batchUpdate(updater -> updater.set(this, value))
 				.isEmpty();
@@ -205,33 +219,33 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		if (change == null) {
 			return false;
 		}
-		notifyListeners(change);
 		markDirty();
-		return true;
-	}
-
-	private boolean canSet(T value) {
-		ErrorUtil.checkNotNull(value, "value");
-		if (!serializer.isValid(value)) {
-			LOGGER.error("Tried to set invalid value : {}\n{}", value, serializer.getValidValuesDescription());
-			return false;
-		}
+		notifyListeners(change);
 		return true;
 	}
 
 	void validateUpdateValue(T value) {
-		ErrorUtil.checkNotNull(value, "value");
-		if (!serializer.isValid(value)) {
+		if (value == null || !serializer.isValid(value)) {
 			throw new IllegalArgumentException("Invalid value for '%s': %s\n%s".formatted(name, value, serializer.getValidValuesDescription()));
 		}
 	}
 
+	T snapshotUpdateValue(T value) {
+		validateUpdateValue(value);
+		return snapshotValue(serializer, value);
+	}
+
 	@Nullable
 	AppliedConfigValueChange<T> setWithoutNotifying(T value) {
-		validateUpdateValue(value);
-		if (!currentValue.equals(value)) {
+		T newValue = snapshotUpdateValue(value);
+		return setValidatedValueWithoutNotifying(newValue);
+	}
+
+	@Nullable
+	AppliedConfigValueChange<T> setValidatedValueWithoutNotifying(T newValue) {
+		if (!currentValue.equals(newValue)) {
 			T oldValue = currentValue;
-			currentValue = value;
+			currentValue = newValue;
 			return new AppliedConfigValueChange<>(this, oldValue, currentValue);
 		}
 		return null;
@@ -261,11 +275,23 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		AppliedConfigValueChange<T> change = getChange(changes);
 		if (listeners != null) {
 			List<IConfigValueChangeListener<T>> listeners = List.copyOf(this.listeners);
-			listeners.forEach(listener -> listener.onChange(change));
+			for (IConfigValueChangeListener<T> listener : listeners) {
+				try {
+					listener.onChange(change);
+				} catch (RuntimeException e) {
+					LOGGER.error("Config value listener failed for '{}'.", name, e);
+				}
+			}
 		}
 		if (batchListeners != null) {
 			List<IConfigValueBatchChangeListener> batchListeners = List.copyOf(this.batchListeners);
-			batchListeners.forEach(listener -> listener.onChange(changes));
+			for (IConfigValueBatchChangeListener listener : batchListeners) {
+				try {
+					listener.onChange(changes);
+				} catch (RuntimeException e) {
+					LOGGER.error("Config value batch listener failed for '{}'.", name, e);
+				}
+			}
 		}
 	}
 
@@ -311,14 +337,5 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 				this.batchListeners.remove(listener);
 			}
 		};
-	}
-
-	public void clearListeners() {
-		if (this.listeners != null) {
-			this.listeners = null;
-		}
-		if (this.batchListeners != null) {
-			this.batchListeners = null;
-		}
 	}
 }

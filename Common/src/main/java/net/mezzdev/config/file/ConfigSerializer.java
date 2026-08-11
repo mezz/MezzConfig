@@ -119,17 +119,17 @@ public final class ConfigSerializer {
 					if (migrations.isEmpty()) {
 						logUnknownConfigValue(path, lineNumber, line, category, categoryName, key);
 					} else {
-						List<String> errors = new ArrayList<>();
-						migrations.forEach(migration -> errors.addAll(migration.migrate(value, changes)));
-						if (!errors.isEmpty()) {
-							logDeserializeErrors(path, lineNumber, line, value, errors);
+						List<String> diagnostics = new ArrayList<>();
+						migrations.forEach(migration -> diagnostics.addAll(migration.migrate(value, changes)));
+						if (!diagnostics.isEmpty()) {
+							logDeserializeDiagnostics(path, lineNumber, line, value, diagnostics);
 						}
 					}
 				} else {
-					List<String> errors = configValue.get()
+					List<String> diagnostics = configValue.get()
 						.setFromSerializedValue(value, changes);
-					if (!errors.isEmpty()) {
-						logDeserializeErrors(path, lineNumber, line, value, errors);
+					if (!diagnostics.isEmpty()) {
+						logDeserializeDiagnostics(path, lineNumber, line, value, diagnostics);
 					}
 				}
 			} else {
@@ -193,16 +193,16 @@ public final class ConfigSerializer {
 		));
 	}
 
-	private static void logDeserializeErrors(
+	private static void logDeserializeDiagnostics(
 		Path path,
 		int lineNumber,
 		String line,
 		String value,
-		List<String> errors
+		List<String> diagnostics
 	) {
 		String errorMessage = """
-			Encountered Errors when deserializing value '%s':
-			%s""".formatted(value, String.join("\n", errors));
+			Encountered diagnostics when deserializing value '%s':
+			%s""".formatted(value, String.join("\n", diagnostics));
 		LOGGER.error(getLineErrorString(path, lineNumber, line, errorMessage));
 	}
 

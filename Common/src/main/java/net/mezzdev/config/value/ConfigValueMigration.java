@@ -27,9 +27,9 @@ public final class ConfigValueMigration<T> {
 
 	public List<String> migrate(String value) {
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
-		List<String> errors = migrate(value, changes);
+		List<String> diagnostics = migrate(value, changes);
 		ConfigValue.notifyChangedValues(changes);
-		return errors;
+		return diagnostics;
 	}
 
 	public List<String> migrate(String value, List<AppliedConfigValueChange<?>> changes) {

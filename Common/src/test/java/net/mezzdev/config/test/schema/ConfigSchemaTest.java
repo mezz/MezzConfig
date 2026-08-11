@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -91,6 +92,50 @@ public class ConfigSchemaTest {
 		assertTrue(flags.getSerializer() instanceof IConfigListValueSerializer<?>);
 		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) flags.getSerializer();
 		assertSame(BooleanSerializer.INSTANCE, listSerializer.getElementSerializer());
+	}
+
+	@Test
+	public void builtInListsSnapshotDefaultsAndUpdates() {
+		// Setup: retain mutable aliases for both a default list and a later update.
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		List<String> defaultValues = new ArrayList<>(List.of("default"));
+		var valueBuilder = builder.addStringList("names", defaultValues);
+		defaultValues.add("late default mutation");
+		ConfigValue<List<String>> names = valueBuilder.build();
+		AtomicReference<IAppliedConfigValueChange<List<String>>> appliedChange = new AtomicReference<>();
+		names.addListener(appliedChange::set);
+		List<String> updatedValues = new ArrayList<>(List.of("updated"));
+
+		// Operation: set the mutable list, then mutate the caller-owned alias after set returns.
+		assertTrue(names.set(updatedValues));
+		updatedValues.add("late update mutation");
+
+		// Assertions: defaults, current values, and change records are stable unmodifiable snapshots.
+		assertEquals(List.of("default"), names.getDefaultValue());
+		assertEquals(List.of("updated"), names.getValue());
+		assertEquals(List.of("default"), appliedChange.get().oldValue());
+		assertEquals(List.of("updated"), appliedChange.get().newValue());
+		assertThrows(UnsupportedOperationException.class, () -> names.getDefaultValue().add("mutation"));
+		assertThrows(UnsupportedOperationException.class, () -> names.getValue().add("mutation"));
+		assertThrows(UnsupportedOperationException.class, () -> appliedChange.get().newValue().add("mutation"));
+	}
+
+	@Test
+	public void builtInListsAreUnmodifiableAfterLoading(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[category]",
+			"names = first, second"
+		));
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<List<String>> names = builder.addStringList("names", List.of("default"))
+			.build();
+		createSchema(path, builder);
+
+		List<String> loadedNames = names.getValue();
+
+		assertEquals(List.of("first", "second"), loadedNames);
+		assertThrows(UnsupportedOperationException.class, () -> loadedNames.add("mutation"));
 	}
 
 	@Test
@@ -202,12 +247,12 @@ public class ConfigSchemaTest {
 		assertListElementSerializer(restrictedEnums, "STANDARD", TestMode.STANDARD);
 
 		// Assertions: bounded and restricted helpers reject values outside their declared valid range.
-		assertTrue(boundedIntegers.getSerializer().deserialize("11").getErrors().getFirst().contains("Invalid integer"));
-		assertTrue(color.getSerializer().deserialize("112233").getErrors().getFirst().contains("Invalid color"));
-		assertTrue(boundedLongs.getSerializer().deserialize("11").getErrors().getFirst().contains("Invalid long"));
-		assertTrue(boundedDoubles.getSerializer().deserialize("11.0").getErrors().getFirst().contains("Invalid double"));
-		assertTrue(restrictedEnum.getSerializer().deserialize("ADVANCED").getErrors().getFirst().contains("Invalid enum name"));
-		assertTrue(restrictedEnums.getSerializer().deserialize("ADVANCED").getErrors().getFirst().contains("Invalid enum name"));
+		assertTrue(boundedIntegers.getSerializer().deserialize("11").getDiagnostics().getFirst().contains("Invalid integer"));
+		assertTrue(color.getSerializer().deserialize("112233").getDiagnostics().getFirst().contains("Invalid color"));
+		assertTrue(boundedLongs.getSerializer().deserialize("11").getDiagnostics().getFirst().contains("Invalid long"));
+		assertTrue(boundedDoubles.getSerializer().deserialize("11.0").getDiagnostics().getFirst().contains("Invalid double"));
+		assertTrue(restrictedEnum.getSerializer().deserialize("ADVANCED").getDiagnostics().getFirst().contains("Invalid enum name"));
+		assertTrue(restrictedEnums.getSerializer().deserialize("ADVANCED").getDiagnostics().getFirst().contains("Invalid enum name"));
 	}
 
 	@Test
@@ -443,6 +488,22 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void batchUpdaterSnapshotsListValuesWhenQueued() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<List<String>> names = builder.addStringList("names", List.of("default"))
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		List<String> updatedNames = new ArrayList<>(List.of("queued"));
+
+		schema.batchUpdate(updater -> {
+			updater.set(names, updatedNames);
+			updatedNames.add("mutated before apply");
+		});
+
+		assertEquals(List.of("queued"), names.getValue());
+	}
+
+	@Test
 	public void batchUpdaterRejectsUpdatesAfterCallbackReturns() {
 		// Setup: capture the callback-scoped updater so the test can try to misuse it later.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
@@ -473,10 +534,12 @@ public class ConfigSchemaTest {
 			schemaBatches.add("%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()));
 		});
 
-		// Operation: set one value through the normal IConfigValue API.
+		// Operation: set the current value again, then apply one change through the normal IConfigValue API.
+		assertFalse(enabled.set(true));
+		assertEquals(List.of(), schemaBatches);
 		assertTrue(enabled.set(false));
 
-		// Assertions: direct set is represented as a one-value schema batch.
+		// Assertions: unchanged values return false without notification; a change is represented as a one-value batch.
 		assertEquals(List.of("enabled: true -> false"), schemaBatches);
 	}
 
@@ -519,6 +582,33 @@ public class ConfigSchemaTest {
 
 		// Assertions: notification uses a stable listener snapshot and the self-unsubscribe prevents later callbacks.
 		assertEquals(1, notifications.get());
+	}
+
+	@Test
+	public void schemaListenerFailuresAreIsolatedAfterPersistenceIsScheduled(@TempDir Path tempDir) {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		AtomicInteger scheduledSaves = new AtomicInteger();
+		ConfigSchema schema = new ConfigSchema(
+			tempDir.resolve("test.ini"),
+			List.of(builder),
+			(command, delay) -> {
+				scheduledSaves.incrementAndGet();
+				return new CompletableFuture<>();
+			}
+		);
+		AtomicInteger laterNotifications = new AtomicInteger();
+		schema.addListener(ignored -> {
+			assertEquals(1, scheduledSaves.get());
+			throw new IllegalStateException("expected schema listener test failure");
+		});
+		schema.addListener(ignored -> laterNotifications.incrementAndGet());
+
+		assertDoesNotThrow(() -> assertTrue(enabled.set(false)));
+
+		assertEquals(1, scheduledSaves.get());
+		assertEquals(1, laterNotifications.get());
 	}
 
 	@Test
@@ -804,7 +894,7 @@ public class ConfigSchemaTest {
 		IDeserializeResult<T> result = listSerializer.getElementSerializer()
 			.deserialize(serializedValue);
 
-		assertEquals(List.of(), result.getErrors());
+		assertEquals(List.of(), result.getDiagnostics());
 		assertEquals(expectedValue, result.getResult().orElseThrow());
 	}
 

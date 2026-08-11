@@ -13,11 +13,12 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigValueTest {
 	@Test
-	public void setRejectsInvalidValuesWithoutChangingOrNotifying() {
+	public void setThrowsForInvalidValuesWithoutChangingOrNotifying() {
 		ConfigValue<Integer> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"count",
@@ -27,7 +28,24 @@ public class ConfigValueTest {
 		AtomicInteger notifications = new AtomicInteger();
 		value.addListener(ignored -> notifications.incrementAndGet());
 
-		assertFalse(value.set(11));
+		assertThrows(IllegalArgumentException.class, () -> value.set(11));
+
+		assertEquals(5, value.getValue());
+		assertEquals(0, notifications.get());
+	}
+
+	@Test
+	public void setReturnsFalseForValidUnchangedValues() {
+		ConfigValue<Integer> value = new ConfigValue<>(
+			"mezz_config.config.test.category",
+			"count",
+			5,
+			new IntegerSerializer(0, 10)
+		);
+		AtomicInteger notifications = new AtomicInteger();
+		value.addListener(ignored -> notifications.incrementAndGet());
+
+		assertFalse(value.set(5));
 
 		assertEquals(5, value.getValue());
 		assertEquals(0, notifications.get());
@@ -136,7 +154,27 @@ public class ConfigValueTest {
 	}
 
 	@Test
-	public void clearListenersStopsFutureNotifications() {
+	public void unsubscribeOnlyRemovesTheOwningListener() {
+		ConfigValue<Boolean> value = new ConfigValue<>(
+			"mezz_config.config.test.category",
+			"enabled",
+			false,
+			BooleanSerializer.INSTANCE
+		);
+		AtomicInteger removedNotifications = new AtomicInteger();
+		AtomicInteger retainedNotifications = new AtomicInteger();
+		Runnable unsubscribe = value.addListener(ignored -> removedNotifications.incrementAndGet());
+		value.addListener(ignored -> retainedNotifications.incrementAndGet());
+
+		unsubscribe.run();
+		assertTrue(value.set(true));
+
+		assertEquals(0, removedNotifications.get());
+		assertEquals(1, retainedNotifications.get());
+	}
+
+	@Test
+	public void listenerFailuresDoNotPreventLaterListeners() {
 		ConfigValue<Boolean> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"enabled",
@@ -144,11 +182,17 @@ public class ConfigValueTest {
 			BooleanSerializer.INSTANCE
 		);
 		AtomicInteger notifications = new AtomicInteger();
+		value.addListener(ignored -> {
+			throw new IllegalStateException("expected test failure");
+		});
 		value.addListener(ignored -> notifications.incrementAndGet());
+		value.addBatchListener(ignored -> {
+			throw new IllegalStateException("expected batch test failure");
+		});
+		value.addBatchListener(ignored -> notifications.incrementAndGet());
 
-		value.clearListeners();
 		assertTrue(value.set(true));
 
-		assertEquals(0, notifications.get());
+		assertEquals(2, notifications.get());
 	}
 }

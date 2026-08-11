@@ -71,12 +71,15 @@ public interface IConfigSchema {
 	/**
 	 * Apply several config value updates together.
 	 * <p>
-	 * Queue updates inside the callback. Queued values are validated before any values are changed. If validation
-	 * succeeds, every changed value is updated before listeners are notified. If the callback throws, no queued updates
-	 * are applied.
+	 * Queue updates inside the callback. Queued values are snapshotted immediately and the complete batch is validated
+	 * before any values are changed. If validation succeeds, every changed value is updated and persistence is scheduled
+	 * before listeners are notified. If the callback throws, no queued updates are applied.
 	 *
 	 * @param updateBatch callback that queues updates
 	 * @return changes that were applied
+	 *
+	 * @throws IllegalArgumentException if a value is invalid or does not belong to this schema
+	 * @throws IllegalStateException if this context-specific schema is currently inactive
 	 *
 	 * @since 0.1.0
 	 */
@@ -85,6 +88,7 @@ public interface IConfigSchema {
 
 	/**
 	 * Add a listener that is called with every batch of changes applied to this schema.
+	 * See {@link IConfigValueBatchChangeListener} for callback execution and failure behavior.
 	 *
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener
@@ -92,12 +96,4 @@ public interface IConfigSchema {
 	 * @since 0.1.0
 	 */
 	Runnable addListener(IConfigValueBatchChangeListener listener);
-
-	/**
-	 * Clear listeners from this schema and its values.
-	 * Useful when tearing down per-runtime listeners.
-	 *
-	 * @since 0.1.0
-	 */
-	void clearListeners();
 }

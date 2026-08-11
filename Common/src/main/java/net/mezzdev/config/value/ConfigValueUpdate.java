@@ -6,11 +6,11 @@ public record ConfigValueUpdate<T>(
 	ConfigValue<T> configValue,
 	T newValue
 ) {
-	public void validate() {
-		configValue.validateUpdateValue(newValue);
+	public ConfigValueUpdate {
+		newValue = configValue.snapshotUpdateValue(newValue);
 	}
 
 	public @Nullable AppliedConfigValueChange<T> apply() {
-		return configValue.setWithoutNotifying(newValue);
+		return configValue.setValidatedValueWithoutNotifying(newValue);
 	}
 }

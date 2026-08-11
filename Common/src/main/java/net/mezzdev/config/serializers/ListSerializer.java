@@ -48,27 +48,30 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 		string = string.trim();
 		if (string.startsWith("[")) {
 			if (!string.endsWith("]")) {
-				String errorMessage = """
+				String diagnostic = """
 					No closing brace found.
 					List must have no braces, or be wrapped in [ and ].""";
-				return new DeserializeResult<>(null, errorMessage);
+				return DeserializeResult.failure(diagnostic);
 			}
 			string = string.substring(1, string.length() - 1);
 		}
 		String[] split = string.split(",");
 
-		List<String> errors = new ArrayList<>();
+		List<String> diagnostics = new ArrayList<>();
 		List<T> results = Arrays.stream(split)
 			.map(String::trim)
 			.filter(s -> !s.isEmpty())
 			.map(elementSerializer::deserialize)
 			.<T>mapMulti((r, c) -> {
 				r.getResult().ifPresent(c);
-				errors.addAll(r.getErrors());
+				diagnostics.addAll(r.getDiagnostics());
 			})
 			.toList();
 
-		return new DeserializeResult<>(results, errors);
+		if (diagnostics.isEmpty()) {
+			return DeserializeResult.success(results);
+		}
+		return DeserializeResult.partialSuccess(results, diagnostics);
 	}
 
 	@Override

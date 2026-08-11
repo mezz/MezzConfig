@@ -27,12 +27,12 @@ public final class BooleanSerializer implements IConfigValueSerializer<Boolean> 
 	public DeserializeResult<Boolean> deserialize(String string) {
 		string = string.trim();
 		if ("true".equalsIgnoreCase(string)) {
-			return new DeserializeResult<>(true);
+			return DeserializeResult.success(true);
 		}
 		if ("false".equalsIgnoreCase(string)) {
-			return new DeserializeResult<>(false);
+			return DeserializeResult.success(false);
 		}
-		return new DeserializeResult<>(null, "string must be 'true' or 'false'");
+		return DeserializeResult.failure("string must be 'true' or 'false'");
 	}
 
 	@Override

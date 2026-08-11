@@ -39,12 +39,12 @@ public final class DoubleSerializer implements IConfigValueSerializer<Double> {
 			double value = Double.parseDouble(string);
 			if (!isValid(value)) {
 				String errorMessage = "Invalid double. Must be: " + getValidValuesDescription();
-				return new DeserializeResult<>(null, errorMessage);
+				return DeserializeResult.failure(errorMessage);
 			}
-			return new DeserializeResult<>(value);
+			return DeserializeResult.success(value);
 		} catch (NumberFormatException e) {
 			String errorMessage = "Unable to parse double: '%s' with error:\n%s".formatted(string, e.getMessage());
-			return new DeserializeResult<>(null, errorMessage);
+			return DeserializeResult.failure(errorMessage);
 		}
 	}
 
