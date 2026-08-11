@@ -27,6 +27,25 @@ a config file. Use `createClientWorldSchemaBuilder(...)` when the values should
 be separate for each singleplayer world or multiplayer server. Schemas contain
 storage categories, and categories contain config values.
 
+Normal schemas use the registered file as a modpack-owned default and keep each
+player's choices in a separate profile directory:
+
+```text
+config/<mod-id>/<file-name>                         # pack default
+config/<mod-id>/players/<profile-uuid>/<file-name>  # player choices
+```
+
+MezzConfig generates the default file when it is missing. A modpack can edit
+that file, remove values it does not want to customize, and distribute it
+without including the `players` directory. At runtime, declared code defaults
+are loaded first, then the pack default, then the player's file. The player
+file is created only after a player changes a value, and from that point it
+takes precedence so a pack update cannot overwrite the player's choices.
+
+Client-world schemas follow the same rule. Their distributable defaults are in
+`config/<mod-id>/world/default`, while profile-specific values remain separated
+under `players/<profile-uuid>/world/local` or `players/<profile-uuid>/world/server`.
+
 Supported built-in value helpers include:
 
 - strings
@@ -167,6 +186,11 @@ integration layer.
 Use `IConfigRegistration.createSortingConfig(...)` for string-backed sort-order
 files. Saved sort orders can either preserve missing values by appending them
 from the default comparator, or allow values to be removed.
+
+Sort-order files use the same pack-default and profile-specific locations as
+normal schemas. The default file is generated the first time the complete set
+of sortable values is available; later user changes are written only to the
+profile-specific file.
 
 Sortable values must be effectively immutable with stable equality and hash
 codes. Sorting methods return unmodifiable, duplicate-free snapshots and

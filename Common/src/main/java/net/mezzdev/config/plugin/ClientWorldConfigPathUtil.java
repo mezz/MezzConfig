@@ -16,6 +16,7 @@ import java.util.Optional;
 
 public final class ClientWorldConfigPathUtil {
 	private static final Path WORLD_DIR_PATH = Path.of("world");
+	private static final Path DEFAULT_DIR_PATH = WORLD_DIR_PATH.resolve("default");
 	private static final Path LOCAL_DIR_PATH = WORLD_DIR_PATH.resolve("local");
 	private static final Path SERVER_DIR_PATH = WORLD_DIR_PATH.resolve("server");
 
@@ -89,6 +90,11 @@ public final class ClientWorldConfigPathUtil {
 
 	public static Path getServerDirPath() {
 		return SERVER_DIR_PATH;
+	}
+
+	public static Path getDefaultWorldPath(Path pluginConfigDir) {
+		Path configDir = ErrorUtil.checkNotNull(pluginConfigDir, "pluginConfigDir");
+		return configDir.resolve(DEFAULT_DIR_PATH);
 	}
 
 	private static String getAddressName(ServerAddressAndPort serverAddressAndPort) {

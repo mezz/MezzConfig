@@ -1,12 +1,14 @@
 package net.mezzdev.config.test.plugin;
 
 import net.mezzdev.config.plugin.ClientWorldConfigPathUtil;
+import net.mezzdev.config.util.PlayerConfigPathUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -92,6 +94,23 @@ public class ClientWorldConfigPathUtilTest {
 
 		// Assertions: the existing legacy path wins so migrated projects do not silently split config state.
 		assertEquals(legacyPath, path);
+	}
+
+	@Test
+	public void playerConfigDirectoryUsesStableProfileId() {
+		UUID playerId = UUID.fromString("12345678-1234-1234-1234-123456789abc");
+
+		Path path = PlayerConfigPathUtil.getPlayerConfigDir(tempDir, playerId);
+
+		assertEquals(tempDir.resolve("players").resolve(playerId.toString()), path);
+	}
+
+	@Test
+	public void defaultWorldPathIsSeparateFromPlayerWorlds() {
+		assertEquals(
+			tempDir.resolve("world").resolve("default"),
+			ClientWorldConfigPathUtil.getDefaultWorldPath(tempDir)
+		);
 	}
 
 	private static Path getLegacyServerPath(String serverName, String serverAddress) {

@@ -159,4 +159,32 @@ public class SortingConfigTest {
 
 		assertEquals(List.of("second", "first", "third"), values);
 	}
+
+	@Test
+	public void layeredConfigGeneratesPackDefaultWithoutCreatingPlayerFile(@TempDir Path tempDir) throws IOException {
+		Path defaultPath = tempDir.resolve("sort-order.txt");
+		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
+		SortingConfig sortingConfig = new SortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
+
+		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("second", "first")));
+
+		assertEquals(List.of("[visible]", "first", "second", "[hidden]"), Files.readAllLines(defaultPath));
+		assertFalse(Files.exists(playerPath));
+	}
+
+	@Test
+	public void layeredConfigLoadsPlayerOrderWithoutChangingPackDefault(@TempDir Path tempDir) throws IOException {
+		Path defaultPath = tempDir.resolve("sort-order.txt");
+		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
+		Files.write(defaultPath, List.of("[visible]", "second", "first", "[hidden]"));
+		Files.createDirectories(playerPath.getParent());
+		Files.write(playerPath, List.of("[visible]", "first", "second", "[hidden]"));
+		SortingConfig sortingConfig = new SortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
+
+		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("first", "second")));
+		assertTrue(sortingConfig.setSortedValues(List.of("second", "first")));
+
+		assertEquals(List.of("[visible]", "second", "first", "[hidden]"), Files.readAllLines(defaultPath));
+		assertEquals(List.of("[visible]", "second", "first", "[hidden]"), Files.readAllLines(playerPath));
+	}
 }

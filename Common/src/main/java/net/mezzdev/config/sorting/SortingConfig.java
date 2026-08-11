@@ -23,6 +23,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 	private static final String VISIBLE_SECTION = "[visible]";
 	private static final String HIDDEN_SECTION = "[hidden]";
 
+	private final @Nullable Path defaultPath;
 	private final Path path;
 	private final Comparator<String> defaultSortOrder;
 	private final boolean allowsRemovingValues;
@@ -37,6 +38,16 @@ public final class SortingConfig implements ISortingConfig<String> {
 		Comparator<String> defaultSortOrder,
 		boolean allowsRemovingValues
 	) {
+		this(null, path, defaultSortOrder, allowsRemovingValues);
+	}
+
+	public SortingConfig(
+		@Nullable Path defaultPath,
+		Path path,
+		Comparator<String> defaultSortOrder,
+		boolean allowsRemovingValues
+	) {
+		this.defaultPath = defaultPath;
 		this.path = Objects.requireNonNull(path, "path");
 		this.defaultSortOrder = Objects.requireNonNull(defaultSortOrder, "defaultSortOrder");
 		this.allowsRemovingValues = allowsRemovingValues;
@@ -45,6 +56,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 	@Override
 	public List<String> getSortedValues(Collection<String> allValues) {
 		List<String> allValuesSnapshot = getDistinctValues(allValues, "allValues");
+		writeDefaultIfMissing(allValuesSnapshot);
 		SavedValues previousSavedValues = getSavedValues();
 		SavedValues reconciledSavedValues = addDiscoveredValues(previousSavedValues, allValuesSnapshot);
 		this.lastAllValues = allValuesSnapshot;
@@ -171,7 +183,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 
 	private boolean save(SavedValues savedValues) {
 		try {
-			write(savedValues);
+			write(path, savedValues);
 			return true;
 		} catch (IOException e) {
 			LOGGER.error("Failed to save sort order config to file {}", this.path, e);
@@ -179,7 +191,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 		}
 	}
 
-	private void write(SavedValues savedValues) throws IOException {
+	private static void write(Path path, SavedValues savedValues) throws IOException {
 		Path parent = path.getParent();
 		if (parent != null) {
 			Files.createDirectories(parent);
@@ -196,6 +208,24 @@ public final class SortingConfig implements ISortingConfig<String> {
 		Files.write(path, serialized, StandardCharsets.UTF_8);
 	}
 
+	private void writeDefaultIfMissing(List<String> allValues) {
+		Path defaultPath = this.defaultPath;
+		if (defaultPath == null || Files.exists(defaultPath)) {
+			return;
+		}
+		SavedValues defaultValues = new SavedValues(
+			allValues.stream()
+				.sorted(defaultSortOrder)
+				.toList(),
+			List.of()
+		);
+		try {
+			write(defaultPath, defaultValues);
+		} catch (IOException e) {
+			LOGGER.error("Failed to save default sort order config to file {}", defaultPath, e);
+		}
+	}
+
 	private SavedValues getSavedValues() {
 		SavedValues savedValues = this.savedValues;
 		if (savedValues == null) {
@@ -208,14 +238,18 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	private SavedValues loadSavedValuesFromFile() {
-		if (!Files.exists(path)) {
+		Path loadPath = path;
+		if (!Files.exists(loadPath)) {
+			loadPath = defaultPath;
+		}
+		if (loadPath == null || !Files.exists(loadPath)) {
 			return SavedValues.EMPTY;
 		}
 		try {
-			List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
+			List<String> lines = Files.readAllLines(loadPath, StandardCharsets.UTF_8);
 			return parseSavedValues(lines);
 		} catch (IOException e) {
-			LOGGER.error("Failed to load sort order config from file: {}", path, e);
+			LOGGER.error("Failed to load sort order config from file: {}", loadPath, e);
 			return SavedValues.EMPTY;
 		}
 	}

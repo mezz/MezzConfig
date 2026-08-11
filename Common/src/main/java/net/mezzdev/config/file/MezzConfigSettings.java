@@ -3,7 +3,11 @@ package net.mezzdev.config.file;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchemaPathResolver;
+import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
+import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.util.ErrorUtil;
+import net.mezzdev.config.util.PlayerConfigPathUtil;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
 import net.mezzdev.filewatcher.FileWatcher;
@@ -12,6 +16,7 @@ import org.jetbrains.annotations.ApiStatus;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @ApiStatus.Internal
@@ -37,7 +42,28 @@ public record MezzConfigSettings(
 
 	public static MezzConfigSettings load(Path configRootDir, boolean developmentEnvironment) {
 		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir");
-		SchemaData schemaData = createSchema(configRootDir, NO_SAVE_SCHEDULER, developmentEnvironment);
+		SchemaData schemaData = createSchema(
+			new StaticConfigSchemaPathResolver(getConfigFile(configRootDir)),
+			NO_SAVE_SCHEDULER,
+			developmentEnvironment
+		);
+		schemaData.schema()
+			.loadIfNeeded();
+		return schemaData.settings();
+	}
+
+	public static MezzConfigSettings load(
+		Path configRootDir,
+		UUID playerId,
+		boolean developmentEnvironment
+	) {
+		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir");
+		playerId = ErrorUtil.checkNotNull(playerId, "playerId");
+		SchemaData schemaData = createSchema(
+			getLayeredPathResolver(configRootDir, playerId),
+			NO_SAVE_SCHEDULER,
+			developmentEnvironment
+		);
 		schemaData.schema()
 			.loadIfNeeded();
 		return schemaData.settings();
@@ -50,17 +76,41 @@ public record MezzConfigSettings(
 	) {
 		configManager = ErrorUtil.checkNotNull(configManager, "configManager");
 		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir");
-		SchemaData schemaData = createSchema(configRootDir, configManager.getSaveScheduler(), developmentEnvironment);
+		SchemaData schemaData = createSchema(
+			new StaticConfigSchemaPathResolver(getConfigFile(configRootDir)),
+			configManager.getSaveScheduler(),
+			developmentEnvironment
+		);
+		ConfigSchema schema = schemaData.schema();
+		configManager.registerSchema(schema);
+		return schema;
+	}
+
+	public static ConfigSchema registerSchema(
+		ConfigManager configManager,
+		Path configRootDir,
+		UUID playerId,
+		boolean developmentEnvironment
+	) {
+		configManager = ErrorUtil.checkNotNull(configManager, "configManager");
+		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir");
+		playerId = ErrorUtil.checkNotNull(playerId, "playerId");
+		SchemaData schemaData = createSchema(
+			getLayeredPathResolver(configRootDir, playerId),
+			configManager.getSaveScheduler(),
+			developmentEnvironment
+		);
 		ConfigSchema schema = schemaData.schema();
 		configManager.registerSchema(schema);
 		return schema;
 	}
 
 	private static SchemaData createSchema(
-		Path configRootDir,
+		ConfigSchemaPathResolver pathResolver,
 		DelayedTaskScheduler scheduler,
 		boolean developmentEnvironment
 	) {
+		pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
 		scheduler = ErrorUtil.checkNotNull(scheduler, "scheduler");
 		ConfigCategoryBuilder fileWatcherCategory = new ConfigCategoryBuilder(LOCALIZATION_PATH, FILE_WATCHER_CATEGORY_NAME);
 		ConfigValue<Boolean> enabled = fileWatcherCategory.addBoolean(ENABLED_NAME, true)
@@ -90,7 +140,7 @@ public record MezzConfigSettings(
 
 		ConfigSchema schema = new ConfigSchema(
 			MOD_ID,
-			getConfigFile(configRootDir),
+			pathResolver,
 			List.of(fileWatcherCategory, loggingCategory),
 			scheduler
 		);
@@ -106,6 +156,17 @@ public record MezzConfigSettings(
 	private static Path getConfigFile(Path configRootDir) {
 		return configRootDir.resolve(CONFIG_DIRECTORY_NAME)
 			.resolve(CONFIG_FILE_NAME);
+	}
+
+	private static ConfigSchemaPathResolver getLayeredPathResolver(Path configRootDir, UUID playerId) {
+		Path configDir = configRootDir.resolve(CONFIG_DIRECTORY_NAME);
+		Path defaultPath = configDir.resolve(CONFIG_FILE_NAME);
+		Path playerPath = PlayerConfigPathUtil.getPlayerConfigDir(configDir, playerId)
+			.resolve(CONFIG_FILE_NAME);
+		return new LayeredConfigSchemaPathResolver(
+			defaultPath,
+			new StaticConfigSchemaPathResolver(playerPath)
+		);
 	}
 
 	private record SchemaData(

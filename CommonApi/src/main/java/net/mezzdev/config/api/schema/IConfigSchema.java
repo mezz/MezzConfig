@@ -37,8 +37,9 @@ public interface IConfigSchema {
 	/**
 	 * Get the current path of this config schema.
 	 * <p>
-	 * Normal client schemas always have a path. Context-specific schemas, such as client-world schemas, return an empty
-	 * optional when there is no active backing file for the current game state.
+	 * Normal client schemas always have a player-specific path, although the file is not created until the player changes
+	 * a value. Context-specific schemas, such as client-world schemas, return an empty optional when there is no active
+	 * backing file for the current game state.
 	 * <p>
 	 * Note that config values will read from this file automatically,
 	 * and updating config values will save the file automatically,

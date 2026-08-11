@@ -11,8 +11,12 @@ import net.mezzdev.config.file.MezzConfigSettings;
 import net.mezzdev.config.schema.ClientWorldConfigSchemaPathResolver;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
+import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
+import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.sorting.SortingConfig;
 import net.mezzdev.config.util.ErrorUtil;
+import net.mezzdev.config.util.PlayerConfigPathUtil;
+import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -22,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Loads discovered config plugins into one config manager.
@@ -39,27 +44,41 @@ public final class ConfigPluginLoader {
 		boolean developmentEnvironment,
 		List<? extends IConfigPlugin> plugins
 	) {
-		MezzConfigSettings settings = MezzConfigSettings.load(configRootDir, developmentEnvironment);
+		UUID playerId = Minecraft.getInstance()
+			.getUser()
+			.getProfileId();
+		MezzConfigSettings settings = MezzConfigSettings.load(configRootDir, playerId, developmentEnvironment);
 		ConfigManager configManager = new ConfigManager(
 			fileWatcherThreadName,
 			settings.fileWatcherSettings(),
 			settings.logUntranslatedKeys()
 		);
-		MezzConfigSettings.registerSchema(configManager, configRootDir, developmentEnvironment);
+		MezzConfigSettings.registerSchema(configManager, configRootDir, playerId, developmentEnvironment);
 		for (IConfigPlugin plugin : plugins) {
-			addPlugin(configManager, configRootDir, plugin);
+			addPlugin(configManager, configRootDir, playerId, plugin);
 		}
 		configManager.startWatching();
 		ConfigManagers.setConfigManager(configManager);
 		return configManager;
 	}
 
-	private static void addPlugin(ConfigManager configManager, Path configRootDir, IConfigPlugin plugin) {
+	private static void addPlugin(
+		ConfigManager configManager,
+		Path configRootDir,
+		UUID playerId,
+		IConfigPlugin plugin
+	) {
 		try {
 			String modId = validateModId(plugin.getModId());
 			Path pluginConfigDir = configRootDir.resolve(modId);
 			Files.createDirectories(pluginConfigDir);
-			ConfigRegistration registration = new ConfigRegistration(modId, configManager, pluginConfigDir);
+			Path playerConfigDir = PlayerConfigPathUtil.getPlayerConfigDir(pluginConfigDir, playerId);
+			ConfigRegistration registration = new ConfigRegistration(
+				modId,
+				configManager,
+				pluginConfigDir,
+				playerConfigDir
+			);
 			plugin.registerConfigFiles(registration);
 		} catch (IOException | RuntimeException | LinkageError e) {
 			LOGGER.error("Failed to load config plugin: {}", plugin.getClass(), e);
@@ -90,22 +109,35 @@ public final class ConfigPluginLoader {
 	private record ConfigRegistration(
 		String modId,
 		ConfigManager configManager,
-		Path pluginConfigDir
+		Path pluginConfigDir,
+		Path playerConfigDir
 	) implements IConfigRegistration {
 		@Override
 		public IConfigSchemaBuilder createSchemaBuilder(String configFileName, String localizationPath) {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
-			Path configFile = resolveConfigFile(pluginConfigDir, configFileName);
-			return new ConfigSchemaBuilder(modId, configFile, localizationPath, configManager);
+			Path defaultConfigFile = resolveConfigFile(pluginConfigDir, configFileName);
+			Path playerConfigFile = resolveConfigFile(playerConfigDir, configFileName);
+			LayeredConfigSchemaPathResolver pathResolver = new LayeredConfigSchemaPathResolver(
+				defaultConfigFile,
+				new StaticConfigSchemaPathResolver(playerConfigFile)
+			);
+			return new ConfigSchemaBuilder(modId, pathResolver, localizationPath, configManager);
 		}
 
 		@Override
 		public IConfigSchemaBuilder createClientWorldSchemaBuilder(String configFileName, String localizationPath) {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path relativeConfigFile = getRelativeConfigFile(configFileName);
-			ClientWorldConfigSchemaPathResolver pathResolver = new ClientWorldConfigSchemaPathResolver(
+			Path defaultConfigFile = ClientWorldConfigPathUtil.getDefaultWorldPath(pluginConfigDir)
+				.resolve(relativeConfigFile)
+				.normalize();
+			ClientWorldConfigSchemaPathResolver playerPathResolver = new ClientWorldConfigSchemaPathResolver(
 				relativeConfigFile,
-				() -> ClientWorldConfigPathUtil.getWorldPath(pluginConfigDir)
+				() -> ClientWorldConfigPathUtil.getWorldPath(playerConfigDir)
+			);
+			LayeredConfigSchemaPathResolver pathResolver = new LayeredConfigSchemaPathResolver(
+				defaultConfigFile,
+				playerPathResolver
 			);
 			return new ConfigSchemaBuilder(modId, pathResolver, localizationPath, configManager);
 		}
@@ -116,8 +148,14 @@ public final class ConfigPluginLoader {
 			Comparator<String> defaultSortOrder,
 			boolean allowsRemovingValues
 		) {
-			Path configFile = resolveConfigFile(pluginConfigDir, configFileName);
-			return new SortingConfig(configFile, defaultSortOrder, allowsRemovingValues);
+			Path defaultConfigFile = resolveConfigFile(pluginConfigDir, configFileName);
+			Path playerConfigFile = resolveConfigFile(playerConfigDir, configFileName);
+			return new SortingConfig(
+				defaultConfigFile,
+				playerConfigFile,
+				defaultSortOrder,
+				allowsRemovingValues
+			);
 		}
 
 		@Override

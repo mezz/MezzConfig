@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -77,5 +78,31 @@ class MezzConfigSettingsTest {
 		assertEquals(Duration.ofMillis(25), settings.fileWatcherSettings().changeSettlingDelay());
 		assertEquals(Duration.ofMillis(1000), settings.fileWatcherSettings().missingDirectoryRetryInterval());
 		assertTrue(settings.logUntranslatedKeys());
+	}
+
+	@Test
+	void loadUsesPackDefaultsAndPlayerOverrides(@TempDir Path tempDir) throws IOException {
+		UUID playerId = UUID.fromString("12345678-1234-1234-1234-123456789abc");
+		Path configDir = tempDir.resolve("mezz_config");
+		Files.createDirectories(configDir);
+		Files.write(configDir.resolve("settings.ini"), List.of(
+			"[fileWatcher]",
+			"enabled = false",
+			"[logging]",
+			"logUntranslatedKeys = true"
+		));
+		Path playerConfigPath = configDir.resolve("players")
+			.resolve(playerId.toString())
+			.resolve("settings.ini");
+		Files.createDirectories(playerConfigPath.getParent());
+		Files.write(playerConfigPath, List.of(
+			"[logging]",
+			"logUntranslatedKeys = false"
+		));
+
+		MezzConfigSettings settings = MezzConfigSettings.load(tempDir, playerId, false);
+
+		assertFalse(settings.fileWatcherSettings().enabled());
+		assertFalse(settings.logUntranslatedKeys());
 	}
 }
