@@ -1,7 +1,8 @@
 # MezzConfig API
 
-MezzConfig lets mods register lightweight client-side config schemas and
-string-backed sort orders through loader-discovered config plugins.
+MezzConfig lets mods register lightweight client-owned config schemas,
+server-authoritative config schemas, and string-backed client sort orders
+through loader-discovered plugins.
 
 ## Registering a plugin
 
@@ -16,9 +17,26 @@ The plugin's `getModId()` owns the config subdirectory. During
 `registerConfigFiles(...)`, use `IConfigRegistration` to create schema builders
 or sorting configs.
 
-In this initial version, MezzConfig discovers and loads config plugins on the
-client. The API is intentionally common enough to support server-side configs in
-the future.
+Client config plugins are loaded only on the physical client, so they may use
+client-only classes.
+
+For server-authoritative settings, implement `IServerConfigPlugin` as well as,
+or instead of, `IConfigPlugin`.
+
+- Forge and NeoForge discover server plugins annotated with
+  `@ServerConfigPlugin`.
+- Fabric discovers them from the `mezz_config_server_plugin` entrypoint.
+
+Server plugins load on dedicated servers and clients. Their registration code
+and referenced classes must therefore be safe to load without client-only
+Minecraft classes. A common-safe class may implement both plugin interfaces;
+on Forge and NeoForge, annotate it with both annotations, and on Fabric list it
+under both entrypoint keys.
+
+A physical client may invoke server registration separately to construct its
+synchronized client view and its integrated-server authoritative state. Keep
+registration repeatable and limited to declaring schemas; do not use one-time
+side effects or guards that skip a later registration call.
 
 ## Config schemas
 
@@ -45,6 +63,54 @@ takes precedence so a pack update cannot overwrite the player's choices.
 Client-world schemas follow the same rule. Their distributable defaults are in
 `config/<mod-id>/world/default`, while profile-specific values remain separated
 under `players/<profile-uuid>/world/local` or `players/<profile-uuid>/world/server`.
+
+### Server-authoritative schemas
+
+Use `IServerConfigRegistration.createServerSchemaBuilder(...)` for settings
+whose effective value is owned by the server. This is distinct from a
+client-world schema: a client-world schema merely selects a different local
+preference file for each connection, while a server schema is loaded, validated,
+persisted, and authorized by the server.
+
+Server schemas use these locations:
+
+```text
+config/<mod-id>/server/default/<file-name>  # distributable default
+<world>/serverconfig/<mod-id>/<file-name>   # active world's authoritative values
+```
+
+The world file is created when the server starts. Declared code defaults are
+loaded first, then the distributable default, then the world file. Connected
+clients do not read either server file; they receive the server's complete
+effective snapshot in memory when they join and whenever the values change.
+Integrated servers likewise keep their authoritative schema state separate
+from the client-facing snapshot.
+Editing the world file is detected and synchronized automatically. Large
+snapshots and update requests are split into bounded network fragments and
+reassembled before the complete batch is validated or applied.
+
+On a client, `IConfigSchema.isActive()` becomes true after the first snapshot.
+`canEdit()` is true when the server reports that the player has its configured
+operator permission level, and is refreshed when that permission changes. This
+flag helps config editors disable controls, but the server rechecks permission
+and validates every requested value.
+
+Use `requestBatchUpdate(...)` in config editors:
+
+```java
+CompletableFuture<Void> result = schema.requestBatchUpdate(updater -> {
+	updater.set(enableCheatModeForOp, true);
+	updater.set(enableCheatModeForCreative, false);
+});
+```
+
+For client schemas, the future is already complete after the normal local
+update. For server schemas, current values remain unchanged until an accepted
+request returns in an authoritative snapshot. The future completes
+exceptionally when the player lacks permission, a value is rejected, the
+connection closes, or the server does not support the request. Direct
+`IConfigValue.set(...)` and `IConfigSchema.batchUpdate(...)` calls are rejected
+for server schemas so an integrated client cannot bypass server authority.
 
 Supported built-in value helpers include:
 
@@ -111,7 +177,10 @@ general.addEnum("mode", Mode.STANDARD)
 Client-world schemas are inactive until the client is connected to a world or
 server. While inactive, values read as defaults and updates are rejected because
 there is no backing file to save. Config editors should check
-`IConfigSchema.getPath()` before showing or enabling context-specific schemas.
+`IConfigSchema.isActive()` before showing or enabling context-specific schemas.
+Use `getPath()` only when the local backing-file path itself is relevant;
+synchronized remote server schemas are active but intentionally return an empty
+path.
 
 Schemas expose the owning mod id through `IConfigSchema.getModId()`, so
 integrations can group schemas by mod and create default config screens without
@@ -152,9 +221,12 @@ also be used as editor categories. Config editors should use
 `ConfigValueEditMode` describes when editors should save changes. Use
 `ConfigValueRestartRequirement.WORLD_RESTART` or
 `ConfigValueRestartRequirement.GAME_RESTART` only to explain when changed values
-take effect. MezzConfig still updates values when they change through the API or
-config file; mods that only apply a value at startup or world load should read
-it during that lifecycle.
+take effect. This applies equally to server schemas: `WORLD_RESTART` means the
+mod should apply the new value on the next world/server load, while
+`GAME_RESTART` means the next client or dedicated-server process start.
+MezzConfig still persists and synchronizes the selected value immediately; mods
+that only apply a value at startup or world load should read it during that
+lifecycle.
 
 Use a batch updater when several config values should change together:
 
@@ -170,6 +242,8 @@ after all changed values have updated and persistence has been scheduled.
 `IConfigValue.set(...)` returns `true` for a change and `false` for a valid
 unchanged value. It throws `IllegalArgumentException` for invalid values and
 `IllegalStateException` when a context-specific schema is inactive.
+Config editor integrations should normally use `requestBatchUpdate(...)`
+instead, because it also handles server-authoritative schemas.
 
 Listener registration returns an unsubscribe callback. Each owner should retain
 and invoke its callbacks during teardown. Listeners run synchronously on the

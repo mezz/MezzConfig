@@ -3,6 +3,7 @@ package net.mezzdev.config.test.schema;
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
@@ -22,6 +23,10 @@ import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
 import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.StringSerializer;
+import net.mezzdev.config.server.ServerConfigKey;
+import net.mezzdev.config.server.ServerConfigNetworking;
+import net.mezzdev.config.server.ServerConfigRuntime;
+import net.mezzdev.config.server.ServerConfigValueData;
 import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -732,6 +737,114 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void serverSnapshotIsAuthoritativeAndDirectUpdatesAreRejected() {
+		// Setup: a client has registered the shape of a server schema, but has no server values before synchronization.
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
+			.build();
+		ConfigSchema schema = createRemoteServerSchema(builder);
+
+		assertEquals(ConfigSchemaType.SERVER, schema.getType());
+		assertFalse(schema.isActive());
+		assertFalse(schema.canEdit());
+
+		// Operation: the server supplies the complete effective state and reports that this player is an operator.
+		schema.applyRemoteSnapshot(List.of(
+			new ServerConfigValueData("category", "enabled", "false"),
+			new ServerConfigValueData("category", "count", "3"),
+			new ServerConfigValueData("newerServerCategory", "newerServerValue", "ignored")
+		), true);
+
+		// Assertions: reads use the synchronized snapshot, but synchronous setters cannot bypass server authority.
+		assertTrue(schema.isActive());
+		assertTrue(schema.canEdit());
+		assertEquals(Optional.empty(), schema.getPath());
+		assertFalse(enabled.getValue());
+		assertEquals(3, count.getValue());
+		assertThrows(IllegalStateException.class, () -> enabled.set(true));
+		assertFalse(enabled.getValue());
+
+		// Operation: a malformed later snapshot is rejected as one batch.
+		assertThrows(IllegalArgumentException.class, () -> schema.applyRemoteSnapshot(List.of(
+			new ServerConfigValueData("category", "enabled", "true"),
+			new ServerConfigValueData("category", "count", "outside-range")
+		), true));
+
+		// Assertions: no value from the malformed snapshot was applied.
+		assertFalse(enabled.getValue());
+		assertEquals(3, count.getValue());
+
+		// Operation: an older server sends no value for a setting only this client knows.
+		schema.applyRemoteSnapshot(List.of(
+			new ServerConfigValueData("category", "enabled", "true")
+		), true);
+
+		// Assertions: known synchronized values apply and missing values safely use their declared defaults.
+		assertTrue(enabled.getValue());
+		assertEquals(1, count.getValue());
+	}
+
+	@Test
+	public void serverUpdateRequestUsesServerAuthorizationWhenPermissionHintIsStale() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createRemoteServerSchema(builder);
+		schema.applyRemoteSnapshot(List.of(
+			new ServerConfigValueData("category", "enabled", "true")
+		), false);
+		List<Object> sentChunks = new ArrayList<>();
+		ServerConfigNetworking.setClientSender(payload -> {
+			sentChunks.add(payload);
+			return true;
+		});
+
+		CompletableFuture<Void> result = schema.requestBatchUpdate(updater -> updater.set(enabled, false));
+
+		assertFalse(result.isDone());
+		assertFalse(sentChunks.isEmpty());
+		ServerConfigRuntime.onClientDisconnect();
+		assertTrue(result.isCompletedExceptionally());
+		ServerConfigNetworking.setClientSender(payload -> false);
+	}
+
+	@Test
+	public void serverSchemaCreatesAnAuthoritativeWorldFileWhenActivated(@TempDir Path tempDir) throws IOException {
+		// Setup: the server schema has a pack default, but its world path is inactive during plugin registration.
+		Path defaultPath = tempDir.resolve("config").resolve("test_mod").resolve("server").resolve("default").resolve("server.ini");
+		Path worldPath = tempDir.resolve("world").resolve("serverconfig").resolve("test_mod").resolve("server.ini");
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.empty());
+		Deque<Runnable> scheduledTasks = new ArrayDeque<>();
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = new ConfigSchema(
+			"test_mod",
+			new LayeredConfigSchemaPathResolver(defaultPath, () -> activePath.get()),
+			List.of(builder),
+			List.of(builder),
+			(command, delay) -> {
+				scheduledTasks.add(command);
+				return CompletableFuture.completedFuture(null);
+			},
+			ConfigSchemaType.SERVER,
+			new ServerConfigKey("test_mod", "server.ini")
+		);
+		schema.register(null, ignored -> {}, false);
+
+		// Operation: starting a world activates its serverconfig path.
+		activePath.set(Optional.of(worldPath));
+		assertEquals(Optional.of(worldPath), schema.getPath());
+		runScheduledTasks(scheduledTasks);
+
+		// Assertions: both distributable defaults and the world's authoritative copy exist without an in-game edit.
+		assertTrue(Files.readString(defaultPath).contains("enabled = true"));
+		assertTrue(Files.readString(worldPath).contains("enabled = true"));
+	}
+
+	@Test
 	public void contextSchemaLoadsFromNewPathAsOneBatch(@TempDir Path tempDir) throws IOException {
 		// Setup: two different client-world paths have different saved values for the same schema.
 		Path firstPath = tempDir.resolve("world").resolve("local").resolve("first").resolve("test.ini");
@@ -935,6 +1048,18 @@ public class ConfigSchemaTest {
 			List.of(builders),
 			List.of(builders),
 			(command, delay) -> CompletableFuture.completedFuture(null)
+		);
+	}
+
+	private static ConfigSchema createRemoteServerSchema(ConfigCategoryBuilder... builders) {
+		return new ConfigSchema(
+			"test_mod",
+			() -> Optional.empty(),
+			List.of(builders),
+			List.of(builders),
+			(command, delay) -> CompletableFuture.completedFuture(null),
+			ConfigSchemaType.SERVER,
+			new ServerConfigKey("test_mod", "server.ini")
 		);
 	}
 

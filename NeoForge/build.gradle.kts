@@ -15,6 +15,8 @@ val configModId: String by extra
 val configModGroup: String by extra
 val neoforgeTestModId: String by extra
 val modJavaVersion: String by extra
+val deduplicatingRunnerVersion: String by extra
+val fileWatcherVersion: String by extra
 
 group = configModGroup
 
@@ -46,6 +48,7 @@ neoForge {
         create(configModId) {
             sourceSet(sourceSets.main.get())
             sourceSet(configApiProject.sourceSets.main.get())
+            sourceSet(commonProject.sourceSets.main.get())
         }
         create(neoforgeTestModId) {
             sourceSet(testModSourceSet)
@@ -91,10 +94,11 @@ dependencies {
     dependencyProjects.forEach {
         compileOnly(it)
     }
-    runtimeOnly(project(commonProject.path)) {
-        attributes {
-            attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.SHADOWED))
-        }
+    add("additionalRuntimeClasspath", "net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
+        isTransitive = false
+    }
+    add("additionalRuntimeClasspath", "net.mezzdev:filewatcher:$fileWatcherVersion") {
+        isTransitive = false
     }
 }
 

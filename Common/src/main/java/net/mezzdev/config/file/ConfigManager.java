@@ -2,7 +2,9 @@ package net.mezzdev.config.file;
 
 import net.mezzdev.config.api.files.IConfigManager;
 import net.mezzdev.config.api.schema.IConfigSchema;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.util.ErrorUtil;
 import net.mezzdev.deduplicatingrunner.DelayedExecutor;
 import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
@@ -17,6 +19,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
 
 public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 	private static final Logger LOGGER = LogManager.getLogger();
@@ -26,6 +31,7 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 	private final @Nullable FileWatcher fileWatcher;
 	private final DelayedExecutor saveExecutor;
 	private final List<ConfigSchema> configFiles = new ArrayList<>();
+	private final Map<ServerConfigKey, ConfigSchema> serverSchemas = new LinkedHashMap<>();
 	private final boolean logUntranslatedKeys;
 
 	public ConfigManager() {
@@ -84,6 +90,12 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 
 	@Override
 	public void addConfigFile(ConfigSchema configFile) {
+		if (configFile.getType() == ConfigSchemaType.SERVER) {
+			ConfigSchema previous = serverSchemas.putIfAbsent(configFile.getServerKey(), configFile);
+			if (previous != null) {
+				throw new IllegalArgumentException("There is already a server config schema registered for: " + configFile.getServerKey());
+			}
+		}
 		this.configFiles.add(configFile);
 	}
 
@@ -96,5 +108,13 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 	@Override
 	public Collection<? extends IConfigSchema> getSchemas() {
 		return Collections.unmodifiableCollection(configFiles);
+	}
+
+	public Collection<ConfigSchema> getServerSchemas() {
+		return Collections.unmodifiableCollection(serverSchemas.values());
+	}
+
+	public Optional<ConfigSchema> getServerSchema(ServerConfigKey key) {
+		return Optional.ofNullable(serverSchemas.get(key));
 	}
 }

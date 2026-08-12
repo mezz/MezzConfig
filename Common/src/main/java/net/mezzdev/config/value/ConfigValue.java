@@ -177,7 +177,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	@Override
 	public T getValue() {
 		if (schema != null) {
-			schema.loadIfNeeded();
+			return schema.getEffectiveValue(this);
 		}
 		return getValueWithoutLoading();
 	}

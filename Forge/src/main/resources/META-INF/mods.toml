@@ -10,7 +10,7 @@ displayName="MezzConfig"
 displayURL="${githubUrl}"
 authors="${modAuthor}"
 description='''
-Lightweight client-side config support for Minecraft mods.
+Lightweight client and server-authoritative config support for Minecraft mods.
 '''
 
 [[dependencies.${configModId}]]

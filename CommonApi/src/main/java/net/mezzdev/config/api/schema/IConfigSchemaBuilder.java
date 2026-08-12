@@ -6,8 +6,9 @@ import org.jetbrains.annotations.ApiStatus;
 /**
  * Builds one config schema.
  * <p>
- * Create a builder for your schema here: {@link IConfigRegistration#createSchemaBuilder(String, String)} or
- * {@link IConfigRegistration#createClientWorldSchemaBuilder(String, String)}.
+ * Create a builder for your schema with {@link IConfigRegistration#createSchemaBuilder(String, String)},
+ * {@link IConfigRegistration#createClientWorldSchemaBuilder(String, String)}, or
+ * {@link net.mezzdev.config.api.plugin.IServerConfigRegistration#createServerSchemaBuilder(String, String)}.
  *
  * @since 0.1.0
  */

@@ -41,6 +41,7 @@ val configModId: String by extra
 val fabricTestModId: String by extra
 val fabricLoaderVersion: String by extra
 val fabricLoaderVersionRange: String by extra
+val fabricApiVersionRange: String by extra
 val forgeVersionRange: String by extra
 val forgeTestModId: String by extra
 val githubUrl: String by extra
@@ -203,6 +204,7 @@ subprojects {
             "fabricTestModId" to fabricTestModId,
             "fabricLoaderVersion" to fabricLoaderVersion,
             "fabricLoaderVersionRange" to fabricLoaderVersionRange,
+			"fabricApiVersionRange" to fabricApiVersionRange,
             "forgeVersionRange" to forgeVersionRange,
             "forgeTestModId" to forgeTestModId,
             "githubUrl" to githubUrl,

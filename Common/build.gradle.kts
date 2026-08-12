@@ -101,7 +101,8 @@ tasks.test {
     useJUnitPlatform()
     include(
         "net/mezzdev/config/test/**",
-        "net/mezzdev/config/file/**"
+        "net/mezzdev/config/file/**",
+        "net/mezzdev/config/server/**"
     )
     outputs.upToDateWhen { false }
     testLogging {

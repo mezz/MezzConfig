@@ -2,6 +2,8 @@ package net.mezzdev.config.neoforge;
 
 import net.mezzdev.config.api.plugin.ConfigPlugin;
 import net.mezzdev.config.api.plugin.IConfigPlugin;
+import net.mezzdev.config.api.plugin.IServerConfigPlugin;
+import net.mezzdev.config.api.plugin.ServerConfigPlugin;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforgespi.language.ModFileScanData;
 import org.apache.logging.log4j.LogManager;
@@ -24,6 +26,10 @@ public final class ConfigNeoForgePluginFinder {
 
 	public static List<IConfigPlugin> getPlugins() {
 		return getInstances(ConfigPlugin.class, IConfigPlugin.class, "config plugin");
+	}
+
+	public static List<IServerConfigPlugin> getServerPlugins() {
+		return getInstances(ServerConfigPlugin.class, IServerConfigPlugin.class, "server config plugin");
 	}
 
 	private static <T> List<T> getInstances(Class<?> annotationClass, Class<T> instanceClass, String pluginName) {

@@ -11,7 +11,7 @@ displayURL="${githubUrl}"
 displayTest="IGNORE_SERVER_VERSION"
 authors="${modAuthor}"
 description='''
-Lightweight client-side config support for Minecraft mods.
+Lightweight client and server-authoritative config support for Minecraft mods.
 '''
 
 [[dependencies.${configModId}]]

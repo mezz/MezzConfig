@@ -4,7 +4,7 @@
   "version": "${version}",
 
   "name": "MezzConfig",
-  "description": "Lightweight client-side config support for Minecraft mods.",
+  "description": "Lightweight client and server-authoritative config support for Minecraft mods.",
   "authors": [
     "${modAuthor}"
   ],
@@ -16,6 +16,9 @@
 
   "environment": "*",
   "entrypoints": {
+	"server": [
+	  "net.mezzdev.config.fabric.ConfigFabric"
+	],
     "client": [
       "net.mezzdev.config.fabric.ConfigFabricClient"
     ]
@@ -23,6 +26,7 @@
 
   "depends": {
     "fabricloader": "${fabricLoaderVersionRange}",
+	"fabric-api": "${fabricApiVersionRange}",
     "minecraft": "${minecraftVersion}",
     "java": ">=${modJavaVersion}"
   }

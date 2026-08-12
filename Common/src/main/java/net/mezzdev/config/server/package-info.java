@@ -1,10 +1,7 @@
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 
-/**
- * Plugin entry points for client-owned and server-authoritative config registration.
- */
-package net.mezzdev.config.api.plugin;
+package net.mezzdev.config.server;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 

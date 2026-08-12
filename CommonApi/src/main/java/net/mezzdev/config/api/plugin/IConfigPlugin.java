@@ -1,7 +1,7 @@
 package net.mezzdev.config.api.plugin;
 
 /**
- * The main class to implement for a mod's config registration.
+ * The main class to implement for a mod's client-owned config registration.
  * Multiple config plugins may return the same mod id to contribute separate schemas and sort orders
  * under the same mod-owned config directory.
  * <p>
@@ -13,6 +13,8 @@ package net.mezzdev.config.api.plugin;
  * <p>
  * A shared plugin class can support all loaders by using the annotation and registering the same class as the
  * Fabric entrypoint.
+ * <p>
+ * These plugins load only on the physical client. Use {@link IServerConfigPlugin} for server-authoritative settings.
  *
  * @since 0.1.0
  */

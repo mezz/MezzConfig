@@ -86,7 +86,8 @@ public interface IConfigRegistration {
 	);
 
 	/**
-	 * Get the active client config manager that receives schemas built through this registration.
+	 * Get the active config manager that receives schemas built through this registration. On a client, it also contains
+	 * registered server schemas so config editors can display synchronized server settings.
 	 *
 	 * @since 0.1.0
 	 */

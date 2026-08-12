@@ -4,6 +4,8 @@ import net.mezzdev.config.api.files.ConfigManagers;
 import net.mezzdev.config.api.files.IConfigManager;
 import net.mezzdev.config.api.plugin.IConfigPlugin;
 import net.mezzdev.config.api.plugin.IConfigRegistration;
+import net.mezzdev.config.api.plugin.IServerConfigPlugin;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
 import net.mezzdev.config.file.ConfigManager;
@@ -12,6 +14,7 @@ import net.mezzdev.config.schema.ClientWorldConfigSchemaPathResolver;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
 import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
+import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.sorting.SortingConfig;
 import net.mezzdev.config.util.ErrorUtil;
@@ -44,6 +47,22 @@ public final class ConfigPluginLoader {
 		boolean developmentEnvironment,
 		List<? extends IConfigPlugin> plugins
 	) {
+		return createConfigManager(
+			fileWatcherThreadName,
+			configRootDir,
+			developmentEnvironment,
+			plugins,
+			List.of()
+		);
+	}
+
+	public static IConfigManager createConfigManager(
+		String fileWatcherThreadName,
+		Path configRootDir,
+		boolean developmentEnvironment,
+		List<? extends IConfigPlugin> plugins,
+		List<? extends IServerConfigPlugin> serverPlugins
+	) {
 		UUID playerId = Minecraft.getInstance()
 			.getUser()
 			.getProfileId();
@@ -57,6 +76,8 @@ public final class ConfigPluginLoader {
 		for (IConfigPlugin plugin : plugins) {
 			addPlugin(configManager, configRootDir, playerId, plugin);
 		}
+		ServerConfigPluginLoader.addPlugins(configManager, configRootDir, serverPlugins, false);
+		ServerConfigRuntime.linkClientSchemas(configManager);
 		configManager.startWatching();
 		ConfigManagers.setConfigManager(configManager);
 		return configManager;
@@ -139,7 +160,14 @@ public final class ConfigPluginLoader {
 				defaultConfigFile,
 				playerPathResolver
 			);
-			return new ConfigSchemaBuilder(modId, pathResolver, localizationPath, configManager);
+			return new ConfigSchemaBuilder(
+				modId,
+				pathResolver,
+				localizationPath,
+				configManager,
+				ConfigSchemaType.CLIENT_WORLD,
+				null
+			);
 		}
 
 		@Override

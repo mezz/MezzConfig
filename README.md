@@ -1,8 +1,9 @@
 # MezzConfig
 
-MezzConfig is a lightweight client-side configuration API and runtime for
-Minecraft mods. It provides typed config schemas, file-backed values, migration
-support, and loader-based plugin discovery on Fabric, Forge, and NeoForge.
+MezzConfig is a lightweight configuration API and runtime for Minecraft mods.
+It provides typed client-owned and server-authoritative config schemas,
+file-backed values, synchronization, migration support, and loader-based plugin
+discovery on Fabric, Forge, and NeoForge.
 
 ## Using the API
 

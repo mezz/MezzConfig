@@ -21,6 +21,7 @@ repositories {
 
 // gradle.properties
 val fabricLoaderVersion: String by extra
+val fabricApiVersion: String by extra
 val minecraftVersion: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
@@ -76,6 +77,7 @@ dependencies {
         parchment("org.parchmentmc.data:parchment-${parchmentMinecraftVersion}:${parchmentVersionFabric}@zip")
     })
     modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
+    modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
     compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
     compileOnly(configApiProject)
     dependencyProjects.forEach {

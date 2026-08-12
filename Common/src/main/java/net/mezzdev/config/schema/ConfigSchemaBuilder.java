@@ -1,9 +1,12 @@
 package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.file.ConfigManager;
+import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.util.ConfigNameUtil;
 import net.mezzdev.config.util.ErrorUtil;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -19,6 +22,8 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private final ConfigSchemaPathResolver pathResolver;
 	private final String localizationPath;
 	private final ConfigManager configManager;
+	private final ConfigSchemaType type;
+	private final @Nullable ServerConfigKey serverKey;
 	private boolean built;
 
 	public ConfigSchemaBuilder(Path configFile, String localizationPath, ConfigManager configManager) {
@@ -34,10 +39,26 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	}
 
 	public ConfigSchemaBuilder(String modId, ConfigSchemaPathResolver pathResolver, String localizationPath, ConfigManager configManager) {
+		this(modId, pathResolver, localizationPath, configManager, ConfigSchemaType.CLIENT, null);
+	}
+
+	public ConfigSchemaBuilder(
+		String modId,
+		ConfigSchemaPathResolver pathResolver,
+		String localizationPath,
+		ConfigManager configManager,
+		ConfigSchemaType type,
+		@Nullable ServerConfigKey serverKey
+	) {
 		this.modId = ConfigSchema.validateModId(modId);
 		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
 		this.localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 		this.configManager = ErrorUtil.checkNotNull(configManager, "configManager");
+		this.type = ErrorUtil.checkNotNull(type, "type");
+		this.serverKey = serverKey;
+		if ((type == ConfigSchemaType.SERVER) != (serverKey != null)) {
+			throw new IllegalArgumentException("Server config schemas must have exactly one server key.");
+		}
 	}
 
 	@Override
@@ -74,7 +95,9 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 			pathResolver,
 			categoryBuilders,
 			editorCategoryBuilders,
-			configManager.getSaveScheduler()
+			configManager.getSaveScheduler(),
+			type,
+			serverKey
 		);
 		configManager.registerSchema(schema);
 		return schema;
