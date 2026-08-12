@@ -432,7 +432,7 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
-	private void save(Path path) {
+	private synchronized void save(Path path) {
 		try {
 			Path defaultPath = activeDefaultPath;
 			if (defaultPath != null) {
@@ -535,13 +535,7 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		validateUpdates(updates);
 
-		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
-		for (ConfigValueUpdate<?> update : updates) {
-			AppliedConfigValueChange<?> change = update.apply();
-			if (change != null) {
-				changes.add(change);
-			}
-		}
+		List<AppliedConfigValueChange<?>> changes = applyUpdatesAtomically(updates);
 		if (changes.isEmpty()) {
 			return List.of();
 		}
@@ -550,6 +544,39 @@ public class ConfigSchema implements IConfigSchema {
 		List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
 		notifyListeners(immutableChanges);
 		return immutableChanges;
+	}
+
+	private static List<AppliedConfigValueChange<?>> applyUpdatesAtomically(
+		List<? extends ConfigValueUpdate<?>> updates
+	) {
+		List<ConfigValueUpdate<?>> rollbacks = new ArrayList<>();
+		for (ConfigValueUpdate<?> update : updates) {
+			rollbacks.add(createRollbackUpdate(update));
+		}
+		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
+		try {
+			for (ConfigValueUpdate<?> update : updates) {
+				AppliedConfigValueChange<?> change = update.apply();
+				if (change != null) {
+					changes.add(change);
+				}
+			}
+			return List.copyOf(changes);
+		} catch (RuntimeException e) {
+			for (int i = rollbacks.size() - 1; i >= 0; i--) {
+				try {
+					rollbacks.get(i).apply();
+				} catch (RuntimeException rollbackFailure) {
+					e.addSuppressed(rollbackFailure);
+				}
+			}
+			throw e;
+		}
+	}
+
+	private static <T> ConfigValueUpdate<T> createRollbackUpdate(ConfigValueUpdate<T> update) {
+		ConfigValue<T> configValue = update.configValue();
+		return new ConfigValueUpdate<>(configValue, configValue.getValueWithoutLoading());
 	}
 
 	private void validateUpdates(List<? extends ConfigValueUpdate<?>> updates) {
@@ -803,22 +830,33 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		List<ConfigValueUpdate<?>> updates = deserializeUpdates(values, true);
 		loadIfNeeded();
-		remoteCanEdit = canEdit;
 		if (activePath != null) {
+			remoteCanEdit = canEdit;
 			return;
 		}
-		Map<ConfigValue<?>, Object> previousValues = getCurrentValues();
-		resetValuesToDefaults();
-		for (ConfigValueUpdate<?> update : updates) {
-			update.apply();
+		Map<ConfigValue<?>, ConfigValueUpdate<?>> desiredUpdates = new IdentityHashMap<>();
+		for (ConfigValue<?> configValue : getConfigValues()) {
+			desiredUpdates.put(configValue, createDefaultUpdate(configValue));
 		}
+		for (ConfigValueUpdate<?> update : updates) {
+			desiredUpdates.put(update.configValue(), update);
+		}
+		List<ConfigValueUpdate<?>> orderedUpdates = new ArrayList<>();
+		for (ConfigValue<?> configValue : getConfigValues()) {
+			orderedUpdates.add(desiredUpdates.get(configValue));
+		}
+		List<AppliedConfigValueChange<?>> changes = applyUpdatesAtomically(orderedUpdates);
+		remoteCanEdit = canEdit;
 		remotelyActive = true;
 		needsLoad.set(false);
-		List<AppliedConfigValueChange<?>> changes = getChanges(previousValues);
 		if (!changes.isEmpty()) {
 			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
 			notifyListeners(immutableChanges);
 		}
+	}
+
+	private static <T> ConfigValueUpdate<T> createDefaultUpdate(ConfigValue<T> configValue) {
+		return new ConfigValueUpdate<>(configValue, configValue.getDefaultValue());
 	}
 
 	public synchronized void clearRemoteSnapshot() {

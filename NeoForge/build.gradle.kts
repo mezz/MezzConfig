@@ -40,9 +40,23 @@ val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
 val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
 fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
     zipTree(archiveTask.flatMap { it.archiveFile })
+val gameTestJunitResultsDir = layout.buildDirectory.dir("test-results/gameTest")
+val gameTestSourceSet = sourceSets.create("gameTest") {
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
+
+configurations.named(gameTestSourceSet.implementationConfigurationName) {
+    extendsFrom(configurations.implementation.get())
+}
+configurations.named(gameTestSourceSet.compileOnlyConfigurationName) {
+    extendsFrom(configurations.compileOnly.get())
+}
 
 neoForge {
     version = neoforgeVersion
+
+    addModdingDependenciesTo(gameTestSourceSet)
 
     mods {
         create(configModId) {
@@ -53,11 +67,15 @@ neoForge {
         create(neoforgeTestModId) {
             sourceSet(testModSourceSet)
         }
+        create("mezzConfigGameTests") {
+            sourceSet(gameTestSourceSet)
+        }
     }
 
     runs {
         val configMod = mods.named(configModId)
         val testMod = mods.named(neoforgeTestModId)
+        val gameTestMod = mods.named("mezzConfigGameTests")
 
         configureEach {
             getMods().set(setOf(configMod.get(), testMod.get()))
@@ -73,11 +91,19 @@ neoForge {
             programArguments.addAll("nogui")
             logLevel = Level.INFO
         }
+        create("gameTestServer") {
+            type.set("gameTestServer")
+            gameDirectory = file("run/gameTestServer")
+            sourceSet = gameTestSourceSet
+            getMods().add(gameTestMod.get())
+            systemProperty("mezzConfig.gameTest.junitDir", gameTestJunitResultsDir.get().asFile.absolutePath)
+            logLevel = Level.INFO
+        }
     }
 }
 
 val testModClassesTask = testModProject.tasks.named(testModSourceSet.classesTaskName)
-val testModRunTasks = setOf("runClient", "runServer")
+val testModRunTasks = setOf("runClient", "runServer", "runGameTestServer")
 tasks.matching { it.name in testModRunTasks }.configureEach {
     dependsOn(testModClassesTask)
 }
@@ -98,6 +124,9 @@ dependencies {
         isTransitive = false
     }
     add("additionalRuntimeClasspath", "net.mezzdev:filewatcher:$fileWatcherVersion") {
+        isTransitive = false
+    }
+    add(gameTestSourceSet.implementationConfigurationName, "net.neoforged:testframework:$neoforgeVersion") {
         isTransitive = false
     }
 }
@@ -152,6 +181,15 @@ val mavenSourcesJarTask = tasks.register<Jar>("mavenSourcesJar") {
 
 tasks.assemble {
     dependsOn(sourcesJarTask)
+}
+
+val cleanGameTestJunitResults = tasks.register<Delete>("cleanGameTestJunitResults") {
+    description = "Deletes NeoForge game test JUnit result files before running game tests."
+    delete(gameTestJunitResultsDir)
+}
+
+tasks.named("runGameTestServer") {
+    dependsOn(cleanGameTestJunitResults)
 }
 
 publishing {

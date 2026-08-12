@@ -38,7 +38,9 @@ public final class ConfigFabric implements DedicatedServerModInitializer {
 		ServerConfigNetworking.setServerSender((player, payload) -> {
 			if (ServerPlayNetworking.canSend(player, payload.type())) {
 				ServerPlayNetworking.send(player, payload);
+				return true;
 			}
+			return false;
 		});
 		ServerLifecycleEvents.SERVER_STARTED.register(ServerConfigRuntime::onServerStarted);
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> ServerConfigRuntime.onServerStopped());

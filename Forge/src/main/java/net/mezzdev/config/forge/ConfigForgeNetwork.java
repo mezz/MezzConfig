@@ -14,7 +14,7 @@ import net.minecraftforge.network.ChannelBuilder;
 import net.minecraftforge.network.NetworkDirection;
 
 public final class ConfigForgeNetwork {
-	private static final int PROTOCOL_VERSION = 1;
+	private static final int PROTOCOL_VERSION = 2;
 	private final Channel<CustomPacketPayload> channel;
 
 	public ConfigForgeNetwork() {
@@ -30,10 +30,11 @@ public final class ConfigForgeNetwork {
 			.build();
 		ServerConfigNetworking.setServerSender((player, payload) -> {
 			if (!channel.isRemotePresent(player.connection.getConnection())) {
-				return;
+				return false;
 			}
 			Packet<?> packet = NetworkDirection.PLAY_TO_CLIENT.buildPacket(channel, payload);
 			player.connection.send(packet);
+			return true;
 		});
 	}
 

@@ -7,6 +7,7 @@ import net.mezzdev.config.server.ServerConfigRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.fml.loading.FMLLoader;
@@ -41,6 +42,7 @@ public final class ConfigNeoForgeClient {
 			PacketDistributor.sendToServer(payload);
 			return true;
 		});
+		NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post event) -> ServerConfigRuntime.onClientTick());
 		NeoForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingOut event) -> ServerConfigRuntime.onClientDisconnect());
 	}
 }

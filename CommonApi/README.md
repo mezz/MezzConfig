@@ -64,6 +64,29 @@ Client-world schemas follow the same rule. Their distributable defaults are in
 `config/<mod-id>/world/default`, while profile-specific values remain separated
 under `players/<profile-uuid>/world/local` or `players/<profile-uuid>/world/server`.
 
+### Malformed-file recovery
+
+Config files are read as bounded UTF-8 text (at most 4 MiB and 100,000 lines).
+Missing categories and values are valid: they inherit the value from the lower
+layer, or the declared code default when there is no lower layer. Valid entries
+elsewhere in a damaged file are still applied. A partially successful custom
+deserializer likewise keeps its usable result while reporting the diagnostic.
+
+Syntax errors, invalid serialized values, unknown categories or keys, duplicate
+values, legacy migrations, invalid UTF-8, and files over the read limits cause
+the affected file to be corrected to its canonical form. Before replacement,
+MezzConfig copies the original beside it as `<filename>.bak.1`; it retains at
+most five numbered backups. Identical unchanged failures do not create another
+backup or repeat a failed correction attempt. Correction uses the same atomic
+replacement path as ordinary saves.
+
+Only the file containing the problem is replaced. In particular, recovery of a
+player, client-world, or world-server overlay does not modify its distributable
+pack default. Ordinary filesystem read/open failures are treated as potentially
+transient: they are diagnosed, but the path is not backed up, replaced, or
+deleted. File-watcher reloads and delayed saves are serialized per schema so
+they cannot observe a half-written correction.
+
 ### Server-authoritative schemas
 
 Use `IServerConfigRegistration.createServerSchemaBuilder(...)` for settings
@@ -87,7 +110,14 @@ Integrated servers likewise keep their authoritative schema state separate
 from the client-facing snapshot.
 Editing the world file is detected and synchronized automatically. Large
 snapshots and update requests are split into bounded network fragments and
-reassembled before the complete batch is validated or applied.
+reassembled before the complete batch is validated or applied. The internal
+protocol accepts out-of-order and interleaved messages, rejects duplicates and
+inconsistent metadata, and limits each complete message to 1 MiB and 64
+fragments. Each peer/direction may retain at most four incomplete messages and
+2 MiB of incomplete data; incomplete messages expire after 10 seconds. Decoded
+messages are limited to 4,096 values, 256 KiB per serialized value, and smaller
+field-specific bounds for identifiers and diagnostics. These controls are
+internal and intentionally not caller-configurable.
 
 On a client, `IConfigSchema.isActive()` becomes true after the first snapshot.
 `canEdit()` is true when the server reports that the player has its configured
@@ -108,9 +138,17 @@ For client schemas, the future is already complete after the normal local
 update. For server schemas, current values remain unchanged until an accepted
 request returns in an authoritative snapshot. The future completes
 exceptionally when the player lacks permission, a value is rejected, the
-connection closes, or the server does not support the request. Direct
-`IConfigValue.set(...)` and `IConfigSchema.batchUpdate(...)` calls are rejected
+connection closes, a send fails, the server does not support the request, or no
+response arrives within 15 seconds. At most 128 remote update requests may be
+pending at once. Every synchronized batch is fully decoded and validated before
+any value changes; if any known value is invalid, none of that batch is applied.
+Direct `IConfigValue.set(...)` and `IConfigSchema.batchUpdate(...)` calls are rejected
 for server schemas so an integrated client cannot bypass server authority.
+
+The server-config channel is optional. Connecting to a server without it still
+succeeds; an attempted remote edit fails through its future. The current
+fragment envelope is protocol version 2 and is intentionally incompatible with
+the earlier unreleased first/last-fragment format.
 
 Supported built-in value helpers include:
 

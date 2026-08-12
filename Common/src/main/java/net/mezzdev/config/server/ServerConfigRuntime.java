@@ -13,8 +13,10 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,9 +28,14 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class ServerConfigRuntime {
 	private static final Logger LOGGER = LogManager.getLogger();
+	static final Duration CLIENT_REQUEST_TIMEOUT = Duration.ofSeconds(15);
+	static final int MAX_PENDING_CLIENT_REQUESTS = 128;
+	private static final long CLIENT_REQUEST_TIMEOUT_NANOS = CLIENT_REQUEST_TIMEOUT.toNanos();
+	private static final int MAX_ERROR_MESSAGE_CHARACTERS = ServerConfigPayloadCodec.MAX_ERROR_MESSAGE_BYTES / 4;
 	private static final AtomicLong NEXT_REQUEST_ID = new AtomicLong();
-	private static final Map<Long, CompletableFuture<Void>> PENDING_REQUESTS = new ConcurrentHashMap<>();
+	private static final Map<Long, PendingRequest> PENDING_REQUESTS = new ConcurrentHashMap<>();
 	private static final Set<CompletableFuture<Void>> PENDING_LOCAL_REQUESTS = ConcurrentHashMap.newKeySet();
+	private static final Object LOCAL_REQUEST_LOCK = new Object();
 	private static final Map<ConfigSchema, Long> SERVER_SCHEMA_VERSIONS = new IdentityHashMap<>();
 	private static final Map<UUID, Boolean> PLAYER_EDIT_PERMISSIONS = new HashMap<>();
 	private static final Map<UUID, ServerConfigPayloadReassembler> UPDATE_REASSEMBLERS = new HashMap<>();
@@ -65,7 +72,9 @@ public final class ServerConfigRuntime {
 	}
 
 	public static void onServerStarted(MinecraftServer server) {
-		activeServer = ErrorUtil.checkNotNull(server, "server");
+		synchronized (LOCAL_REQUEST_LOCK) {
+			activeServer = ErrorUtil.checkNotNull(server, "server");
+		}
 		worldConfigRoot = server.getWorldPath(LevelResource.ROOT)
 			.resolve("serverconfig")
 			.normalize();
@@ -81,14 +90,18 @@ public final class ServerConfigRuntime {
 	}
 
 	public static void onServerStopped() {
-		activeServer = null;
+		List<CompletableFuture<Void>> pendingLocalRequests;
+		synchronized (LOCAL_REQUEST_LOCK) {
+			activeServer = null;
+			pendingLocalRequests = List.copyOf(PENDING_LOCAL_REQUESTS);
+			PENDING_LOCAL_REQUESTS.clear();
+		}
 		worldConfigRoot = null;
 		SERVER_SCHEMA_VERSIONS.clear();
 		PLAYER_EDIT_PERMISSIONS.clear();
 		UPDATE_REASSEMBLERS.clear();
 		IllegalStateException exception = new IllegalStateException("The local server stopped before the config update completed.");
-		PENDING_LOCAL_REQUESTS.forEach(future -> future.completeExceptionally(exception));
-		PENDING_LOCAL_REQUESTS.clear();
+		pendingLocalRequests.forEach(future -> future.completeExceptionally(exception));
 		getServerConfigManager().ifPresent(manager -> manager.getServerSchemas().forEach(schema -> {
 			schema.clearRemoteSnapshot();
 			schema.loadIfNeeded();
@@ -100,6 +113,7 @@ public final class ServerConfigRuntime {
 		if (server == null) {
 			return;
 		}
+		expireUpdateReassemblers(System.nanoTime());
 		getServerConfigManager().ifPresent(manager -> {
 			for (ConfigSchema schema : manager.getServerSchemas()) {
 				schema.loadIfNeeded();
@@ -140,12 +154,30 @@ public final class ServerConfigRuntime {
 		try {
 			reassembler.accept(chunk.payloadInternal())
 				.ifPresent(data -> {
-					UPDATE_REASSEMBLERS.remove(playerId);
 					handleUpdate(player, ServerConfigPayloadCodec.decodeUpdate(data));
 				});
 		} catch (RuntimeException e) {
-			UPDATE_REASSEMBLERS.remove(playerId);
-			throw e;
+			LOGGER.warn(
+				"Rejected malformed server config update fragment from {}: {}",
+				player.getGameProfile().getName(),
+				getExceptionMessage(e)
+			);
+			LOGGER.debug("Malformed server config update fragment details.", e);
+		} finally {
+			if (reassembler.isEmpty()) {
+				UPDATE_REASSEMBLERS.remove(playerId, reassembler);
+			}
+		}
+	}
+
+	private static void expireUpdateReassemblers(long nowNanos) {
+		Iterator<Map.Entry<UUID, ServerConfigPayloadReassembler>> iterator = UPDATE_REASSEMBLERS.entrySet().iterator();
+		while (iterator.hasNext()) {
+			ServerConfigPayloadReassembler reassembler = iterator.next().getValue();
+			reassembler.expire(nowNanos);
+			if (reassembler.isEmpty()) {
+				iterator.remove();
+			}
 		}
 	}
 
@@ -164,16 +196,17 @@ public final class ServerConfigRuntime {
 		try {
 			List<ConfigValueUpdate<?>> updates = configSchema.deserializeUpdates(payload.values(), false);
 			configSchema.applyServerUpdates(updates);
-			SERVER_SCHEMA_VERSIONS.put(configSchema, configSchema.getChangeVersion());
-			MinecraftServer server = player.getServer();
-			if (server != null) {
-				broadcastSchema(server, configSchema, player, payload.requestId(), true, "");
-			} else {
-				sendSchema(player, configSchema, payload.requestId(), true, "");
-			}
 		} catch (RuntimeException e) {
 			LOGGER.debug("Rejected server config update from {} for {}.", player.getGameProfile().getName(), payload.key(), e);
 			sendRejected(player, payload, e.getMessage(), configSchema);
+			return;
+		}
+		SERVER_SCHEMA_VERSIONS.put(configSchema, configSchema.getChangeVersion());
+		MinecraftServer server = player.getServer();
+		if (server != null) {
+			broadcastSchema(server, configSchema, player, payload.requestId(), true, "");
+		} else {
+			sendSchema(player, configSchema, payload.requestId(), true, "");
 		}
 	}
 
@@ -183,24 +216,28 @@ public final class ServerConfigRuntime {
 		@Nullable String errorMessage,
 		@Nullable ConfigSchema schema
 	) {
-		String message = getErrorMessage(errorMessage);
-		List<ServerConfigValueData> values = getSerializedValues(schema);
-		ServerConfigSyncPayload response = new ServerConfigSyncPayload(
-			payload.key(),
-			payload.requestId(),
-			false,
-			hasEditPermission(player),
-			message,
-			values
-		);
-		ServerConfigNetworking.sendToPlayer(player, response);
+		try {
+			String message = getErrorMessage(errorMessage);
+			List<ServerConfigValueData> values = getSerializedValues(schema);
+			ServerConfigSyncPayload response = new ServerConfigSyncPayload(
+				payload.key(),
+				payload.requestId(),
+				false,
+				hasEditPermission(player),
+				message,
+				values
+			);
+			ServerConfigNetworking.sendToPlayer(player, response);
+		} catch (RuntimeException e) {
+			LOGGER.error("Failed to create rejected server config response for {}.", payload.key(), e);
+		}
 	}
 
 	private static String getErrorMessage(@Nullable String errorMessage) {
 		if (errorMessage == null || errorMessage.isBlank()) {
 			return "The server rejected this config update.";
 		}
-		return errorMessage;
+		return summarizeErrorMessage(errorMessage);
 	}
 
 	private static List<ServerConfigValueData> getSerializedValues(@Nullable ConfigSchema schema) {
@@ -234,15 +271,19 @@ public final class ServerConfigRuntime {
 		boolean accepted,
 		String errorMessage
 	) {
-		ServerConfigSyncPayload payload = new ServerConfigSyncPayload(
-			schema.getServerKey(),
-			requestId,
-			accepted,
-			hasEditPermission(player),
-			errorMessage,
-			schema.serializeValues()
-		);
-		ServerConfigNetworking.sendToPlayer(player, payload);
+		try {
+			ServerConfigSyncPayload payload = new ServerConfigSyncPayload(
+				schema.getServerKey(),
+				requestId,
+				accepted,
+				hasEditPermission(player),
+				errorMessage,
+				schema.serializeValues()
+			);
+			ServerConfigNetworking.sendToPlayer(player, payload);
+		} catch (RuntimeException e) {
+			LOGGER.error("Failed to create synchronized server config payload for {}.", schema.getServerKey(), e);
+		}
 	}
 
 	private static boolean hasEditPermission(ServerPlayer player) {
@@ -254,9 +295,23 @@ public final class ServerConfigRuntime {
 		ConfigSchema schema,
 		List<? extends ConfigValueUpdate<?>> updates
 	) {
-		long requestId = NEXT_REQUEST_ID.updateAndGet(ServerConfigRuntime::getNextRequestId);
 		CompletableFuture<Void> future = new CompletableFuture<>();
-		PENDING_REQUESTS.put(requestId, future);
+		long requestId;
+		PendingRequest pending;
+		synchronized (PENDING_REQUESTS) {
+			if (PENDING_REQUESTS.size() >= MAX_PENDING_CLIENT_REQUESTS) {
+				future.completeExceptionally(new IllegalStateException(
+					"Too many server config update requests are already pending."
+				));
+				return future;
+			}
+			requestId = getNextAvailableRequestId();
+			pending = new PendingRequest(schema.getServerKey(), future, System.nanoTime());
+			PENDING_REQUESTS.put(requestId, pending);
+		}
+		long registeredRequestId = requestId;
+		PendingRequest registeredPending = pending;
+		future.whenComplete((ignored, throwable) -> PENDING_REQUESTS.remove(registeredRequestId, registeredPending));
 		try {
 			ServerConfigUpdatePayload payload = new ServerConfigUpdatePayload(
 				schema.getServerKey(),
@@ -266,11 +321,13 @@ public final class ServerConfigRuntime {
 			if (ServerConfigNetworking.sendToServer(payload)) {
 				return future;
 			}
-			PENDING_REQUESTS.remove(requestId);
-			future.completeExceptionally(new IllegalStateException("The connected server does not support MezzConfig server updates."));
+			failPending(
+				requestId,
+				pending,
+				new IllegalStateException("The connected server does not support MezzConfig server updates.")
+			);
 		} catch (RuntimeException e) {
-			PENDING_REQUESTS.remove(requestId);
-			future.completeExceptionally(e);
+			failPending(requestId, pending, e);
 		}
 		return future;
 	}
@@ -280,12 +337,15 @@ public final class ServerConfigRuntime {
 		List<? extends ConfigValueUpdate<?>> updates
 	) {
 		CompletableFuture<Void> future = new CompletableFuture<>();
-		MinecraftServer server = activeServer;
-		if (server == null) {
-			future.completeExceptionally(new IllegalStateException("There is no active local server."));
-			return future;
+		MinecraftServer server;
+		synchronized (LOCAL_REQUEST_LOCK) {
+			server = activeServer;
+			if (server == null) {
+				future.completeExceptionally(new IllegalStateException("There is no active local server."));
+				return future;
+			}
+			PENDING_LOCAL_REQUESTS.add(future);
 		}
-		PENDING_LOCAL_REQUESTS.add(future);
 		future.whenComplete((ignored, throwable) -> PENDING_LOCAL_REQUESTS.remove(future));
 		Runnable task = () -> {
 			try {
@@ -312,6 +372,16 @@ public final class ServerConfigRuntime {
 		return future;
 	}
 
+	private static long getNextAvailableRequestId() {
+		for (int i = 0; i <= MAX_PENDING_CLIENT_REQUESTS; i++) {
+			long requestId = NEXT_REQUEST_ID.updateAndGet(ServerConfigRuntime::getNextRequestId);
+			if (!PENDING_REQUESTS.containsKey(requestId)) {
+				return requestId;
+			}
+		}
+		throw new IllegalStateException("Unable to allocate a server config request id.");
+	}
+
 	private static long getNextRequestId(long current) {
 		if (current == Long.MAX_VALUE) {
 			return 1;
@@ -320,43 +390,104 @@ public final class ServerConfigRuntime {
 	}
 
 	public static void handleSync(ServerConfigSyncPayload payload) {
-		CompletableFuture<Void> pending = null;
+		PendingRequest pending = null;
 		if (payload.requestId() != 0) {
-			pending = PENDING_REQUESTS.remove(payload.requestId());
+			pending = PENDING_REQUESTS.get(payload.requestId());
 		}
 		try {
+			if (pending != null && !pending.key().equals(payload.key())) {
+				throw new IllegalArgumentException("Server config response key does not match the pending request.");
+			}
 			Optional<ConfigSchema> schema = getClientConfigManager()
 				.flatMap(configManager -> configManager.getServerSchema(payload.key()));
+			if (pending != null && payload.accepted() && schema.isEmpty()) {
+				throw new IllegalStateException("The client no longer has the requested server config schema: " + payload.key());
+			}
 			if (schema.isPresent() && (payload.accepted() || !payload.values().isEmpty())) {
 				schema.orElseThrow().applyRemoteSnapshot(payload.values(), payload.canEdit());
 			}
 			if (pending != null) {
 				if (payload.accepted()) {
-					pending.complete(null);
+					completePending(payload.requestId(), pending);
 				} else {
-					pending.completeExceptionally(new IllegalStateException(payload.errorMessage()));
+					failPending(payload.requestId(), pending, new IllegalStateException(payload.errorMessage()));
 				}
 			}
 		} catch (RuntimeException e) {
 			LOGGER.error("Failed to apply synchronized server config schema: {}", payload.key(), e);
 			if (pending != null) {
-				pending.completeExceptionally(e);
+				failPending(payload.requestId(), pending, e);
 			}
 		}
 	}
 
 	public static void handleSyncChunk(ServerConfigSyncChunkPayload chunk) {
-		SYNC_REASSEMBLER.accept(chunk.payloadInternal())
-			.map(ServerConfigPayloadCodec::decodeSync)
-			.ifPresent(ServerConfigRuntime::handleSync);
+		try {
+			SYNC_REASSEMBLER.accept(chunk.payloadInternal())
+				.map(ServerConfigPayloadCodec::decodeSync)
+				.ifPresent(ServerConfigRuntime::handleSync);
+		} catch (RuntimeException e) {
+			LOGGER.warn("Rejected malformed synchronized server config fragment: {}", getExceptionMessage(e));
+			LOGGER.debug("Malformed synchronized server config fragment details.", e);
+		}
+	}
+
+	public static void onClientTick() {
+		long nowNanos = System.nanoTime();
+		SYNC_REASSEMBLER.expire(nowNanos);
+		expireClientRequests(nowNanos);
+	}
+
+	static void expireClientRequests(long nowNanos) {
+		for (Map.Entry<Long, PendingRequest> entry : PENDING_REQUESTS.entrySet()) {
+			PendingRequest pending = entry.getValue();
+			if (nowNanos - pending.createdNanos() >= CLIENT_REQUEST_TIMEOUT_NANOS) {
+				failPending(
+					entry.getKey(),
+					pending,
+					new IllegalStateException("Timed out waiting for server config update response for " + pending.key() + ".")
+				);
+			}
+		}
 	}
 
 	public static void onClientDisconnect() {
 		SYNC_REASSEMBLER.clear();
 		getClientConfigManager().ifPresent(manager -> manager.getServerSchemas().forEach(ConfigSchema::clearRemoteSnapshot));
 		IllegalStateException exception = new IllegalStateException("Disconnected before the server config update completed.");
-		PENDING_REQUESTS.values().forEach(future -> future.completeExceptionally(exception));
-		PENDING_REQUESTS.clear();
+		List<PendingRequest> pendingRequests;
+		synchronized (PENDING_REQUESTS) {
+			pendingRequests = List.copyOf(PENDING_REQUESTS.values());
+			PENDING_REQUESTS.clear();
+		}
+		pendingRequests.forEach(pending -> pending.future().completeExceptionally(exception));
+	}
+
+	private static String getExceptionMessage(RuntimeException exception) {
+		String message = exception.getMessage();
+		if (message == null || message.isBlank()) {
+			return exception.getClass().getSimpleName();
+		}
+		return summarizeErrorMessage(message);
+	}
+
+	private static String summarizeErrorMessage(String message) {
+		if (message.length() <= MAX_ERROR_MESSAGE_CHARACTERS) {
+			return message;
+		}
+		return message.substring(0, MAX_ERROR_MESSAGE_CHARACTERS - 1) + "…";
+	}
+
+	private static void completePending(long requestId, PendingRequest pending) {
+		if (PENDING_REQUESTS.remove(requestId, pending)) {
+			pending.future().complete(null);
+		}
+	}
+
+	private static void failPending(long requestId, PendingRequest pending, RuntimeException exception) {
+		if (PENDING_REQUESTS.remove(requestId, pending)) {
+			pending.future().completeExceptionally(exception);
+		}
 	}
 
 	private static Optional<ConfigManager> getServerConfigManager() {
@@ -368,4 +499,10 @@ public final class ServerConfigRuntime {
 			.filter(ConfigManager.class::isInstance)
 			.map(ConfigManager.class::cast);
 	}
+
+	private record PendingRequest(
+		ServerConfigKey key,
+		CompletableFuture<Void> future,
+		long createdNanos
+	) {}
 }

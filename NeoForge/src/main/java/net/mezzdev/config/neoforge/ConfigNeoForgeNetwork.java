@@ -11,7 +11,7 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.HandlerThread;
 
 public final class ConfigNeoForgeNetwork {
-	private static final String PROTOCOL_VERSION = "1";
+	private static final String PROTOCOL_VERSION = "2";
 
 	private ConfigNeoForgeNetwork() {
 
@@ -22,7 +22,9 @@ public final class ConfigNeoForgeNetwork {
 		ServerConfigNetworking.setServerSender((player, payload) -> {
 			if (player.connection.hasChannel(payload.type())) {
 				PacketDistributor.sendToPlayer(player, payload);
+				return true;
 			}
+			return false;
 		});
 	}
 

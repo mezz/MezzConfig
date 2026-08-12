@@ -41,4 +41,38 @@ final class ConfigFileUtil {
 		}
 		Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
 	}
+
+	public static Path backUpFile(Path path, int maxBackups) throws IOException {
+		if (maxBackups < 1) {
+			throw new IllegalArgumentException("maxBackups must be positive.");
+		}
+		Path newestBackup = getBackupPath(path, 1);
+		if (Files.exists(newestBackup) && Files.mismatch(path, newestBackup) == -1) {
+			return newestBackup;
+		}
+		Path parent = path.getParent();
+		Path tempFileDirectory = Path.of(".");
+		if (parent != null) {
+			tempFileDirectory = parent;
+		}
+		Files.createDirectories(tempFileDirectory);
+		Path stagedBackup = Files.createTempFile(tempFileDirectory, null, ".mezz-config-backup");
+		try {
+			Files.copy(path, stagedBackup, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+			for (int index = maxBackups; index > 1; index--) {
+				Path previous = getBackupPath(path, index - 1);
+				if (Files.exists(previous)) {
+					Files.move(previous, getBackupPath(path, index), StandardCopyOption.REPLACE_EXISTING);
+				}
+			}
+			moveAtomicReplace(stagedBackup, newestBackup);
+			return newestBackup;
+		} finally {
+			Files.deleteIfExists(stagedBackup);
+		}
+	}
+
+	static Path getBackupPath(Path path, int index) {
+		return path.resolveSibling(path.getFileName() + ".bak." + index);
+	}
 }

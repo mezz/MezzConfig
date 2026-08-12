@@ -126,7 +126,7 @@ public interface IConfigSchema {
 	 * {@link #batchUpdate(Consumer)} and returns an already-completed future. For a server schema, the values are sent to
 	 * the server without changing the local snapshot. The future completes after the server applies the accepted request
 	 * and sends its authoritative result. It completes exceptionally if the request cannot be sent, permission is denied,
-	 * or the server rejects a value.
+	 * the server rejects a value, or the server does not respond before the implementation's bounded request timeout.
 	 * <p>
 	 * Config editors should prefer this method so the same editing flow works for both client- and server-owned schemas.
 	 * Queued values are snapshotted and locally validated before the request is sent.

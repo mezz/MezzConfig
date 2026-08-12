@@ -3,6 +3,7 @@ package net.mezzdev.config.fabric;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.mezzdev.config.plugin.ConfigPluginLoader;
 import net.mezzdev.config.plugin.ServerConfigPluginLoader;
@@ -45,6 +46,7 @@ public final class ConfigFabricClient implements ClientModInitializer {
 			ClientPlayNetworking.send(payload);
 			return true;
 		});
+		ClientTickEvents.END_CLIENT_TICK.register(client -> ServerConfigRuntime.onClientTick());
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> ServerConfigRuntime.onClientDisconnect());
 	}
 }

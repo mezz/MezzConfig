@@ -13,16 +13,30 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.StringReader;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collections;
+import java.util.HexFormat;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,13 +51,33 @@ public final class ConfigSerializer {
 	private static final Pattern commentRegex = Pattern.compile("\\s*#.*");
 	private static final Pattern categoryRegex = Pattern.compile("\\[(?<category>\\w+)]\\s*");
 	private static final Pattern keyValueRegex = Pattern.compile("\\s*(?<key>\\w+)\\s*=\\s*(?<value>.*)");
-	private static final Map<Path, FileTime> saveTimes = new HashMap<>();
+	static final int MAX_CONFIG_FILE_BYTES = 4 * 1024 * 1024;
+	static final int MAX_CONFIG_FILE_LINES = 100_000;
+	static final int MAX_BACKUPS = 5;
+	private static final int MAX_LOGGED_PROBLEMS = 100;
+	private static final int MAX_LOGGED_LINE_CHARACTERS = 512;
+	private static final int MAX_LOGGED_MESSAGE_CHARACTERS = 4 * 1024;
+	private static final int MAX_TRACKED_RECOVERY_ATTEMPTS = 256;
+	private static final Map<Path, FileTime> saveTimes = new ConcurrentHashMap<>();
+	private static final Map<Path, FailureFingerprint> recoveryAttempts = Collections.synchronizedMap(
+		new LinkedHashMap<>() {
+			@Override
+			protected boolean removeEldestEntry(Map.Entry<Path, FailureFingerprint> eldest) {
+				return size() > MAX_TRACKED_RECOVERY_ATTEMPTS;
+			}
+		}
+	);
 
 	private static String getLineErrorString(Path path, int lineNumber, String line, String errorMessage) {
 		return """
 			%s
 			Config file: %s
-			Line #%s: "%s\"""".formatted(errorMessage, path, lineNumber, line);
+			Line #%s: "%s\"""".formatted(
+			summarizeForLog(errorMessage, MAX_LOGGED_MESSAGE_CHARACTERS),
+			path,
+			lineNumber,
+			summarizeForLog(line, MAX_LOGGED_LINE_CHARACTERS)
+		);
 	}
 
 	public static List<AppliedConfigValueChange<?>> load(
@@ -83,7 +117,15 @@ public final class ConfigSerializer {
 		}
 
 		LOGGER.debug("Loading config file: {}", path);
-		List<String> lines = Files.readAllLines(path);
+		ConfigFileContents contents;
+		try {
+			contents = readConfigFile(path);
+		} catch (MalformedConfigFileException e) {
+			LOGGER.error("Malformed config file '{}': {}", path, e.getMessage());
+			recoverMalformedFile(path, categories, e.fingerprint(), 1);
+			return List.of();
+		}
+		List<String> lines = contents.lines();
 
 		Map<String, ConfigCategory> categoriesMap = new LinkedHashMap<>();
 		for (ConfigCategory category : categories) {
@@ -91,6 +133,8 @@ public final class ConfigSerializer {
 		}
 
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
+		Set<ConfigValue<?>> encounteredValues = Collections.newSetFromMap(new IdentityHashMap<>());
+		ProblemTracker problems = new ProblemTracker(path);
 		String categoryName = "";
 		ConfigCategory category = null;
 		for (int i = 0; i < lines.size(); i++) {
@@ -103,25 +147,29 @@ public final class ConfigSerializer {
 			if (categoryMatcher.matches()) {
 				categoryName = categoryMatcher.group("category");
 				category = categoriesMap.get(categoryName);
-				if (category == null && !hasMovedValues(categoryName, categories)) {
-					LOGGER.error(getLineErrorString(path, lineNumber, line,
-						"""
+				if (category == null) {
+					if (hasMovedValues(categoryName, categories)) {
+						problems.log(lineNumber, line, "Legacy config category '[%s]' will be migrated.".formatted(categoryName));
+					} else {
+						problems.log(lineNumber, line,
+							"""
 						'[%s]' is not a valid category name.
 						Valid names are: [%s]
 						Skipping all values until the first valid category is declared."""
-							.formatted(
-								categoryName,
-								String.join(", ", categoriesMap.keySet())
-							)
-					));
+								.formatted(
+									categoryName,
+									String.join(", ", categoriesMap.keySet())
+								)
+						);
+					}
 				}
 				continue;
 			}
 			if (categoryName.isEmpty()) {
-				LOGGER.error(getLineErrorString(path, lineNumber, line, """
+				problems.log(lineNumber, line, """
 				Expected a '[category]' here.
 				Configs must start with a category before defining values.
-				Skipping all lines until the first valid category is declared."""));
+				Skipping all lines until the first valid category is declared.""");
 				continue;
 			}
 
@@ -134,33 +182,131 @@ public final class ConfigSerializer {
 					ConfigValueReference legacyValueReference = new ConfigValueReference(categoryName, key);
 					List<ConfigValueMigration<?>> migrations = getMovedValueMigrations(categories, legacyValueReference);
 					if (migrations.isEmpty()) {
-						logUnknownConfigValue(path, lineNumber, line, category, categoryName, key);
+						problems.log(lineNumber, line, getUnknownConfigValueError(category, categoryName, key));
 					} else {
+						problems.log(lineNumber, line, "Legacy config value '%s.%s' will be migrated.".formatted(categoryName, key));
+						int previousChangeCount = changes.size();
 						List<String> diagnostics = new ArrayList<>();
 						migrations.forEach(migration -> diagnostics.addAll(migration.migrate(value, changes)));
+						for (int changeIndex = previousChangeCount; changeIndex < changes.size(); changeIndex++) {
+							encounteredValues.add(changes.get(changeIndex).configValue());
+						}
 						if (!diagnostics.isEmpty()) {
-							logDeserializeDiagnostics(path, lineNumber, line, value, diagnostics);
+							problems.log(lineNumber, line, getDeserializeDiagnostics(value, diagnostics));
 						}
 					}
 				} else {
-					List<String> diagnostics = configValue.get()
+					ConfigValue<?> knownValue = configValue.orElseThrow();
+					if (!encounteredValues.add(knownValue)) {
+						problems.log(lineNumber, line, "Config value '%s.%s' was declared more than once; the last usable value wins."
+							.formatted(categoryName, key));
+					}
+					List<String> diagnostics = knownValue
 						.setFromSerializedValue(value, changes);
 					if (!diagnostics.isEmpty()) {
-						logDeserializeDiagnostics(path, lineNumber, line, value, diagnostics);
+						problems.log(lineNumber, line, getDeserializeDiagnostics(value, diagnostics));
 					}
 				}
 			} else {
-				LOGGER.error(getLineErrorString(path, lineNumber, line,
+				problems.log(lineNumber, line,
 					"""
 						Encountered an invalid line.
 						Every line in the config must be either:
 						 * a '[category]'
 						 * a 'key = value' pair
 						 * a '#'-prefixed comment"""
-				));
+				);
 			}
 		}
+		if (problems.count() > 0) {
+			recoverMalformedFile(path, categories, contents.fingerprint(), problems.count());
+		} else {
+			recoveryAttempts.remove(path.toAbsolutePath().normalize());
+		}
 		return List.copyOf(changes);
+	}
+
+	private static ConfigFileContents readConfigFile(Path path) throws IOException, MalformedConfigFileException {
+		BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
+		if (attributes.size() > MAX_CONFIG_FILE_BYTES) {
+			throw new MalformedConfigFileException(
+				"file exceeds the maximum supported size of %s bytes (actual size: %s)"
+					.formatted(MAX_CONFIG_FILE_BYTES, attributes.size()),
+				new FailureFingerprint("size:%s;modified:%s".formatted(attributes.size(), attributes.lastModifiedTime().toMillis()))
+			);
+		}
+		byte[] bytes;
+		try (InputStream input = Files.newInputStream(path)) {
+			bytes = input.readNBytes(MAX_CONFIG_FILE_BYTES + 1);
+		}
+		FailureFingerprint fingerprint = new FailureFingerprint(hash(bytes));
+		if (bytes.length > MAX_CONFIG_FILE_BYTES) {
+			throw new MalformedConfigFileException(
+				"file grew beyond the maximum supported size of " + MAX_CONFIG_FILE_BYTES + " bytes while it was read",
+				fingerprint
+			);
+		}
+		String decoded;
+		try {
+			decoded = StandardCharsets.UTF_8.newDecoder()
+				.onMalformedInput(CodingErrorAction.REPORT)
+				.onUnmappableCharacter(CodingErrorAction.REPORT)
+				.decode(ByteBuffer.wrap(bytes))
+				.toString();
+		} catch (CharacterCodingException e) {
+			throw new MalformedConfigFileException("file is not valid UTF-8", fingerprint);
+		}
+		List<String> lines = new ArrayList<>();
+		try (BufferedReader reader = new BufferedReader(new StringReader(decoded))) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				if (lines.size() >= MAX_CONFIG_FILE_LINES) {
+					throw new MalformedConfigFileException(
+						"file exceeds the maximum supported line count of " + MAX_CONFIG_FILE_LINES,
+						fingerprint
+					);
+				}
+				lines.add(line);
+			}
+		}
+		return new ConfigFileContents(List.copyOf(lines), fingerprint);
+	}
+
+	private static String hash(byte[] bytes) {
+		try {
+			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException("SHA-256 is not available.", e);
+		}
+	}
+
+	private static void recoverMalformedFile(
+		Path path,
+		List<ConfigCategory> categories,
+		FailureFingerprint fingerprint,
+		int problemCount
+	) {
+		Path normalizedPath = path.toAbsolutePath().normalize();
+		synchronized (recoveryAttempts) {
+			if (fingerprint.equals(recoveryAttempts.get(normalizedPath))) {
+				LOGGER.warn("Skipping a repeated correction attempt for unchanged malformed config file '{}'.", path);
+				return;
+			}
+			recoveryAttempts.put(normalizedPath, fingerprint);
+		}
+		try {
+			Path backup = ConfigFileUtil.backUpFile(path, MAX_BACKUPS);
+			LOGGER.warn(
+				"Correcting malformed config file '{}' after {} problem(s); the original is preserved at '{}'.",
+				path,
+				problemCount,
+				backup
+			);
+			save(path, categories);
+			recoveryAttempts.remove(normalizedPath, fingerprint);
+		} catch (IOException | RuntimeException e) {
+			LOGGER.error("Could not safely back up and correct malformed config file '{}'; leaving it unchanged.", path, e);
+		}
 	}
 
 	private static Optional<ConfigValue<?>> getConfigValue(@Nullable ConfigCategory category, String key) {
@@ -181,46 +327,97 @@ public final class ConfigSerializer {
 			.anyMatch(category -> category.hasMovedValuesFromCategory(categoryName));
 	}
 
-	private static void logUnknownConfigValue(
-		Path path,
-		int lineNumber,
-		String line,
+	private static String getUnknownConfigValueError(
 		@Nullable ConfigCategory category,
 		String categoryName,
 		String key
 	) {
 		if (category == null) {
-			LOGGER.error(getLineErrorString(path, lineNumber, line,
-				"""
+			return """
 				'%s' is not a valid config category.
 				Skipping this key."""
-					.formatted(categoryName)
-			));
-			return;
+				.formatted(categoryName);
 		}
-		LOGGER.error(getLineErrorString(path, lineNumber, line,
-			"""
+		return """
 			'%s' is not a valid config key for config category '%s'.
 			Valid keys: [%s]
 			Skipping this key."""
-				.formatted(
-					key, category.getName(),
-					String.join(", ", category.getValueNames())
-				)
-		));
+			.formatted(
+				key, category.getName(),
+				String.join(", ", category.getValueNames())
+			);
 	}
 
-	private static void logDeserializeDiagnostics(
-		Path path,
-		int lineNumber,
-		String line,
+	private static String getDeserializeDiagnostics(
 		String value,
 		List<String> diagnostics
 	) {
-		String errorMessage = """
+		StringBuilder diagnosticSummary = new StringBuilder();
+		for (String diagnostic : diagnostics) {
+			if (!diagnosticSummary.isEmpty()) {
+				diagnosticSummary.append('\n');
+			}
+			int remainingCharacters = MAX_LOGGED_MESSAGE_CHARACTERS - diagnosticSummary.length();
+			if (remainingCharacters <= 0) {
+				break;
+			}
+			diagnosticSummary.append(summarizeForLog(diagnostic, remainingCharacters));
+		}
+		return """
 			Encountered diagnostics when deserializing value '%s':
-			%s""".formatted(value, String.join("\n", diagnostics));
-		LOGGER.error(getLineErrorString(path, lineNumber, line, errorMessage));
+			%s""".formatted(
+			summarizeForLog(value, MAX_LOGGED_LINE_CHARACTERS),
+			diagnosticSummary
+		);
+	}
+
+	private static String summarizeForLog(String value, int maxCharacters) {
+		if (value.length() <= maxCharacters) {
+			return value;
+		}
+		if (maxCharacters <= 1) {
+			return "…";
+		}
+		return value.substring(0, maxCharacters - 1) + "…";
+	}
+
+	private record ConfigFileContents(List<String> lines, FailureFingerprint fingerprint) {}
+
+	private record FailureFingerprint(String value) {}
+
+	private static final class MalformedConfigFileException extends Exception {
+		private final FailureFingerprint fingerprint;
+
+		private MalformedConfigFileException(String message, FailureFingerprint fingerprint) {
+			super(message);
+			this.fingerprint = fingerprint;
+		}
+
+		private FailureFingerprint fingerprint() {
+			return fingerprint;
+		}
+	}
+
+	private static final class ProblemTracker {
+		private final Path path;
+		private int count;
+
+		private ProblemTracker(Path path) {
+			this.path = path;
+		}
+
+		private void log(int lineNumber, String line, String message) {
+			count++;
+			if (count <= MAX_LOGGED_PROBLEMS) {
+				LOGGER.error(getLineErrorString(path, lineNumber, line, message));
+			} else if (count == MAX_LOGGED_PROBLEMS + 1) {
+				LOGGER.error("Config file '{}' has more than {} problems; suppressing further per-line diagnostics.", path, MAX_LOGGED_PROBLEMS);
+			}
+		}
+
+		private int count() {
+			return count;
+		}
 	}
 
 	public static void save(Path path, List<ConfigCategory> categories) throws IOException {

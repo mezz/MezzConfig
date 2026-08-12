@@ -41,3 +41,9 @@ Run the same release-blocking validation used by CI with:
 Publication validation writes every Maven publication to
 `build/publication-validation`. JarCompatibilityChecker compares CommonApi with
 the fixed 0.1.0 baseline once that release is available.
+
+The NeoForge dedicated-server integration GameTest can be run directly with:
+
+```text
+./gradlew :NeoForge:runGameTestServer
+```

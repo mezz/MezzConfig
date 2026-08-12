@@ -14,6 +14,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class ServerConfigPayloadCodec {
+	static final int MAX_VALUE_COUNT = 4_096;
+	static final int MAX_MOD_ID_BYTES = 128;
+	static final int MAX_CONFIG_FILE_NAME_BYTES = 512;
+	static final int MAX_CATEGORY_NAME_BYTES = 128;
+	static final int MAX_VALUE_NAME_BYTES = 128;
+	static final int MAX_SERIALIZED_VALUE_BYTES = 256 * 1024;
+	static final int MAX_ERROR_MESSAGE_BYTES = 4 * 1024;
+
 	private ServerConfigPayloadCodec() {
 
 	}
@@ -22,9 +30,9 @@ final class ServerConfigPayloadCodec {
 		return encode(output -> {
 			writeKey(output, payload.key());
 			output.writeLong(payload.requestId());
-			output.writeBoolean(payload.accepted());
-			output.writeBoolean(payload.canEdit());
-			writeString(output, payload.errorMessage());
+			writeBoolean(output, payload.accepted());
+			writeBoolean(output, payload.canEdit());
+			writeString(output, payload.errorMessage(), MAX_ERROR_MESSAGE_BYTES, "error message");
 			writeValues(output, payload.values());
 		});
 	}
@@ -33,9 +41,9 @@ final class ServerConfigPayloadCodec {
 		return decode(data, input -> new ServerConfigSyncPayload(
 			readKey(input),
 			input.readLong(),
-			input.readBoolean(),
-			input.readBoolean(),
-			readString(input),
+			readBoolean(input, "accepted"),
+			readBoolean(input, "canEdit"),
+			readString(input, MAX_ERROR_MESSAGE_BYTES, "error message"),
 			readValues(input)
 		));
 	}
@@ -62,13 +70,22 @@ final class ServerConfigPayloadCodec {
 			try (DataOutputStream output = new DataOutputStream(bytes)) {
 				encoder.accept(output);
 			}
-			return bytes.toByteArray();
+			byte[] encoded = bytes.toByteArray();
+			if (encoded.length > ServerConfigPayloadChunker.MAX_REASSEMBLED_PAYLOAD_LENGTH) {
+				throw new IllegalArgumentException("Server config payload exceeds the maximum length of " +
+					ServerConfigPayloadChunker.MAX_REASSEMBLED_PAYLOAD_LENGTH + " bytes: " + encoded.length);
+			}
+			return encoded;
 		} catch (IOException e) {
 			throw new IllegalStateException("Failed to encode a server config payload.", e);
 		}
 	}
 
 	private static <T> T decode(byte[] data, IoFunction<DataInputStream, T> decoder) {
+		if (data.length > ServerConfigPayloadChunker.MAX_REASSEMBLED_PAYLOAD_LENGTH) {
+			throw new IllegalArgumentException("Server config payload exceeds the maximum length of " +
+				ServerConfigPayloadChunker.MAX_REASSEMBLED_PAYLOAD_LENGTH + " bytes: " + data.length);
+		}
 		try {
 			DataInputStream input = new DataInputStream(new ByteArrayInputStream(data));
 			T result = decoder.apply(input);
@@ -82,49 +99,85 @@ final class ServerConfigPayloadCodec {
 	}
 
 	private static void writeKey(DataOutputStream output, ServerConfigKey key) throws IOException {
-		writeString(output, key.modId());
-		writeString(output, key.configFileName());
+		writeString(output, key.modId(), MAX_MOD_ID_BYTES, "mod id");
+		writeString(output, key.configFileName(), MAX_CONFIG_FILE_NAME_BYTES, "config file name");
 	}
 
 	private static ServerConfigKey readKey(DataInputStream input) throws IOException {
-		return new ServerConfigKey(readString(input), readString(input));
+		return new ServerConfigKey(
+			readString(input, MAX_MOD_ID_BYTES, "mod id"),
+			readString(input, MAX_CONFIG_FILE_NAME_BYTES, "config file name")
+		);
 	}
 
 	private static void writeValues(DataOutputStream output, List<ServerConfigValueData> values) throws IOException {
+		if (values.size() > MAX_VALUE_COUNT) {
+			throw new IllegalArgumentException("Too many server config values: " + values.size());
+		}
 		output.writeInt(values.size());
 		for (ServerConfigValueData value : values) {
-			writeString(output, value.categoryName());
-			writeString(output, value.valueName());
-			writeString(output, value.serializedValue());
+			writeString(output, value.categoryName(), MAX_CATEGORY_NAME_BYTES, "category name");
+			writeString(output, value.valueName(), MAX_VALUE_NAME_BYTES, "value name");
+			writeString(output, value.serializedValue(), MAX_SERIALIZED_VALUE_BYTES, "serialized value");
 		}
 	}
 
 	private static List<ServerConfigValueData> readValues(DataInputStream input) throws IOException {
 		int size = input.readInt();
-		if (size < 0 || size > input.available() / (Integer.BYTES * 3)) {
+		if (size < 0 || size > MAX_VALUE_COUNT || size > input.available() / (Integer.BYTES * 3)) {
 			throw new IllegalArgumentException("Invalid server config value count: " + size);
 		}
 		List<ServerConfigValueData> values = new ArrayList<>(size);
 		for (int i = 0; i < size; i++) {
 			values.add(new ServerConfigValueData(
-				readString(input),
-				readString(input),
-				readString(input)
+				readString(input, MAX_CATEGORY_NAME_BYTES, "category name"),
+				readString(input, MAX_VALUE_NAME_BYTES, "value name"),
+				readString(input, MAX_SERIALIZED_VALUE_BYTES, "serialized value")
 			));
 		}
 		return List.copyOf(values);
 	}
 
-	private static void writeString(DataOutputStream output, String value) throws IOException {
+	private static void writeBoolean(DataOutputStream output, boolean value) throws IOException {
+		if (value) {
+			output.writeByte(1);
+		} else {
+			output.writeByte(0);
+		}
+	}
+
+	private static boolean readBoolean(DataInputStream input, String fieldName) throws IOException {
+		int value = input.readUnsignedByte();
+		if (value != 0 && value != 1) {
+			throw new IllegalArgumentException("Invalid server config boolean for " + fieldName + ": " + value);
+		}
+		return value == 1;
+	}
+
+	private static void writeString(
+		DataOutputStream output,
+		String value,
+		int maxEncodedLength,
+		String fieldName
+	) throws IOException {
+		if (value.length() > maxEncodedLength) {
+			throw new IllegalArgumentException("Server config " + fieldName + " is too long.");
+		}
 		byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
+		if (encoded.length > maxEncodedLength) {
+			throw new IllegalArgumentException("Server config " + fieldName + " exceeds " + maxEncodedLength + " UTF-8 bytes.");
+		}
 		output.writeInt(encoded.length);
 		output.write(encoded);
 	}
 
-	private static String readString(DataInputStream input) throws IOException {
+	private static String readString(DataInputStream input, int maxEncodedLength, String fieldName) throws IOException {
 		int length = input.readInt();
-		if (length < 0 || length > input.available()) {
-			throw new EOFException("Invalid server config string length: " + length);
+		if (length < 0 || length > maxEncodedLength) {
+			throw new IllegalArgumentException("Invalid server config " + fieldName + " length: " + length);
+		}
+		if (length > input.available()) {
+			throw new EOFException("Truncated server config " + fieldName + ".");
 		}
 		byte[] encoded = input.readNBytes(length);
 		try {
