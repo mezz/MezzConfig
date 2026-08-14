@@ -1,12 +1,16 @@
 package net.mezzdev.config.sorting;
 
 import net.mezzdev.config.api.sorting.ISortingConfig;
+import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.file.ConfigFileUtil;
+import net.mezzdev.config.ini.IniFileReader;
+import net.mezzdev.config.ini.IniValue;
+import net.mezzdev.config.ini.IniValueCodec;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -22,6 +26,9 @@ public final class SortingConfig implements ISortingConfig<String> {
 	private static final Logger LOGGER = LogManager.getLogger();
 	private static final String VISIBLE_SECTION = "[visible]";
 	private static final String HIDDEN_SECTION = "[hidden]";
+	private static final String ENCODED_VALUE_PREFIX = "\\=";
+	private static final int MAX_BACKUPS = 5;
+	private static final int MAX_LOGGED_PROBLEMS = 100;
 
 	private final @Nullable Path defaultPath;
 	private final Path path;
@@ -32,6 +39,8 @@ public final class SortingConfig implements ISortingConfig<String> {
 	@Nullable
 	private SavedValues savedValues;
 	private boolean savedValuesNeedWrite;
+	private boolean writesBlockedByReadFailure;
+	private @Nullable Path correctionPath;
 
 	public SortingConfig(
 		Path path,
@@ -182,20 +191,27 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	private boolean save(SavedValues savedValues) {
+		if (writesBlockedByReadFailure) {
+			return false;
+		}
+		Path savePath = correctionPath;
+		if (savePath == null) {
+			savePath = path;
+		}
 		try {
-			write(path, savedValues);
+			if (correctionPath != null) {
+				ConfigFileUtil.backUpFile(savePath, MAX_BACKUPS);
+			}
+			write(savePath, savedValues);
+			correctionPath = null;
 			return true;
 		} catch (IOException e) {
-			LOGGER.error("Failed to save sort order config to file {}", this.path, e);
+			LOGGER.error("Failed to save sort order config to file {}", savePath, e);
 			return false;
 		}
 	}
 
 	private static void write(Path path, SavedValues savedValues) throws IOException {
-		Path parent = path.getParent();
-		if (parent != null) {
-			Files.createDirectories(parent);
-		}
 		List<String> serialized = new ArrayList<>();
 		serialized.add(VISIBLE_SECTION);
 		savedValues.visibleValues().stream()
@@ -205,7 +221,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 		savedValues.hiddenValues().stream()
 			.map(SortingConfig::encodeValue)
 			.forEach(serialized::add);
-		Files.write(path, serialized, StandardCharsets.UTF_8);
+		ConfigFileUtil.writeUsingTempFile(path, serialized);
 	}
 
 	private void writeDefaultIfMissing(List<String> allValues) {
@@ -229,45 +245,106 @@ public final class SortingConfig implements ISortingConfig<String> {
 	private SavedValues getSavedValues() {
 		SavedValues savedValues = this.savedValues;
 		if (savedValues == null) {
-			SavedValues loadedSavedValues = loadSavedValuesFromFile();
+			LoadedSavedValues loaded = loadSavedValuesFromFile();
+			SavedValues loadedSavedValues = loaded.savedValues();
 			savedValues = normalizeSavedValues(loadedSavedValues);
+			boolean normalized = !loadedSavedValues.equals(savedValues);
 			this.savedValues = savedValues;
-			this.savedValuesNeedWrite = !loadedSavedValues.equals(savedValues);
+			this.savedValuesNeedWrite = loaded.needsCorrection() || normalized;
+			this.writesBlockedByReadFailure = loaded.readFailed();
+			this.correctionPath = null;
+			if (loaded.needsCorrection() || normalized) {
+				this.correctionPath = loaded.loadPath();
+			}
 		}
 		return savedValues;
 	}
 
-	private SavedValues loadSavedValuesFromFile() {
+	private LoadedSavedValues loadSavedValuesFromFile() {
 		Path loadPath = path;
 		if (!Files.exists(loadPath)) {
 			loadPath = defaultPath;
 		}
 		if (loadPath == null || !Files.exists(loadPath)) {
-			return SavedValues.EMPTY;
+			return new LoadedSavedValues(SavedValues.EMPTY, null, false, false);
 		}
 		try {
-			List<String> lines = Files.readAllLines(loadPath, StandardCharsets.UTF_8);
-			return parseSavedValues(lines);
+			ParsedSavedValues parsed = parseSavedValues(IniFileReader.read(loadPath).lines());
+			if (parsed.needsCorrection()) {
+				LOGGER.error(
+					"Malformed sort order config file '{}' will be backed up and corrected: {}",
+					loadPath,
+					summarizeDiagnostics(parsed.diagnostics())
+				);
+			}
+			return new LoadedSavedValues(parsed.savedValues(), loadPath, parsed.needsCorrection(), false);
+		} catch (IniFileReader.MalformedFileException e) {
+			LOGGER.error("Malformed sort order config file '{}': {}", loadPath, e.getMessage());
+			return new LoadedSavedValues(SavedValues.EMPTY, loadPath, true, false);
 		} catch (IOException e) {
 			LOGGER.error("Failed to load sort order config from file: {}", loadPath, e);
-			return SavedValues.EMPTY;
+			return new LoadedSavedValues(SavedValues.EMPTY, loadPath, false, true);
 		}
 	}
 
-	private static SavedValues parseSavedValues(List<String> lines) {
+	private static ParsedSavedValues parseSavedValues(List<String> lines) {
 		List<String> visibleValues = new ArrayList<>();
 		List<String> hiddenValues = new ArrayList<>();
+		List<String> diagnostics = new ArrayList<>();
+		Set<String> encounteredSections = new HashSet<>();
 		List<String> currentSection = null;
-		for (String line : lines) {
+		for (int index = 0; index < lines.size(); index++) {
+			String line = lines.get(index);
 			if (VISIBLE_SECTION.equals(line)) {
 				currentSection = visibleValues;
 			} else if (HIDDEN_SECTION.equals(line)) {
 				currentSection = hiddenValues;
-			} else if (currentSection != null && !line.isBlank()) {
-				currentSection.add(decodeValue(line));
+			} else if (line.isBlank()) {
+				continue;
+			} else if (currentSection == null) {
+				addDiagnostic(diagnostics, "Line %s appears before a valid section.".formatted(index + 1));
+				continue;
+			} else {
+				if (line.startsWith(ENCODED_VALUE_PREFIX)) {
+					IDeserializeResult<IniValue.Scalar> result = IniValueCodec.deserializeScalar(
+						line.substring(ENCODED_VALUE_PREFIX.length())
+					);
+					IniValue.Scalar value = result.getResult().orElse(null);
+					if (value != null) {
+						currentSection.add(value.value());
+					} else {
+						addDiagnostic(
+							diagnostics,
+							"Line %s has an invalid encoded value: %s".formatted(
+								index + 1,
+								String.join("; ", result.getDiagnostics())
+							)
+						);
+					}
+					continue;
+				}
+				if (line.startsWith("\\")) {
+					currentSection.add(line.substring(1));
+					continue;
+				}
+				currentSection.add(line);
+				continue;
+			}
+			if (!encounteredSections.add(line)) {
+				addDiagnostic(diagnostics, "Line %s repeats section %s.".formatted(index + 1, line));
 			}
 		}
-		return new SavedValues(visibleValues, hiddenValues);
+		if (!encounteredSections.contains(VISIBLE_SECTION)) {
+			addDiagnostic(diagnostics, "Missing required section: " + VISIBLE_SECTION);
+		}
+		if (!encounteredSections.contains(HIDDEN_SECTION)) {
+			addDiagnostic(diagnostics, "Missing required section: " + HIDDEN_SECTION);
+		}
+		return new ParsedSavedValues(
+			new SavedValues(visibleValues, hiddenValues),
+			!diagnostics.isEmpty(),
+			diagnostics
+		);
 	}
 
 	private SavedValues normalizeSavedValues(SavedValues savedValues) {
@@ -284,19 +361,30 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	private static String encodeValue(String value) {
-		if (value.isEmpty() || value.startsWith("\\") ||
-			VISIBLE_SECTION.equals(value) || HIDDEN_SECTION.equals(value)
-		) {
-			return "\\" + value;
+		String encoded = IniValueCodec.serializeScalar(value);
+		if (encoded.equals(value)) {
+			return value;
 		}
-		return value;
+		return ENCODED_VALUE_PREFIX + encoded;
 	}
 
-	private static String decodeValue(String value) {
-		if (value.startsWith("\\")) {
-			return value.substring(1);
+	private static void addDiagnostic(List<String> diagnostics, String diagnostic) {
+		if (diagnostics.size() < MAX_LOGGED_PROBLEMS) {
+			diagnostics.add(diagnostic);
+		} else if (diagnostics.size() == MAX_LOGGED_PROBLEMS) {
+			diagnostics.add("Further diagnostics were suppressed.");
 		}
-		return value;
+	}
+
+	private static String summarizeDiagnostics(List<String> diagnostics) {
+		List<String> displayed = diagnostics.stream()
+			.limit(MAX_LOGGED_PROBLEMS)
+			.toList();
+		String summary = String.join("; ", displayed);
+		if (diagnostics.size() > MAX_LOGGED_PROBLEMS) {
+			return summary + "; further diagnostics were suppressed.";
+		}
+		return summary;
 	}
 
 	private static int indexOfSort(int index) {
@@ -339,6 +427,23 @@ public final class SortingConfig implements ISortingConfig<String> {
 			} catch (RuntimeException e) {
 				LOGGER.error("Sort order config listener failed for {}.", path, e);
 			}
+		}
+	}
+
+	private record LoadedSavedValues(
+		SavedValues savedValues,
+		@Nullable Path loadPath,
+		boolean needsCorrection,
+		boolean readFailed
+	) {}
+
+	private record ParsedSavedValues(
+		SavedValues savedValues,
+		boolean needsCorrection,
+		List<String> diagnostics
+	) {
+		private ParsedSavedValues {
+			diagnostics = List.copyOf(diagnostics);
 		}
 	}
 

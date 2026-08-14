@@ -1,7 +1,13 @@
 package net.mezzdev.config.file;
 
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.IConfigListValueSerializer;
+import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.ini.IniFileReader;
+import net.mezzdev.config.ini.IniValue;
+import net.mezzdev.config.ini.IniValueCodec;
+import net.mezzdev.config.ini.IniValueSerializers;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.AppliedConfigValueChange;
@@ -13,23 +19,12 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.StringReader;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HexFormat;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -51,8 +46,8 @@ public final class ConfigSerializer {
 	private static final Pattern commentRegex = Pattern.compile("\\s*#.*");
 	private static final Pattern categoryRegex = Pattern.compile("\\[(?<category>\\w+)]\\s*");
 	private static final Pattern keyValueRegex = Pattern.compile("\\s*(?<key>\\w+)\\s*=\\s*(?<value>.*)");
-	static final int MAX_CONFIG_FILE_BYTES = 4 * 1024 * 1024;
-	static final int MAX_CONFIG_FILE_LINES = 100_000;
+	static final int MAX_CONFIG_FILE_BYTES = IniFileReader.MAX_FILE_BYTES;
+	static final int MAX_CONFIG_FILE_LINES = IniFileReader.MAX_FILE_LINES;
 	static final int MAX_BACKUPS = 5;
 	private static final int MAX_LOGGED_PROBLEMS = 100;
 	private static final int MAX_LOGGED_LINE_CHARACTERS = 512;
@@ -67,6 +62,8 @@ public final class ConfigSerializer {
 			}
 		}
 	);
+
+	private ConfigSerializer() {}
 
 	private static String getLineErrorString(Path path, int lineNumber, String line, String errorMessage) {
 		return """
@@ -117,12 +114,12 @@ public final class ConfigSerializer {
 		}
 
 		LOGGER.debug("Loading config file: {}", path);
-		ConfigFileContents contents;
+		IniFileReader.Contents contents;
 		try {
-			contents = readConfigFile(path);
-		} catch (MalformedConfigFileException e) {
+			contents = IniFileReader.read(path);
+		} catch (IniFileReader.MalformedFileException e) {
 			LOGGER.error("Malformed config file '{}': {}", path, e.getMessage());
-			recoverMalformedFile(path, categories, e.fingerprint(), 1);
+			recoverMalformedFile(path, categories, new FailureFingerprint(e.fingerprint()), 1);
 			return List.of();
 		}
 		List<String> lines = contents.lines();
@@ -165,6 +162,12 @@ public final class ConfigSerializer {
 				}
 				continue;
 			}
+			if (line.stripLeading().startsWith("[")) {
+				categoryName = "";
+				category = null;
+				problems.log(lineNumber, line, "Encountered an invalid category declaration; following values are ignored until a valid category is declared.");
+				continue;
+			}
 			if (categoryName.isEmpty()) {
 				problems.log(lineNumber, line, """
 				Expected a '[category]' here.
@@ -176,7 +179,17 @@ public final class ConfigSerializer {
 			Matcher keyValueMatcher = keyValueRegex.matcher(line);
 			if (keyValueMatcher.matches()) {
 				final String key = keyValueMatcher.group("key").trim();
-				final String value = keyValueMatcher.group("value").trim();
+				final String encodedValue = keyValueMatcher.group("value").trim();
+				IDeserializeResult<IniValue> iniResult = IniValueCodec.deserialize(encodedValue);
+				final IniValue value = iniResult.getResult().orElse(null);
+				if (value == null) {
+					problems.log(
+						lineNumber,
+						line,
+						"Invalid encoded INI value: " + String.join("\n", iniResult.getDiagnostics())
+					);
+					continue;
+				}
 				Optional<ConfigValue<?>> configValue = getConfigValue(category, key);
 				if (configValue.isEmpty()) {
 					ConfigValueReference legacyValueReference = new ConfigValueReference(categoryName, key);
@@ -187,12 +200,13 @@ public final class ConfigSerializer {
 						problems.log(lineNumber, line, "Legacy config value '%s.%s' will be migrated.".formatted(categoryName, key));
 						int previousChangeCount = changes.size();
 						List<String> diagnostics = new ArrayList<>();
-						migrations.forEach(migration -> diagnostics.addAll(migration.migrate(value, changes)));
+						String migrationValue = IniValueSerializers.toPublicSerializerRepresentation(value);
+						migrations.forEach(migration -> diagnostics.addAll(migration.migrate(migrationValue, changes)));
 						for (int changeIndex = previousChangeCount; changeIndex < changes.size(); changeIndex++) {
 							encounteredValues.add(changes.get(changeIndex).configValue());
 						}
 						if (!diagnostics.isEmpty()) {
-							problems.log(lineNumber, line, getDeserializeDiagnostics(value, diagnostics));
+							problems.log(lineNumber, line, getDeserializeDiagnostics(migrationValue, diagnostics));
 						}
 					}
 				} else {
@@ -201,10 +215,9 @@ public final class ConfigSerializer {
 						problems.log(lineNumber, line, "Config value '%s.%s' was declared more than once; the last usable value wins."
 							.formatted(categoryName, key));
 					}
-					List<String> diagnostics = knownValue
-						.setFromSerializedValue(value, changes);
+					List<String> diagnostics = setFromIniValue(knownValue, value, changes);
 					if (!diagnostics.isEmpty()) {
-						problems.log(lineNumber, line, getDeserializeDiagnostics(value, diagnostics));
+						problems.log(lineNumber, line, getDeserializeDiagnostics(IniValueCodec.serialize(value), diagnostics));
 					}
 				}
 			} else {
@@ -219,65 +232,20 @@ public final class ConfigSerializer {
 			}
 		}
 		if (problems.count() > 0) {
-			recoverMalformedFile(path, categories, contents.fingerprint(), problems.count());
+			recoverMalformedFile(path, categories, new FailureFingerprint(contents.fingerprint()), problems.count());
 		} else {
 			recoveryAttempts.remove(path.toAbsolutePath().normalize());
 		}
 		return List.copyOf(changes);
 	}
 
-	private static ConfigFileContents readConfigFile(Path path) throws IOException, MalformedConfigFileException {
-		BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
-		if (attributes.size() > MAX_CONFIG_FILE_BYTES) {
-			throw new MalformedConfigFileException(
-				"file exceeds the maximum supported size of %s bytes (actual size: %s)"
-					.formatted(MAX_CONFIG_FILE_BYTES, attributes.size()),
-				new FailureFingerprint("size:%s;modified:%s".formatted(attributes.size(), attributes.lastModifiedTime().toMillis()))
-			);
-		}
-		byte[] bytes;
-		try (InputStream input = Files.newInputStream(path)) {
-			bytes = input.readNBytes(MAX_CONFIG_FILE_BYTES + 1);
-		}
-		FailureFingerprint fingerprint = new FailureFingerprint(hash(bytes));
-		if (bytes.length > MAX_CONFIG_FILE_BYTES) {
-			throw new MalformedConfigFileException(
-				"file grew beyond the maximum supported size of " + MAX_CONFIG_FILE_BYTES + " bytes while it was read",
-				fingerprint
-			);
-		}
-		String decoded;
-		try {
-			decoded = StandardCharsets.UTF_8.newDecoder()
-				.onMalformedInput(CodingErrorAction.REPORT)
-				.onUnmappableCharacter(CodingErrorAction.REPORT)
-				.decode(ByteBuffer.wrap(bytes))
-				.toString();
-		} catch (CharacterCodingException e) {
-			throw new MalformedConfigFileException("file is not valid UTF-8", fingerprint);
-		}
-		List<String> lines = new ArrayList<>();
-		try (BufferedReader reader = new BufferedReader(new StringReader(decoded))) {
-			String line;
-			while ((line = reader.readLine()) != null) {
-				if (lines.size() >= MAX_CONFIG_FILE_LINES) {
-					throw new MalformedConfigFileException(
-						"file exceeds the maximum supported line count of " + MAX_CONFIG_FILE_LINES,
-						fingerprint
-					);
-				}
-				lines.add(line);
-			}
-		}
-		return new ConfigFileContents(List.copyOf(lines), fingerprint);
-	}
-
-	private static String hash(byte[] bytes) {
-		try {
-			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-		} catch (NoSuchAlgorithmException e) {
-			throw new IllegalStateException("SHA-256 is not available.", e);
-		}
+	private static <T> List<String> setFromIniValue(
+		ConfigValue<T> configValue,
+		IniValue value,
+		List<AppliedConfigValueChange<?>> changes
+	) {
+		IDeserializeResult<T> result = IniValueSerializers.deserialize(configValue.getSerializer(), value);
+		return configValue.setFromDeserializedValue(result, changes);
 	}
 
 	private static void recoverMalformedFile(
@@ -381,22 +349,7 @@ public final class ConfigSerializer {
 		return value.substring(0, maxCharacters - 1) + "…";
 	}
 
-	private record ConfigFileContents(List<String> lines, FailureFingerprint fingerprint) {}
-
 	private record FailureFingerprint(String value) {}
-
-	private static final class MalformedConfigFileException extends Exception {
-		private final FailureFingerprint fingerprint;
-
-		private MalformedConfigFileException(String message, FailureFingerprint fingerprint) {
-			super(message);
-			this.fingerprint = fingerprint;
-		}
-
-		private FailureFingerprint fingerprint() {
-			return fingerprint;
-		}
-	}
 
 	private static final class ProblemTracker {
 		private final Path path;
@@ -469,11 +422,11 @@ public final class ConfigSerializer {
 
 		addLocalizedNameAndDescription(serialized, configValue.getLocalizationKey(), "\t");
 
-		String validValues = getLocalizedComment(CONFIG_VALUE_VALUES_KEY, "Valid Values: %s", serializer.getValidValuesDescription());
+		String validValues = getLocalizedComment(CONFIG_VALUE_VALUES_KEY, "Valid Values: %s", getIniValidValuesDescription(serializer));
 		addCommentedStrings(serialized, validValues);
 
 		T defaultValue = configValue.getDefaultValue();
-		String defaultValueSerialized = serializer.serialize(defaultValue);
+		String defaultValueSerialized = IniValueCodec.serialize(IniValueSerializers.serialize(serializer, defaultValue));
 		String defaultValueString = getLocalizedComment(CONFIG_DEFAULT_VALUE_KEY, "Default Value: %s", defaultValueSerialized);
 		addCommentedStrings(serialized, defaultValueString);
 
@@ -483,8 +436,17 @@ public final class ConfigSerializer {
 		if (!saveDefaults) {
 			value = configValue.getValueWithoutLoading();
 		}
-		String valueString = serializer.serialize(value);
+		String valueString = IniValueCodec.serialize(IniValueSerializers.serialize(serializer, value));
 		serialized.add("\t%s = %s".formatted(name, valueString));
+	}
+
+	private static String getIniValidValuesDescription(IConfigValueSerializer<?> serializer) {
+		if (serializer instanceof IConfigListValueSerializer<?> listSerializer) {
+			return "A bracketed list containing values of:\n%s".formatted(
+				getIniValidValuesDescription(listSerializer.getElementSerializer())
+			);
+		}
+		return serializer.getValidValuesDescription();
 	}
 
 	private static void addLocalizedNameAndDescription(List<String> serialized, String localizationKey, String indentation) {

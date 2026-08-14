@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
-final class ConfigFileUtil {
+public final class ConfigFileUtil {
 	private static boolean atomicMoveSupported = true;
 
 	private ConfigFileUtil() {
@@ -72,7 +72,7 @@ final class ConfigFileUtil {
 		}
 	}
 
-	static Path getBackupPath(Path path, int index) {
+	public static Path getBackupPath(Path path, int index) {
 		return path.resolveSibling(path.getFileName() + ".bak." + index);
 	}
 }

@@ -197,8 +197,16 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	public List<String> setFromSerializedValue(String value, List<AppliedConfigValueChange<?>> changes) {
-		ErrorUtil.checkNotNull(changes, "changes");
 		IDeserializeResult<T> deserializeResult = serializer.deserialize(value);
+		return setFromDeserializedValue(deserializeResult, changes);
+	}
+
+	public List<String> setFromDeserializedValue(
+		IDeserializeResult<T> deserializeResult,
+		List<AppliedConfigValueChange<?>> changes
+	) {
+		ErrorUtil.checkNotNull(deserializeResult, "deserializeResult");
+		ErrorUtil.checkNotNull(changes, "changes");
 		deserializeResult.getResult()
 			.ifPresent(t -> {
 				AppliedConfigValueChange<T> change = setWithoutNotifying(t);

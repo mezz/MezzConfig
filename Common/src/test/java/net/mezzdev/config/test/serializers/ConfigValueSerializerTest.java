@@ -242,7 +242,7 @@ public class ConfigValueSerializerTest {
 		assertTrue(result.getResult().isEmpty());
 		assertEquals(DeserializeResultState.FAILURE, result.getState());
 		assertEquals(1, result.getDiagnostics().size());
-		assertTrue(result.getDiagnostics().getFirst().contains("No closing brace found."));
+		assertTrue(result.getDiagnostics().getFirst().startsWith("Invalid JSON value"));
 	}
 
 	@Test
@@ -294,6 +294,15 @@ public class ConfigValueSerializerTest {
 		assertEquals(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE), deserializeValue(serializer, "[FIRST_VALUE, SECOND_VALUE]"));
 		assertEquals("FIRST_VALUE, SECOND_VALUE", serializer.serialize(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE)));
 		assertEquals("A comma-separated list containing values of:\n[FIRST_VALUE, SECOND_VALUE]", serializer.getValidValuesDescription());
+	}
+
+	@Test
+	public void listSerializerReadsLosslessBracketedStringsForFileMigrations() {
+		ListSerializer<String> serializer = new ListSerializer<>(StringSerializer.INSTANCE);
+		List<String> expected = List.of("", "a,b", " surrounding ", "[section]", "line one\nline two", "\\path");
+		String encoded = "[\"\", \"a,b\", \" surrounding \", \"[section]\", \"line one\\nline two\", \"\\\\path\"]";
+
+		assertEquals(expected, deserializeValue(serializer, encoded));
 	}
 
 	@Test

@@ -17,6 +17,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -60,7 +62,7 @@ public class ConfigSerializerRecoveryTest {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
-			"flags = true, invalid, false"
+			"flags = [\"true\", \"invalid\", \"false\"]"
 		));
 		ConfigValue<List<Boolean>> flags = new ConfigValue<>(
 			LOCALIZATION_PATH,
@@ -73,7 +75,7 @@ public class ConfigSerializerRecoveryTest {
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
 		assertEquals(List.of(true, false), flags.getValue());
-		assertTrue(Files.readString(path).contains("flags = true, false"));
+		assertTrue(Files.readString(path).contains("flags = [\"true\",\"false\"]"));
 		assertTrue(Files.readString(ConfigFileUtil.getBackupPath(path, 1)).contains("invalid"));
 	}
 
@@ -175,6 +177,32 @@ public class ConfigSerializerRecoveryTest {
 
 		assertEquals(ConfigSerializer.MAX_CONFIG_FILE_BYTES + 1, Files.size(ConfigFileUtil.getBackupPath(path, 1)));
 		assertTrue(Files.size(path) < ConfigSerializer.MAX_CONFIG_FILE_BYTES);
+	}
+
+	@Test
+	public void excessiveLineCountIsRecoveredWithoutUnboundedParsing(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("too-many-lines.ini");
+		List<String> lines = new ArrayList<>(Collections.nCopies(ConfigSerializer.MAX_CONFIG_FILE_LINES + 1, "# bounded"));
+		Files.write(path, lines);
+		ConfigCategory category = createCategory(createBooleanValue());
+
+		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
+
+		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
+		assertTrue(Files.readAllLines(path).size() < ConfigSerializer.MAX_CONFIG_FILE_LINES);
+	}
+
+	@Test
+	public void invalidUtf8IsBackedUpAndCorrected(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("invalid-utf8.ini");
+		byte[] invalidUtf8 = {(byte) 0xC3, 0x28};
+		Files.write(path, invalidUtf8);
+		ConfigCategory category = createCategory(createBooleanValue());
+
+		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
+
+		assertTrue(Files.readString(path).contains("enabled = true"));
+		assertEquals(invalidUtf8.length, Files.size(ConfigFileUtil.getBackupPath(path, 1)));
 	}
 
 	@Test

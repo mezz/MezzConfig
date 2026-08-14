@@ -1,5 +1,6 @@
 package net.mezzdev.config.test.sorting;
 
+import net.mezzdev.config.file.ConfigFileUtil;
 import net.mezzdev.config.sorting.SortingConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -148,6 +149,45 @@ public class SortingConfigTest {
 	}
 
 	@Test
+	public void persistedStateRoundTripsDelimiterSensitiveStrings(@TempDir Path tempDir) {
+		Path path = tempDir.resolve("sort-order.txt");
+		List<String> values = List.of(
+			"",
+			" surrounding ",
+			"a,b",
+			"# = [punctuation]",
+			"\"quoted\" \\ path",
+			"こんにちは 🌍",
+			"first line\nsecond line"
+		);
+		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), true);
+		sortingConfig.getSortedValues(values);
+
+		assertTrue(sortingConfig.setSortedValues(values));
+
+		SortingConfig reloaded = new SortingConfig(path, Comparator.naturalOrder(), true);
+		assertEquals(values, reloaded.getSortedValues(values));
+	}
+
+	@Test
+	public void legacyRawAndEscapedValuesRetainTheirOriginalMeaning(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("sort-order.txt");
+		Files.write(path, List.of(
+			"[visible]",
+			"\"quoted\"",
+			" surrounding ",
+			"[other]",
+			"\\[hidden]",
+			"\\\\path",
+			"[hidden]"
+		));
+		List<String> values = List.of("\"quoted\"", " surrounding ", "[other]", "[hidden]", "\\path");
+		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), true);
+
+		assertEquals(values, sortingConfig.getSortedValues(values));
+	}
+
+	@Test
 	public void comparatorUsesSavedOrderAndDefaultOrderForUnknownValues(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("sort-order.txt");
 		Files.write(path, List.of("[visible]", "second", "[hidden]"));
@@ -186,5 +226,49 @@ public class SortingConfigTest {
 
 		assertEquals(List.of("[visible]", "second", "first", "[hidden]"), Files.readAllLines(defaultPath));
 		assertEquals(List.of("[visible]", "second", "first", "[hidden]"), Files.readAllLines(playerPath));
+	}
+
+	@Test
+	public void malformedPlayerFileIsBackedUpAndCorrectedWithoutChangingPackDefault(@TempDir Path tempDir) throws IOException {
+		Path defaultPath = tempDir.resolve("sort-order.txt");
+		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
+		List<String> defaultContents = List.of("[visible]", "second", "first", "[hidden]");
+		Files.write(defaultPath, defaultContents);
+		Files.createDirectories(playerPath.getParent());
+		Files.write(playerPath, List.of("[visible]", "first", "\\=\"unterminated", "[hidden]"));
+		SortingConfig sortingConfig = new SortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
+
+		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("first", "second")));
+
+		assertEquals(defaultContents, Files.readAllLines(defaultPath));
+		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(defaultPath, 1)));
+		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(playerPath, 1)));
+		assertEquals(List.of("[visible]", "first", "second", "[hidden]"), Files.readAllLines(playerPath));
+	}
+
+	@Test
+	public void malformedPackDefaultIsCorrectedWithoutCreatingPlayerFile(@TempDir Path tempDir) throws IOException {
+		Path defaultPath = tempDir.resolve("sort-order.txt");
+		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
+		Files.write(defaultPath, List.of("[visible]", "second", "second", "first", "[hidden]"));
+		SortingConfig sortingConfig = new SortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
+
+		assertEquals(List.of("second", "first"), sortingConfig.getSortedValues(List.of("first", "second")));
+
+		assertFalse(Files.exists(playerPath));
+		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(defaultPath, 1)));
+		assertEquals(List.of("[visible]", "second", "first", "[hidden]"), Files.readAllLines(defaultPath));
+	}
+
+	@Test
+	public void transientReadFailureDoesNotReplaceOrBackUpPath(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("sort-order.txt");
+		Files.createDirectory(path);
+		SortingConfig sortingConfig = new SortingConfig(path, Comparator.naturalOrder(), false);
+
+		assertEquals(List.of("first"), sortingConfig.getSortedValues(List.of("first")));
+
+		assertTrue(Files.isDirectory(path));
+		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
 	}
 }

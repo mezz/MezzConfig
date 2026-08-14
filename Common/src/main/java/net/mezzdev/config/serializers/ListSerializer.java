@@ -3,6 +3,10 @@ package net.mezzdev.config.serializers;
 import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.ini.IniValue;
+import net.mezzdev.config.ini.IniValueCodec;
+import net.mezzdev.config.ini.IniValueSerializers;
 import net.mezzdev.config.util.ErrorUtil;
 
 import java.util.ArrayList;
@@ -47,14 +51,20 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 	public DeserializeResult<List<T>> deserialize(String string) {
 		string = string.trim();
 		if (string.startsWith("[")) {
-			if (!string.endsWith("]")) {
-				String diagnostic = """
-					No closing brace found.
-					List must have no braces, or be wrapped in [ and ].""";
-				return DeserializeResult.failure(diagnostic);
+			IDeserializeResult<IniValue> iniResult = IniValueCodec.deserialize(string);
+			IniValue value = iniResult.getResult().orElse(null);
+			if (value == null) {
+				if (string.endsWith("]")) {
+					return deserializeCommaSeparated(string.substring(1, string.length() - 1));
+				}
+				return DeserializeResult.failure(iniResult.getDiagnostics());
 			}
-			string = string.substring(1, string.length() - 1);
+			return copyResult(IniValueSerializers.deserialize(this, value));
 		}
+		return deserializeCommaSeparated(string);
+	}
+
+	private DeserializeResult<List<T>> deserializeCommaSeparated(String string) {
 		String[] split = string.split(",");
 
 		List<String> diagnostics = new ArrayList<>();
@@ -75,6 +85,14 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 			return DeserializeResult.failure(diagnostics);
 		}
 		return DeserializeResult.partialSuccess(results, diagnostics);
+	}
+
+	private static <T> DeserializeResult<T> copyResult(IDeserializeResult<T> result) {
+		return switch (result.getState()) {
+			case SUCCESS -> DeserializeResult.success(result.getResult().orElseThrow());
+			case PARTIAL_SUCCESS -> DeserializeResult.partialSuccess(result.getResult().orElseThrow(), result.getDiagnostics());
+			case FAILURE -> DeserializeResult.failure(result.getDiagnostics());
+		};
 	}
 
 	@Override

@@ -62,6 +62,24 @@ public class ConfigSerializerMigrationTest {
 	}
 
 	@Test
+	public void loadMigratesLosslessArrayThroughPublicListSerializer(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[general]",
+			"oldNames = [\"first\", \"a,b\", \"\"]"
+		));
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<List<String>> names = categoryBuilder.addStringList("names", List.of())
+			.addLegacyName("oldNames")
+			.build();
+		ConfigCategory category = buildCategory(path, categoryBuilder);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertEquals(List.of("first", "a,b", ""), names.getValue());
+	}
+
+	@Test
 	public void loadMigratesLegacyValueNameWithLegacyValueMigration(@TempDir Path tempDir) throws IOException {
 		// Setup: the old value used a different storage name and different serialized text.
 		Path path = tempDir.resolve("test.ini");
