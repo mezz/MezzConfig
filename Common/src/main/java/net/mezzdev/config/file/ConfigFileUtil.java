@@ -7,18 +7,14 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
 public final class ConfigFileUtil {
+	public static final int MAX_BACKUPS = 5;
 	private static boolean atomicMoveSupported = true;
 
 	private ConfigFileUtil() {
 	}
 
 	public static void writeUsingTempFile(Path path, Iterable<? extends CharSequence> lines) throws IOException {
-		Path parent = path.getParent();
-		Path tempFileDirectory = Path.of(".");
-		if (parent != null) {
-			Files.createDirectories(parent);
-			tempFileDirectory = parent;
-		}
+		Path tempFileDirectory = createParentDirectories(path);
 		Path tempFile = Files.createTempFile(tempFileDirectory, null, null);
 		try {
 			Files.write(tempFile, lines);
@@ -50,12 +46,7 @@ public final class ConfigFileUtil {
 		if (Files.exists(newestBackup) && Files.mismatch(path, newestBackup) == -1) {
 			return newestBackup;
 		}
-		Path parent = path.getParent();
-		Path tempFileDirectory = Path.of(".");
-		if (parent != null) {
-			tempFileDirectory = parent;
-		}
-		Files.createDirectories(tempFileDirectory);
+		Path tempFileDirectory = createParentDirectories(path);
 		Path stagedBackup = Files.createTempFile(tempFileDirectory, null, ".mezz-config-backup");
 		try {
 			Files.copy(path, stagedBackup, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
@@ -70,6 +61,19 @@ public final class ConfigFileUtil {
 		} finally {
 			Files.deleteIfExists(stagedBackup);
 		}
+	}
+
+	public static Path backUpFile(Path path) throws IOException {
+		return backUpFile(path, MAX_BACKUPS);
+	}
+
+	private static Path createParentDirectories(Path path) throws IOException {
+		Path parent = path.getParent();
+		if (parent == null) {
+			return Path.of(".");
+		}
+		Files.createDirectories(parent);
+		return parent;
 	}
 
 	public static Path getBackupPath(Path path, int index) {

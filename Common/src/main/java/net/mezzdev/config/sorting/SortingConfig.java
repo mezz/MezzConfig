@@ -2,10 +2,9 @@ package net.mezzdev.config.sorting;
 
 import net.mezzdev.config.api.sorting.ISortingConfig;
 import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.file.ConfigFileReader;
 import net.mezzdev.config.file.ConfigFileUtil;
-import net.mezzdev.config.ini.IniFileReader;
-import net.mezzdev.config.ini.IniValue;
-import net.mezzdev.config.ini.IniValueCodec;
+import net.mezzdev.config.file.ConfigFileValueCodec;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -27,7 +26,6 @@ public final class SortingConfig implements ISortingConfig<String> {
 	private static final String VISIBLE_SECTION = "[visible]";
 	private static final String HIDDEN_SECTION = "[hidden]";
 	private static final String ENCODED_VALUE_PREFIX = "\\=";
-	private static final int MAX_BACKUPS = 5;
 	private static final int MAX_LOGGED_PROBLEMS = 100;
 
 	private final @Nullable Path defaultPath;
@@ -200,7 +198,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 		}
 		try {
 			if (correctionPath != null) {
-				ConfigFileUtil.backUpFile(savePath, MAX_BACKUPS);
+				ConfigFileUtil.backUpFile(savePath);
 			}
 			write(savePath, savedValues);
 			correctionPath = null;
@@ -269,7 +267,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 			return new LoadedSavedValues(SavedValues.EMPTY, null, false, false);
 		}
 		try {
-			ParsedSavedValues parsed = parseSavedValues(IniFileReader.read(loadPath).lines());
+			ParsedSavedValues parsed = parseSavedValues(ConfigFileReader.read(loadPath).lines());
 			if (parsed.needsCorrection()) {
 				LOGGER.error(
 					"Malformed sort order config file '{}' will be backed up and corrected: {}",
@@ -278,7 +276,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 				);
 			}
 			return new LoadedSavedValues(parsed.savedValues(), loadPath, parsed.needsCorrection(), false);
-		} catch (IniFileReader.MalformedFileException e) {
+		} catch (ConfigFileReader.MalformedFileException e) {
 			LOGGER.error("Malformed sort order config file '{}': {}", loadPath, e.getMessage());
 			return new LoadedSavedValues(SavedValues.EMPTY, loadPath, true, false);
 		} catch (IOException e) {
@@ -306,12 +304,12 @@ public final class SortingConfig implements ISortingConfig<String> {
 				continue;
 			} else {
 				if (line.startsWith(ENCODED_VALUE_PREFIX)) {
-					IDeserializeResult<IniValue.Scalar> result = IniValueCodec.deserializeScalar(
+					IDeserializeResult<String> result = ConfigFileValueCodec.deserializeScalar(
 						line.substring(ENCODED_VALUE_PREFIX.length())
 					);
-					IniValue.Scalar value = result.getResult().orElse(null);
+					String value = result.getResult().orElse(null);
 					if (value != null) {
-						currentSection.add(value.value());
+						currentSection.add(value);
 					} else {
 						addDiagnostic(
 							diagnostics,
@@ -361,7 +359,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	private static String encodeValue(String value) {
-		String encoded = IniValueCodec.serializeScalar(value);
+		String encoded = ConfigFileValueCodec.serializeScalar(value);
 		if (encoded.equals(value)) {
 			return value;
 		}

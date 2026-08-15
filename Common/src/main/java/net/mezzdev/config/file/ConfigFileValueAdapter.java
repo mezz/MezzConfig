@@ -1,5 +1,8 @@
-package net.mezzdev.config.ini;
+package net.mezzdev.config.file;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonPrimitive;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.value.IDeserializeResult;
@@ -7,50 +10,53 @@ import net.mezzdev.config.api.value.IDeserializeResult;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class IniValueSerializers {
+public final class ConfigFileValueAdapter {
 	private static final int MAX_DIAGNOSTICS = 100;
 
-	private IniValueSerializers() {}
+	private ConfigFileValueAdapter() {}
 
-	public static <T> IniValue serialize(IConfigValueSerializer<T> serializer, T value) {
-		return serializeUnknown(serializer, value);
+	public static <T> String serialize(IConfigValueSerializer<T> serializer, T value) {
+		return ConfigFileValueCodec.serialize(serializeUnknown(serializer, value));
 	}
 
-	private static IniValue serializeUnknown(IConfigValueSerializer<?> serializer, Object value) {
+	private static JsonElement serializeUnknown(IConfigValueSerializer<?> serializer, Object value) {
 		if (serializer instanceof IConfigListValueSerializer<?> listSerializer && value instanceof List<?> list) {
-			return IniValue.array(list.stream()
+			JsonArray array = new JsonArray(list.size());
+			list.stream()
 				.map(element -> serializeUnknown(listSerializer.getElementSerializer(), element))
-				.toList());
+				.forEach(array::add);
+			return array;
 		}
 		@SuppressWarnings("unchecked")
 		IConfigValueSerializer<Object> typedSerializer = (IConfigValueSerializer<Object>) serializer;
-		return IniValue.scalar(typedSerializer.serialize(value));
+		return new JsonPrimitive(typedSerializer.serialize(value));
 	}
 
-	public static <T> IDeserializeResult<T> deserialize(IConfigValueSerializer<T> serializer, IniValue value) {
+	public static <T> IDeserializeResult<T> deserialize(IConfigValueSerializer<T> serializer, JsonElement value) {
 		if (serializer instanceof IConfigListValueSerializer<?> listSerializer) {
 			return deserializeList(serializer, listSerializer, value);
 		}
-		if (value instanceof IniValue.Scalar scalar) {
-			return serializer.deserialize(scalar.value());
+		if (value instanceof JsonPrimitive primitive) {
+			return serializer.deserialize(primitive.getAsString());
 		}
-		return IDeserializeResult.failure("Expected a scalar INI value, but found an array.");
+		return IDeserializeResult.failure("Expected a scalar config value.");
 	}
 
 	private static <T> IDeserializeResult<T> deserializeList(
 		IConfigValueSerializer<T> serializer,
 		IConfigListValueSerializer<?> listSerializer,
-		IniValue value
+		JsonElement value
 	) {
-		if (value instanceof IniValue.Scalar scalar) {
-			return serializer.deserialize(scalar.value());
+		if (value instanceof JsonPrimitive primitive) {
+			return serializer.deserialize(primitive.getAsString());
 		}
-		IniValue.Array array = (IniValue.Array) value;
+		if (!(value instanceof JsonArray array)) {
+			return IDeserializeResult.failure("Expected a config value array.");
+		}
 		List<String> diagnostics = new ArrayList<>();
 		List<Object> results = new ArrayList<>();
-		List<IniValue> elements = array.values();
-		for (int index = 0; index < elements.size(); index++) {
-			IDeserializeResult<?> result = deserializeUnknown(listSerializer.getElementSerializer(), elements.get(index));
+		for (int index = 0; index < array.size(); index++) {
+			IDeserializeResult<?> result = deserializeUnknown(listSerializer.getElementSerializer(), array.get(index));
 			result.getResult().ifPresent(results::add);
 			for (String diagnostic : result.getDiagnostics()) {
 				addDiagnostic(diagnostics, "Array element %s: %s".formatted(index, diagnostic));
@@ -59,7 +65,7 @@ public final class IniValueSerializers {
 		IDeserializeResult<List<Object>> listResult;
 		if (diagnostics.isEmpty()) {
 			listResult = IDeserializeResult.success(List.copyOf(results));
-		} else if (results.isEmpty() && !elements.isEmpty()) {
+		} else if (results.isEmpty() && !array.isEmpty()) {
 			listResult = IDeserializeResult.failure(diagnostics);
 		} else {
 			listResult = IDeserializeResult.partialSuccess(List.copyOf(results), diagnostics);
@@ -77,16 +83,16 @@ public final class IniValueSerializers {
 		}
 	}
 
-	private static IDeserializeResult<?> deserializeUnknown(IConfigValueSerializer<?> serializer, IniValue value) {
+	private static IDeserializeResult<?> deserializeUnknown(IConfigValueSerializer<?> serializer, JsonElement value) {
 		@SuppressWarnings("unchecked")
 		IConfigValueSerializer<Object> typedSerializer = (IConfigValueSerializer<Object>) serializer;
 		return deserialize(typedSerializer, value);
 	}
 
-	public static String toPublicSerializerRepresentation(IniValue value) {
-		return switch (value) {
-			case IniValue.Scalar scalar -> scalar.value();
-			case IniValue.Array array -> IniValueCodec.serialize(array);
-		};
+	public static String toPublicSerializerRepresentation(JsonElement value) {
+		if (value instanceof JsonPrimitive primitive) {
+			return primitive.getAsString();
+		}
+		return ConfigFileValueCodec.serialize(value);
 	}
 }

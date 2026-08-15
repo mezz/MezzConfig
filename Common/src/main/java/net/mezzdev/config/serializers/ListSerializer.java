@@ -1,12 +1,12 @@
 package net.mezzdev.config.serializers;
 
+import com.google.gson.JsonElement;
 import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.value.IDeserializeResult;
-import net.mezzdev.config.ini.IniValue;
-import net.mezzdev.config.ini.IniValueCodec;
-import net.mezzdev.config.ini.IniValueSerializers;
+import net.mezzdev.config.file.ConfigFileValueAdapter;
+import net.mezzdev.config.file.ConfigFileValueCodec;
 import net.mezzdev.config.util.ErrorUtil;
 
 import java.util.ArrayList;
@@ -51,15 +51,15 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 	public DeserializeResult<List<T>> deserialize(String string) {
 		string = string.trim();
 		if (string.startsWith("[")) {
-			IDeserializeResult<IniValue> iniResult = IniValueCodec.deserialize(string);
-			IniValue value = iniResult.getResult().orElse(null);
+			IDeserializeResult<JsonElement> decodeResult = ConfigFileValueCodec.deserialize(string);
+			JsonElement value = decodeResult.getResult().orElse(null);
 			if (value == null) {
 				if (string.endsWith("]")) {
 					return deserializeCommaSeparated(string.substring(1, string.length() - 1));
 				}
-				return DeserializeResult.failure(iniResult.getDiagnostics());
+				return DeserializeResult.failure(decodeResult.getDiagnostics());
 			}
-			return copyResult(IniValueSerializers.deserialize(this, value));
+			return copyResult(ConfigFileValueAdapter.deserialize(this, value));
 		}
 		return deserializeCommaSeparated(string);
 	}

@@ -1,9 +1,7 @@
-package net.mezzdev.config.ini;
+package net.mezzdev.config.file;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.StringReader;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -13,15 +11,14 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 
-public final class IniFileReader {
+public final class ConfigFileReader {
 	public static final int MAX_FILE_BYTES = 4 * 1024 * 1024;
 	public static final int MAX_FILE_LINES = 100_000;
 
-	private IniFileReader() {}
+	private ConfigFileReader() {}
 
 	public static Contents read(Path path) throws IOException, MalformedFileException {
 		BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
@@ -53,18 +50,14 @@ public final class IniFileReader {
 		} catch (CharacterCodingException e) {
 			throw new MalformedFileException("file is not valid UTF-8", fingerprint);
 		}
-		List<String> lines = new ArrayList<>();
-		try (BufferedReader reader = new BufferedReader(new StringReader(decoded))) {
-			String line;
-			while ((line = reader.readLine()) != null) {
-				if (lines.size() >= MAX_FILE_LINES) {
-					throw new MalformedFileException(
-						"file exceeds the maximum supported line count of " + MAX_FILE_LINES,
-						fingerprint
-					);
-				}
-				lines.add(line);
-			}
+		List<String> lines = decoded.lines()
+			.limit(MAX_FILE_LINES + 1L)
+			.toList();
+		if (lines.size() > MAX_FILE_LINES) {
+			throw new MalformedFileException(
+				"file exceeds the maximum supported line count of " + MAX_FILE_LINES,
+				fingerprint
+			);
 		}
 		return new Contents(lines, fingerprint);
 	}

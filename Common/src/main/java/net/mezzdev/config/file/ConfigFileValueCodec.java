@@ -1,4 +1,4 @@
-package net.mezzdev.config.ini;
+package net.mezzdev.config.file;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -13,11 +13,9 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.regex.Pattern;
 
-public final class IniValueCodec {
+public final class ConfigFileValueCodec {
 	private static final Gson GSON = new GsonBuilder()
 		.disableHtmlEscaping()
 		.create();
@@ -25,13 +23,17 @@ public final class IniValueCodec {
 	private static final int MAX_ARRAY_NESTING = 32;
 	private static final int MAX_VALUES = 100_000;
 
-	private IniValueCodec() {}
+	private ConfigFileValueCodec() {}
 
-	public static String serialize(IniValue value) {
-		return switch (value) {
-			case IniValue.Scalar scalar -> serializeScalar(scalar.value());
-			case IniValue.Array array -> GSON.toJson(toJson(array));
-		};
+	public static String serialize(JsonElement value) {
+		if (value instanceof JsonPrimitive primitive) {
+			return serializeScalar(primitive.getAsString());
+		}
+		if (value instanceof JsonArray array) {
+			checkValidArray(array);
+			return GSON.toJson(array);
+		}
+		throw new IllegalArgumentException("Config file values must be JSON primitives or arrays.");
 	}
 
 	public static String serializeScalar(String value) {
@@ -42,54 +44,53 @@ public final class IniValueCodec {
 		return GSON.toJson(value);
 	}
 
-	private static JsonElement toJson(IniValue value) {
-		return switch (value) {
-			case IniValue.Scalar scalar -> {
-				checkValidUnicode(scalar.value());
-				yield new JsonPrimitive(scalar.value());
+	private static void checkValidArray(JsonArray array) {
+		for (JsonElement element : array) {
+			if (element instanceof JsonPrimitive primitive) {
+				checkValidUnicode(primitive.getAsString());
+			} else if (element instanceof JsonArray nestedArray) {
+				checkValidArray(nestedArray);
+			} else {
+				throw new IllegalArgumentException("Config file arrays may only contain JSON primitives or arrays.");
 			}
-			case IniValue.Array array -> {
-				JsonArray jsonArray = new JsonArray(array.values().size());
-				array.values().stream()
-					.map(IniValueCodec::toJson)
-					.forEach(jsonArray::add);
-				yield jsonArray;
-			}
-		};
+		}
 	}
 
-	public static IDeserializeResult<IniValue> deserialize(String input) {
+	public static IDeserializeResult<JsonElement> deserialize(String input) {
 		String stripped = input.strip();
 		if (stripped.isEmpty()) {
 			return IDeserializeResult.failure("Empty values must be written as a JSON string.");
 		}
 		char first = stripped.charAt(0);
 		if (first != '"' && first != '[') {
-			if (stripped.chars().anyMatch(IniValueCodec::isForbiddenControl)) {
+			if (!isValidUnicode(stripped)) {
+				return IDeserializeResult.failure("Unquoted values must contain valid Unicode without unpaired UTF-16 surrogates.");
+			}
+			if (stripped.chars().anyMatch(ConfigFileValueCodec::isForbiddenControl)) {
 				return IDeserializeResult.failure("Unquoted values may not contain control characters.");
 			}
-			return IDeserializeResult.success(IniValue.scalar(stripped));
+			return IDeserializeResult.success(new JsonPrimitive(stripped));
 		}
 
 		JsonValueReader reader = new JsonValueReader(stripped);
 		return reader.deserialize();
 	}
 
-	public static IDeserializeResult<IniValue.Scalar> deserializeScalar(String input) {
-		IDeserializeResult<IniValue> result = deserialize(input);
-		IniValue value = result.getResult().orElse(null);
+	public static IDeserializeResult<String> deserializeScalar(String input) {
+		IDeserializeResult<JsonElement> result = deserialize(input);
+		JsonElement value = result.getResult().orElse(null);
 		if (value == null) {
 			return IDeserializeResult.failure(result.getDiagnostics());
 		}
-		if (value instanceof IniValue.Scalar scalar) {
-			return IDeserializeResult.success(scalar);
+		if (value instanceof JsonPrimitive primitive) {
+			return IDeserializeResult.success(primitive.getAsString());
 		}
 		return IDeserializeResult.failure("Expected a scalar value, not an array.");
 	}
 
 	private static void checkValidUnicode(String value) {
 		if (!StandardCharsets.UTF_8.newEncoder().canEncode(value)) {
-			throw new IllegalArgumentException("INI values must contain valid Unicode without unpaired UTF-16 surrogates.");
+			throw new IllegalArgumentException("Config file values must contain valid Unicode without unpaired UTF-16 surrogates.");
 		}
 	}
 
@@ -111,9 +112,9 @@ public final class IniValueCodec {
 			this.reader.setLenient(false);
 		}
 
-		private IDeserializeResult<IniValue> deserialize() {
+		private IDeserializeResult<JsonElement> deserialize() {
 			try {
-				IniValue value = deserializeValue(0);
+				JsonElement value = deserializeValue(0);
 				if (value == null) {
 					return IDeserializeResult.failure(getDiagnostic());
 				}
@@ -126,7 +127,7 @@ public final class IniValueCodec {
 			}
 		}
 
-		private @Nullable IniValue deserializeValue(int nesting) throws IOException {
+		private @Nullable JsonElement deserializeValue(int nesting) throws IOException {
 			valueCount++;
 			if (valueCount > MAX_VALUES) {
 				fail("Value exceeds the maximum supported element count of " + MAX_VALUES + ".");
@@ -134,8 +135,8 @@ public final class IniValueCodec {
 			}
 			return switch (reader.peek()) {
 				case STRING -> deserializeString();
-				case BOOLEAN -> IniValue.scalar(Boolean.toString(reader.nextBoolean()));
-				case NUMBER -> IniValue.scalar(reader.nextString());
+				case BOOLEAN -> new JsonPrimitive(Boolean.toString(reader.nextBoolean()));
+				case NUMBER -> new JsonPrimitive(reader.nextString());
 				case BEGIN_ARRAY -> deserializeArray(nesting);
 				default -> {
 					fail("Expected a JSON string, boolean, number, or array at " + reader.getPath() + ".");
@@ -144,31 +145,31 @@ public final class IniValueCodec {
 			};
 		}
 
-		private @Nullable IniValue deserializeString() throws IOException {
+		private @Nullable JsonElement deserializeString() throws IOException {
 			String value = reader.nextString();
 			if (!isValidUnicode(value)) {
 				fail("JSON strings must contain valid Unicode without unpaired UTF-16 surrogates at " + reader.getPreviousPath() + ".");
 				return null;
 			}
-			return IniValue.scalar(value);
+			return new JsonPrimitive(value);
 		}
 
-		private @Nullable IniValue deserializeArray(int nesting) throws IOException {
+		private @Nullable JsonElement deserializeArray(int nesting) throws IOException {
 			if (nesting >= MAX_ARRAY_NESTING) {
 				fail("Arrays may not be nested more than %s levels at %s.".formatted(MAX_ARRAY_NESTING, reader.getPath()));
 				return null;
 			}
 			reader.beginArray();
-			List<IniValue> values = new ArrayList<>();
+			JsonArray values = new JsonArray();
 			while (reader.hasNext()) {
-				IniValue value = deserializeValue(nesting + 1);
+				JsonElement value = deserializeValue(nesting + 1);
 				if (value == null) {
 					return null;
 				}
 				values.add(value);
 			}
 			reader.endArray();
-			return IniValue.array(values);
+			return values;
 		}
 
 		private void fail(String diagnostic) {

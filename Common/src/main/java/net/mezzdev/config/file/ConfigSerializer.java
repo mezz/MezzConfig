@@ -1,13 +1,10 @@
 package net.mezzdev.config.file;
 
+import com.google.gson.JsonElement;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.ini.IniFileReader;
-import net.mezzdev.config.ini.IniValue;
-import net.mezzdev.config.ini.IniValueCodec;
-import net.mezzdev.config.ini.IniValueSerializers;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.AppliedConfigValueChange;
@@ -46,9 +43,8 @@ public final class ConfigSerializer {
 	private static final Pattern commentRegex = Pattern.compile("\\s*#.*");
 	private static final Pattern categoryRegex = Pattern.compile("\\[(?<category>\\w+)]\\s*");
 	private static final Pattern keyValueRegex = Pattern.compile("\\s*(?<key>\\w+)\\s*=\\s*(?<value>.*)");
-	static final int MAX_CONFIG_FILE_BYTES = IniFileReader.MAX_FILE_BYTES;
-	static final int MAX_CONFIG_FILE_LINES = IniFileReader.MAX_FILE_LINES;
-	static final int MAX_BACKUPS = 5;
+	static final int MAX_CONFIG_FILE_BYTES = ConfigFileReader.MAX_FILE_BYTES;
+	static final int MAX_CONFIG_FILE_LINES = ConfigFileReader.MAX_FILE_LINES;
 	private static final int MAX_LOGGED_PROBLEMS = 100;
 	private static final int MAX_LOGGED_LINE_CHARACTERS = 512;
 	private static final int MAX_LOGGED_MESSAGE_CHARACTERS = 4 * 1024;
@@ -114,10 +110,10 @@ public final class ConfigSerializer {
 		}
 
 		LOGGER.debug("Loading config file: {}", path);
-		IniFileReader.Contents contents;
+		ConfigFileReader.Contents contents;
 		try {
-			contents = IniFileReader.read(path);
-		} catch (IniFileReader.MalformedFileException e) {
+			contents = ConfigFileReader.read(path);
+		} catch (ConfigFileReader.MalformedFileException e) {
 			LOGGER.error("Malformed config file '{}': {}", path, e.getMessage());
 			recoverMalformedFile(path, categories, new FailureFingerprint(e.fingerprint()), 1);
 			return List.of();
@@ -180,13 +176,13 @@ public final class ConfigSerializer {
 			if (keyValueMatcher.matches()) {
 				final String key = keyValueMatcher.group("key").trim();
 				final String encodedValue = keyValueMatcher.group("value").trim();
-				IDeserializeResult<IniValue> iniResult = IniValueCodec.deserialize(encodedValue);
-				final IniValue value = iniResult.getResult().orElse(null);
+				IDeserializeResult<JsonElement> decodeResult = ConfigFileValueCodec.deserialize(encodedValue);
+				final JsonElement value = decodeResult.getResult().orElse(null);
 				if (value == null) {
 					problems.log(
 						lineNumber,
 						line,
-						"Invalid encoded INI value: " + String.join("\n", iniResult.getDiagnostics())
+						"Invalid encoded config value: " + String.join("\n", decodeResult.getDiagnostics())
 					);
 					continue;
 				}
@@ -200,7 +196,7 @@ public final class ConfigSerializer {
 						problems.log(lineNumber, line, "Legacy config value '%s.%s' will be migrated.".formatted(categoryName, key));
 						int previousChangeCount = changes.size();
 						List<String> diagnostics = new ArrayList<>();
-						String migrationValue = IniValueSerializers.toPublicSerializerRepresentation(value);
+						String migrationValue = ConfigFileValueAdapter.toPublicSerializerRepresentation(value);
 						migrations.forEach(migration -> diagnostics.addAll(migration.migrate(migrationValue, changes)));
 						for (int changeIndex = previousChangeCount; changeIndex < changes.size(); changeIndex++) {
 							encounteredValues.add(changes.get(changeIndex).configValue());
@@ -215,9 +211,9 @@ public final class ConfigSerializer {
 						problems.log(lineNumber, line, "Config value '%s.%s' was declared more than once; the last usable value wins."
 							.formatted(categoryName, key));
 					}
-					List<String> diagnostics = setFromIniValue(knownValue, value, changes);
+					List<String> diagnostics = setFromConfigFileValue(knownValue, value, changes);
 					if (!diagnostics.isEmpty()) {
-						problems.log(lineNumber, line, getDeserializeDiagnostics(IniValueCodec.serialize(value), diagnostics));
+						problems.log(lineNumber, line, getDeserializeDiagnostics(ConfigFileValueCodec.serialize(value), diagnostics));
 					}
 				}
 			} else {
@@ -239,12 +235,12 @@ public final class ConfigSerializer {
 		return List.copyOf(changes);
 	}
 
-	private static <T> List<String> setFromIniValue(
+	private static <T> List<String> setFromConfigFileValue(
 		ConfigValue<T> configValue,
-		IniValue value,
+		JsonElement value,
 		List<AppliedConfigValueChange<?>> changes
 	) {
-		IDeserializeResult<T> result = IniValueSerializers.deserialize(configValue.getSerializer(), value);
+		IDeserializeResult<T> result = ConfigFileValueAdapter.deserialize(configValue.getSerializer(), value);
 		return configValue.setFromDeserializedValue(result, changes);
 	}
 
@@ -263,7 +259,7 @@ public final class ConfigSerializer {
 			recoveryAttempts.put(normalizedPath, fingerprint);
 		}
 		try {
-			Path backup = ConfigFileUtil.backUpFile(path, MAX_BACKUPS);
+			Path backup = ConfigFileUtil.backUpFile(path);
 			LOGGER.warn(
 				"Correcting malformed config file '{}' after {} problem(s); the original is preserved at '{}'.",
 				path,
@@ -422,11 +418,11 @@ public final class ConfigSerializer {
 
 		addLocalizedNameAndDescription(serialized, configValue.getLocalizationKey(), "\t");
 
-		String validValues = getLocalizedComment(CONFIG_VALUE_VALUES_KEY, "Valid Values: %s", getIniValidValuesDescription(serializer));
+		String validValues = getLocalizedComment(CONFIG_VALUE_VALUES_KEY, "Valid Values: %s", getConfigFileValidValuesDescription(serializer));
 		addCommentedStrings(serialized, validValues);
 
 		T defaultValue = configValue.getDefaultValue();
-		String defaultValueSerialized = IniValueCodec.serialize(IniValueSerializers.serialize(serializer, defaultValue));
+		String defaultValueSerialized = ConfigFileValueAdapter.serialize(serializer, defaultValue);
 		String defaultValueString = getLocalizedComment(CONFIG_DEFAULT_VALUE_KEY, "Default Value: %s", defaultValueSerialized);
 		addCommentedStrings(serialized, defaultValueString);
 
@@ -436,14 +432,14 @@ public final class ConfigSerializer {
 		if (!saveDefaults) {
 			value = configValue.getValueWithoutLoading();
 		}
-		String valueString = IniValueCodec.serialize(IniValueSerializers.serialize(serializer, value));
+		String valueString = ConfigFileValueAdapter.serialize(serializer, value);
 		serialized.add("\t%s = %s".formatted(name, valueString));
 	}
 
-	private static String getIniValidValuesDescription(IConfigValueSerializer<?> serializer) {
+	private static String getConfigFileValidValuesDescription(IConfigValueSerializer<?> serializer) {
 		if (serializer instanceof IConfigListValueSerializer<?> listSerializer) {
 			return "A bracketed list containing values of:\n%s".formatted(
-				getIniValidValuesDescription(listSerializer.getElementSerializer())
+				getConfigFileValidValuesDescription(listSerializer.getElementSerializer())
 			);
 		}
 		return serializer.getValidValuesDescription();

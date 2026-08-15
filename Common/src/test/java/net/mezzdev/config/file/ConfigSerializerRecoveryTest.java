@@ -84,15 +84,15 @@ public class ConfigSerializerRecoveryTest {
 		Path path = tempDir.resolve("test.ini");
 		ConfigCategory category = createCategory(createBooleanValue());
 
-		for (int attempt = 1; attempt <= ConfigSerializer.MAX_BACKUPS + 2; attempt++) {
+		for (int attempt = 1; attempt <= ConfigFileUtil.MAX_BACKUPS + 2; attempt++) {
 			Files.write(path, List.of("[general]", "invalid line " + attempt));
 			ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 		}
 
-		for (int index = 1; index <= ConfigSerializer.MAX_BACKUPS; index++) {
+		for (int index = 1; index <= ConfigFileUtil.MAX_BACKUPS; index++) {
 			assertTrue(Files.exists(ConfigFileUtil.getBackupPath(path, index)));
 		}
-		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(path, ConfigSerializer.MAX_BACKUPS + 1)));
+		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(path, ConfigFileUtil.MAX_BACKUPS + 1)));
 		assertTrue(Files.readString(ConfigFileUtil.getBackupPath(path, 1)).contains("invalid line 7"));
 	}
 

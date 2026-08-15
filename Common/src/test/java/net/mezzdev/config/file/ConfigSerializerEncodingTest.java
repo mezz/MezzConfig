@@ -26,11 +26,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class ConfigSerializerIniTest {
+public class ConfigSerializerEncodingTest {
 	private static final String LOCALIZATION_PATH = "mezz_config.config.test.values";
 
 	@Test
-	public void canonicalIniRoundTripsBuiltInScalarsAndLists(@TempDir Path tempDir) throws IOException {
+	public void canonicalConfigFileEncodingRoundTripsBuiltInScalarsAndLists(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("values.ini");
 		PackedColor color = new PackedColor(0x12ABEF, ConfigColorFormat.RGB);
 		ConfigValue<String> text = value("text", "default", StringSerializer.INSTANCE);
