@@ -6,6 +6,7 @@ import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.file.IConfigFileRegistrar;
 import net.mezzdev.config.server.ServerConfigKey;
@@ -63,6 +64,7 @@ public class ConfigSchema implements IConfigSchema {
 	private @Nullable Runnable removeFileWatcherCallback;
 	private @Nullable List<IConfigValueBatchChangeListener> listeners;
 	private boolean registered;
+	private boolean restartValuesInitialized;
 	private boolean logUntranslatedKeys;
 	private boolean translationKeysChecked;
 	private volatile boolean remotelyActive;
@@ -201,6 +203,9 @@ public class ConfigSchema implements IConfigSchema {
 	public void loadIfNeeded() {
 		LoadResult loadResult = loadIfNeededWithoutNotifying();
 		List<AppliedConfigValueChange<?>> changes = loadResult.changes();
+		if (loadResult.pendingValuesChanged() && changes.isEmpty()) {
+			changeVersion.incrementAndGet();
+		}
 		if (!changes.isEmpty()) {
 			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
 			notifyListeners(immutableChanges);
@@ -212,7 +217,8 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private synchronized LoadResult loadIfNeededWithoutNotifying() {
-		Map<ConfigValue<?>, Object> previousValues = getCurrentValues();
+		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
+		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
 		Path previousDefaultPath = activeDefaultPath;
 		Path previousPath = activePath;
 		Path defaultPath = pathResolver.resolveDefaultPath()
@@ -224,7 +230,7 @@ public class ConfigSchema implements IConfigSchema {
 		if (type == ConfigSchemaType.SERVER && remotelyActive && path == null) {
 			setActivePaths(defaultPath, null);
 			needsLoad.set(false);
-			return new LoadResult(List.of(), null);
+			return createLoadResult(previousEffectiveValues, previousPendingValues, null);
 		}
 		if (path != null) {
 			remotelyActive = false;
@@ -245,24 +251,41 @@ public class ConfigSchema implements IConfigSchema {
 			}
 			if (previousPath != null) {
 				resetValuesToDefaults();
-				return new LoadResult(getChanges(previousValues), initialSave);
+				return createLoadResult(previousEffectiveValues, previousPendingValues, initialSave);
 			}
-			return new LoadResult(List.of(), initialSave);
+			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSave);
 		}
 
 		if (!needsLoad.compareAndSet(true, false)) {
 			if (pathsChanged) {
-				return new LoadResult(getChanges(previousValues), null);
+				return createLoadResult(previousEffectiveValues, previousPendingValues, null);
 			}
-			return new LoadResult(List.of(), null);
+			return createLoadResult(previousEffectiveValues, previousPendingValues, null);
 		}
 
 		resetValuesToDefaults();
 		load(defaultPath);
 		load(path);
-		return new LoadResult(
-			getChanges(previousValues),
+		if (!restartValuesInitialized) {
+			promotePendingValuesWithoutNotifying(ConfigValueRestartRequirement.GAME_RESTART);
+			restartValuesInitialized = true;
+		}
+		return createLoadResult(
+			previousEffectiveValues,
+			previousPendingValues,
 			getInitialSave(defaultPath, path, activePathChanged, type == ConfigSchemaType.SERVER)
+		);
+	}
+
+	private LoadResult createLoadResult(
+		Map<ConfigValue<?>, Object> previousEffectiveValues,
+		Map<ConfigValue<?>, Object> previousPendingValues,
+		@Nullable InitialSave initialSave
+	) {
+		return new LoadResult(
+			getEffectiveChanges(previousEffectiveValues),
+			havePendingValuesChanged(previousPendingValues),
+			initialSave
 		);
 	}
 
@@ -294,17 +317,23 @@ public class ConfigSchema implements IConfigSchema {
 		return null;
 	}
 
-	private Map<ConfigValue<?>, Object> getCurrentValues() {
+	private Map<ConfigValue<?>, Object> getEffectiveValues() {
 		Map<ConfigValue<?>, Object> values = new IdentityHashMap<>();
-		getConfigValues().forEach(configValue -> values.put(configValue, configValue.getValueWithoutLoading()));
+		getConfigValues().forEach(configValue -> values.put(configValue, configValue.getEffectiveValueWithoutLoading()));
 		return values;
 	}
 
-	private List<AppliedConfigValueChange<?>> getChanges(Map<ConfigValue<?>, Object> previousValues) {
+	private Map<ConfigValue<?>, Object> getPendingValues() {
+		Map<ConfigValue<?>, Object> values = new IdentityHashMap<>();
+		getConfigValues().forEach(configValue -> values.put(configValue, configValue.getPendingValueWithoutLoading()));
+		return values;
+	}
+
+	private List<AppliedConfigValueChange<?>> getEffectiveChanges(Map<ConfigValue<?>, Object> previousValues) {
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
 		for (ConfigValue<?> configValue : getConfigValues()) {
 			Object oldValue = previousValues.get(configValue);
-			AppliedConfigValueChange<?> change = getChange(configValue, oldValue);
+			AppliedConfigValueChange<?> change = getEffectiveChange(configValue, oldValue);
 			if (change != null) {
 				changes.add(change);
 			}
@@ -319,16 +348,66 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@SuppressWarnings("unchecked")
-	private static <T> @Nullable AppliedConfigValueChange<T> getChange(ConfigValue<T> configValue, Object oldValue) {
-		T currentValue = configValue.getValueWithoutLoading();
+	private static <T> @Nullable AppliedConfigValueChange<T> getEffectiveChange(ConfigValue<T> configValue, Object oldValue) {
+		T currentValue = configValue.getEffectiveValueWithoutLoading();
 		if (!Objects.equals(oldValue, currentValue)) {
 			return new AppliedConfigValueChange<>(configValue, (T) oldValue, currentValue);
 		}
 		return null;
 	}
 
+	private boolean havePendingValuesChanged(Map<ConfigValue<?>, Object> previousValues) {
+		for (ConfigValue<?> configValue : getConfigValues()) {
+			if (!Objects.equals(previousValues.get(configValue), configValue.getPendingValueWithoutLoading())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private void resetValuesToDefaults() {
 		getConfigValues().forEach(ConfigValue::resetToDefaultWithoutNotifying);
+	}
+
+	private void resetAllValuesToDefaults() {
+		getConfigValues().forEach(ConfigValue::resetAllToDefaultWithoutNotifying);
+	}
+
+	public synchronized void promotePendingValuesAfterWorldRestart() {
+		loadIfNeeded();
+		if (activePath == null) {
+			return;
+		}
+		ConfigValueRestartRequirement boundary = ConfigValueRestartRequirement.WORLD_RESTART;
+		if (!restartValuesInitialized) {
+			boundary = ConfigValueRestartRequirement.GAME_RESTART;
+		}
+		List<AppliedConfigValueChange<?>> changes = promotePendingValuesWithoutNotifying(boundary);
+		restartValuesInitialized = true;
+		if (!changes.isEmpty()) {
+			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
+			notifyListeners(immutableChanges);
+		}
+	}
+
+	private List<AppliedConfigValueChange<?>> promotePendingValuesWithoutNotifying(
+		ConfigValueRestartRequirement boundary
+	) {
+		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
+		for (ConfigValue<?> configValue : getConfigValues()) {
+			ConfigValueRestartRequirement requirement = configValue.getRestartRequirement();
+			if (requirement == ConfigValueRestartRequirement.NONE) {
+				continue;
+			}
+			if (boundary == ConfigValueRestartRequirement.WORLD_RESTART && requirement != boundary) {
+				continue;
+			}
+			AppliedConfigValueChange<?> change = configValue.promotePendingValueWithoutNotifying();
+			if (change != null) {
+				changes.add(change);
+			}
+		}
+		return List.copyOf(changes);
 	}
 
 	private void setActivePaths(@Nullable Path defaultPath, @Nullable Path path) {
@@ -535,15 +614,21 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		validateUpdates(updates);
 
-		List<AppliedConfigValueChange<?>> changes = applyUpdatesAtomically(updates);
-		if (changes.isEmpty()) {
+		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
+		List<AppliedConfigValueChange<?>> pendingChanges = applyUpdatesAtomically(updates);
+		if (pendingChanges.isEmpty()) {
 			return List.of();
 		}
 
 		markDirty();
-		List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
-		notifyListeners(immutableChanges);
-		return immutableChanges;
+		List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
+		if (effectiveChanges.isEmpty()) {
+			changeVersion.incrementAndGet();
+		} else {
+			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(effectiveChanges);
+			notifyListeners(immutableChanges);
+		}
+		return List.copyOf(pendingChanges);
 	}
 
 	private static List<AppliedConfigValueChange<?>> applyUpdatesAtomically(
@@ -576,7 +661,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	private static <T> ConfigValueUpdate<T> createRollbackUpdate(ConfigValueUpdate<T> update) {
 		ConfigValue<T> configValue = update.configValue();
-		return new ConfigValueUpdate<>(configValue, configValue.getValueWithoutLoading());
+		return new ConfigValueUpdate<>(configValue, configValue.getPendingValueWithoutLoading());
 	}
 
 	private void validateUpdates(List<? extends ConfigValueUpdate<?>> updates) {
@@ -722,7 +807,10 @@ public class ConfigSchema implements IConfigSchema {
 		ConfigSchema activeServerCounterpart = getActiveServerCounterpart();
 		if (activeServerCounterpart == null) {
 			loadIfNeeded();
-			return configValue.getValueWithoutLoading();
+			if (type != ConfigSchemaType.CLIENT && activePath == null && !remotelyActive) {
+				return configValue.getDefaultValue();
+			}
+			return configValue.getEffectiveValueWithoutLoading();
 		}
 		@SuppressWarnings("unchecked")
 		ConfigValue<T> serverValue = (ConfigValue<T>) serverValueCounterparts.get(configValue);
@@ -730,7 +818,25 @@ public class ConfigSchema implements IConfigSchema {
 			throw new IllegalArgumentException("Config value does not belong to this schema: " + configValue.getName());
 		}
 		activeServerCounterpart.loadIfNeeded();
-		return serverValue.getValueWithoutLoading();
+		return serverValue.getEffectiveValueWithoutLoading();
+	}
+
+	public <T> T getPendingValue(ConfigValue<T> configValue) {
+		ConfigSchema activeServerCounterpart = getActiveServerCounterpart();
+		if (activeServerCounterpart == null) {
+			loadIfNeeded();
+			if (type != ConfigSchemaType.CLIENT && activePath == null && !remotelyActive) {
+				return configValue.getDefaultValue();
+			}
+			return configValue.getPendingValueWithoutLoading();
+		}
+		@SuppressWarnings("unchecked")
+		ConfigValue<T> serverValue = (ConfigValue<T>) serverValueCounterparts.get(configValue);
+		if (serverValue == null) {
+			throw new IllegalArgumentException("Config value does not belong to this schema: " + configValue.getName());
+		}
+		activeServerCounterpart.loadIfNeeded();
+		return serverValue.getPendingValueWithoutLoading();
 	}
 
 	private @Nullable ConfigSchema getActiveServerCounterpart() {
@@ -746,7 +852,7 @@ public class ConfigSchema implements IConfigSchema {
 		List<ServerConfigValueData> values = new ArrayList<>();
 		for (ConfigCategory category : categories) {
 			for (ConfigValue<?> value : category.getConfigValues()) {
-				values.add(serializeValue(category.getName(), value, value.getValueWithoutLoading()));
+				values.add(serializeValue(category.getName(), value));
 			}
 		}
 		return List.copyOf(values);
@@ -757,7 +863,7 @@ public class ConfigSchema implements IConfigSchema {
 		List<ServerConfigValueData> values = new ArrayList<>();
 		for (ConfigValueUpdate<?> update : updates) {
 			String categoryName = getCategoryName(update.configValue());
-			values.add(serializeValue(categoryName, update.configValue(), update.newValue()));
+			values.add(serializeUpdate(categoryName, update.configValue(), update.newValue()));
 		}
 		return List.copyOf(values);
 	}
@@ -771,41 +877,61 @@ public class ConfigSchema implements IConfigSchema {
 		throw new IllegalArgumentException("Config value does not belong to this schema: " + configValue.getName());
 	}
 
-	private static <T> ServerConfigValueData serializeValue(String categoryName, ConfigValue<T> value, Object rawValue) {
+	private static <T> ServerConfigValueData serializeValue(String categoryName, ConfigValue<T> value) {
+		return new ServerConfigValueData(
+			categoryName,
+			value.getName(),
+			value.getSerializer().serialize(value.getEffectiveValueWithoutLoading()),
+			value.getSerializer().serialize(value.getPendingValueWithoutLoading())
+		);
+	}
+
+	private static <T> ServerConfigValueData serializeUpdate(String categoryName, ConfigValue<T> value, Object rawValue) {
 		@SuppressWarnings("unchecked")
 		T typedValue = (T) rawValue;
 		return new ServerConfigValueData(categoryName, value.getName(), value.getSerializer().serialize(typedValue));
 	}
 
 	public List<ConfigValueUpdate<?>> deserializeUpdates(List<ServerConfigValueData> values, boolean allowSchemaDifferences) {
-		ErrorUtil.checkNotNull(values, "values");
-		Set<ConfigValue<?>> updatedValues = new HashSet<>();
 		List<ConfigValueUpdate<?>> updates = new ArrayList<>();
-		for (ServerConfigValueData value : values) {
+		for (ResolvedServerConfigValue value : resolveServerValues(values, allowSchemaDifferences)) {
+			updates.add(deserializeUpdate(value.configValue(), value.data().serializedPendingValue()));
+		}
+		return List.copyOf(updates);
+	}
+
+	private List<ResolvedServerConfigValue> resolveServerValues(
+		List<ServerConfigValueData> values,
+		boolean allowSchemaDifferences
+	) {
+		ErrorUtil.checkNotNull(values, "values");
+		Set<ConfigValue<?>> resolvedValues = new HashSet<>();
+		List<ResolvedServerConfigValue> results = new ArrayList<>();
+		for (ServerConfigValueData data : values) {
 			Optional<ConfigCategory> optionalCategory = categories.stream()
-				.filter(candidate -> candidate.getName().equals(value.categoryName()))
+				.filter(candidate -> candidate.getName().equals(data.categoryName()))
 				.findFirst();
 			if (optionalCategory.isEmpty()) {
 				if (allowSchemaDifferences) {
 					continue;
 				}
-				throw new IllegalArgumentException("Unknown config category: " + value.categoryName());
+				throw new IllegalArgumentException("Unknown config category: " + data.categoryName());
 			}
 			Optional<ConfigValue<?>> optionalConfigValue = optionalCategory.orElseThrow()
-				.getConfigValue(value.valueName());
+				.getConfigValue(data.valueName());
 			if (optionalConfigValue.isEmpty()) {
 				if (allowSchemaDifferences) {
 					continue;
 				}
-				throw new IllegalArgumentException("Unknown config value: " + value.categoryName() + "." + value.valueName());
+				throw new IllegalArgumentException("Unknown config value: " + data.categoryName() + "." + data.valueName());
 			}
 			ConfigValue<?> configValue = optionalConfigValue.orElseThrow();
-			if (!updatedValues.add(configValue)) {
-				throw new IllegalArgumentException("Config value was provided more than once: " + value.categoryName() + "." + value.valueName());
+			if (!resolvedValues.add(configValue)) {
+				throw new IllegalArgumentException("Config value was provided more than once: " + data.categoryName() + "." + data.valueName());
 			}
-			updates.add(deserializeUpdate(configValue, value.serializedValue()));
+			results.add(new ResolvedServerConfigValue(configValue, data));
 		}
-		return List.copyOf(updates);
+		return List.copyOf(results);
 	}
 
 	private static <T> ConfigValueUpdate<T> deserializeUpdate(ConfigValue<T> configValue, String serializedValue) {
@@ -828,35 +954,42 @@ public class ConfigSchema implements IConfigSchema {
 		if (type != ConfigSchemaType.SERVER) {
 			throw new IllegalStateException("Config schema is not server-owned.");
 		}
-		List<ConfigValueUpdate<?>> updates = deserializeUpdates(values, true);
+		List<SynchronizedConfigValue<?>> synchronizedValues = new ArrayList<>();
+		for (ResolvedServerConfigValue value : resolveServerValues(values, true)) {
+			synchronizedValues.add(deserializeSynchronizedValue(value));
+		}
 		loadIfNeeded();
 		if (activePath != null) {
 			remoteCanEdit = canEdit;
 			return;
 		}
-		Map<ConfigValue<?>, ConfigValueUpdate<?>> desiredUpdates = new IdentityHashMap<>();
-		for (ConfigValue<?> configValue : getConfigValues()) {
-			desiredUpdates.put(configValue, createDefaultUpdate(configValue));
-		}
-		for (ConfigValueUpdate<?> update : updates) {
-			desiredUpdates.put(update.configValue(), update);
-		}
-		List<ConfigValueUpdate<?>> orderedUpdates = new ArrayList<>();
-		for (ConfigValue<?> configValue : getConfigValues()) {
-			orderedUpdates.add(desiredUpdates.get(configValue));
-		}
-		List<AppliedConfigValueChange<?>> changes = applyUpdatesAtomically(orderedUpdates);
+		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
+		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
+		resetAllValuesToDefaults();
+		synchronizedValues.forEach(SynchronizedConfigValue::apply);
 		remoteCanEdit = canEdit;
 		remotelyActive = true;
 		needsLoad.set(false);
+		List<AppliedConfigValueChange<?>> changes = getEffectiveChanges(previousEffectiveValues);
+		if (changes.isEmpty() && havePendingValuesChanged(previousPendingValues)) {
+			changeVersion.incrementAndGet();
+		}
 		if (!changes.isEmpty()) {
 			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
 			notifyListeners(immutableChanges);
 		}
 	}
 
-	private static <T> ConfigValueUpdate<T> createDefaultUpdate(ConfigValue<T> configValue) {
-		return new ConfigValueUpdate<>(configValue, configValue.getDefaultValue());
+	private static <T> SynchronizedConfigValue<T> deserializeSynchronizedValue(ResolvedServerConfigValue value) {
+		@SuppressWarnings("unchecked")
+		ConfigValue<T> configValue = (ConfigValue<T>) value.configValue();
+		T effectiveValue = deserializeValue(configValue, value.data().serializedEffectiveValue());
+		T pendingValue = deserializeValue(configValue, value.data().serializedPendingValue());
+		return new SynchronizedConfigValue<>(configValue, effectiveValue, pendingValue);
+	}
+
+	private static <T> T deserializeValue(ConfigValue<T> configValue, String serializedValue) {
+		return deserializeUpdate(configValue, serializedValue).newValue();
 	}
 
 	public synchronized void clearRemoteSnapshot() {
@@ -867,11 +1000,11 @@ public class ConfigSchema implements IConfigSchema {
 		if (!remotelyActive) {
 			return;
 		}
-		Map<ConfigValue<?>, Object> previousValues = getCurrentValues();
+		Map<ConfigValue<?>, Object> previousValues = getEffectiveValues();
 		remotelyActive = false;
-		resetValuesToDefaults();
+		resetAllValuesToDefaults();
 		needsLoad.set(true);
-		List<AppliedConfigValueChange<?>> changes = getChanges(previousValues);
+		List<AppliedConfigValueChange<?>> changes = getEffectiveChanges(previousValues);
 		if (!changes.isEmpty()) {
 			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
 			notifyListeners(immutableChanges);
@@ -880,8 +1013,24 @@ public class ConfigSchema implements IConfigSchema {
 
 	private record LoadResult(
 		List<AppliedConfigValueChange<?>> changes,
+		boolean pendingValuesChanged,
 		@Nullable InitialSave initialSave
 	) {}
+
+	private record ResolvedServerConfigValue(
+		ConfigValue<?> configValue,
+		ServerConfigValueData data
+	) {}
+
+	private record SynchronizedConfigValue<T>(
+		ConfigValue<T> configValue,
+		T effectiveValue,
+		T pendingValue
+	) {
+		private void apply() {
+			configValue.setSynchronizedValuesWithoutNotifying(effectiveValue, pendingValue);
+		}
+	}
 
 	private record InitialSave(
 		Path path,

@@ -105,6 +105,10 @@ public class ConfigManager implements IConfigManager, IConfigFileRegistrar {
 		}
 	}
 
+	public void onWorldStarted() {
+		List.copyOf(configFiles).forEach(ConfigSchema::promotePendingValuesAfterWorldRestart);
+	}
+
 	@Override
 	public Collection<? extends IConfigSchema> getSchemas() {
 		return Collections.unmodifiableCollection(configFiles);

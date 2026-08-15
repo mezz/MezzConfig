@@ -47,6 +47,7 @@ public final class ConfigFabricClient implements ClientModInitializer {
 			return true;
 		});
 		ClientTickEvents.END_CLIENT_TICK.register(client -> ServerConfigRuntime.onClientTick());
+		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> ServerConfigRuntime.onClientWorldStarted());
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> ServerConfigRuntime.onClientDisconnect());
 	}
 }

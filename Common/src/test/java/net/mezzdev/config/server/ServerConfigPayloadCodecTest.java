@@ -17,6 +17,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ServerConfigPayloadCodecTest {
 	@Test
+	public void syncPayloadPreservesEffectiveAndPendingValues() {
+		ServerConfigSyncPayload payload = new ServerConfigSyncPayload(
+			new ServerConfigKey("test_mod", "server.ini"),
+			1,
+			true,
+			true,
+			"",
+			List.of(new ServerConfigValueData("general", "afterRestart", "false", "true"))
+		);
+
+		assertEquals(payload, ServerConfigPayloadCodec.decodeSync(ServerConfigPayloadCodec.encodeSync(payload)));
+	}
+
+	@Test
 	public void largeSyncPayloadRoundTripsThroughChunks() {
 		List<ServerConfigValueData> values = createLargeValueList();
 		ServerConfigSyncPayload payload = new ServerConfigSyncPayload(

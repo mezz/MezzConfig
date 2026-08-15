@@ -14,9 +14,8 @@ import java.util.function.Consumer;
  * Represents a config value.
  * Config values can be read or updated by mods.
  * <p>
- * These config values are automatically synced with the config file.
- * {@link #getValue()} will automatically update based on changes to the file,
- * and using {@link #set} will automatically update the file.
+ * Config values are automatically synchronized with their backing file. A restart-required value distinguishes the
+ * value currently in effect from the saved value selected for the next applicable restart.
  * <p>
  * Add a value to your category with the add methods on {@link IConfigCategoryBuilder}.
  * Get registered values here: {@link IConfigCategory#getConfigValues()}.
@@ -42,14 +41,23 @@ public interface IConfigValue<T> {
 	String getLocalizationKey();
 
 	/**
-	 * Get the current value.
-	 * This will automatically update and load from the config file if there are changes.
+	 * Get the value currently in effect.
 	 * <p>
 	 * Values are immutable by contract. Built-in list values return an unmodifiable snapshot.
 	 *
 	 * @since 0.1.0
 	 */
 	T getValue();
+
+	/**
+	 * Get the saved value selected by the most recent edit or file load.
+	 * <p>
+	 * This equals {@link #getValue()} when no restart is required or no change is pending. Setting this back to the
+	 * effective value cancels a pending change.
+	 *
+	 * @since 0.3.0
+	 */
+	T getPendingValue();
 
 	/**
 	 * Get the default value.
@@ -70,12 +78,7 @@ public interface IConfigValue<T> {
 	ConfigValueEditMode getEditMode();
 
 	/**
-	 * Get the restart requirement hint for this value.
-	 * <p>
-	 * Config editors can use this to explain when changed values take effect. MezzConfig still updates this value when
-	 * it changes through the API or config file. Mods that only apply a value at startup or world load should read it
-	 * during that lifecycle.
-	 *
+	 * Get the lifecycle boundary when saved changes become effective.
 	 * @since 0.1.0
 	 */
 	ConfigValueRestartRequirement getRestartRequirement();
@@ -94,14 +97,15 @@ public interface IConfigValue<T> {
 
 	/**
 	 * Set the config value to the given value.
-	 * This will automatically mark the config file as dirty so that it will save the new value.
+	 * This automatically saves the new value. If a restart is required, the new value remains pending until that lifecycle
+	 * boundary and {@link #getValue()} remains unchanged.
 	 * Built-in list values are copied to an unmodifiable snapshot before this method returns.
 	 * <p>
 	 * Use {@link IConfigSchema#batchUpdate(Consumer)} to update
 	 * several config values together.
 	 *
 	 * @param value new value
-	 * @return {@code true} if the value changed, or {@code false} if the value was valid but equal to the current value
+	 * @return {@code true} if the saved value changed, or {@code false} if it was valid but already pending
 	 *
 	 * @throws IllegalArgumentException if the value is invalid
 	 * @throws IllegalStateException if this value's context-specific schema is currently inactive
@@ -113,7 +117,8 @@ public interface IConfigValue<T> {
 	boolean set(T value);
 
 	/**
-	 * Add a listener that is called with the applied change when this config value changes.
+	 * Add a listener that is called when this config value's effective value changes. Pending changes do not invoke this
+	 * listener.
 	 * See {@link IConfigValueChangeListener} for callback execution and failure behavior.
 	 *
 	 * @param listener callback accepting the applied change
@@ -124,7 +129,8 @@ public interface IConfigValue<T> {
 	Runnable addListener(IConfigValueChangeListener<T> listener);
 
 	/**
-	 * Add a listener that is called with all changes from a batch containing this config value.
+	 * Add a listener that is called with all effective-value changes from a batch containing this config value. Pending
+	 * changes do not invoke this listener.
 	 * <p>
 	 * Use this when the listener needs to observe other config values updated in the same batch.
 	 * See {@link IConfigValueBatchChangeListener} for callback execution and failure behavior.

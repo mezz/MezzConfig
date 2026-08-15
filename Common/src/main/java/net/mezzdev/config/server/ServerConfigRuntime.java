@@ -82,11 +82,16 @@ public final class ServerConfigRuntime {
 		PLAYER_EDIT_PERMISSIONS.clear();
 		UPDATE_REASSEMBLERS.clear();
 		getServerConfigManager().ifPresent(manager -> {
+			manager.onWorldStarted();
 			for (ConfigSchema schema : manager.getServerSchemas()) {
 				schema.loadIfNeeded();
 				SERVER_SCHEMA_VERSIONS.put(schema, schema.getChangeVersion());
 			}
 		});
+	}
+
+	public static void onClientWorldStarted() {
+		getClientConfigManager().ifPresent(ConfigManager::onWorldStarted);
 	}
 
 	public static void onServerStopped() {

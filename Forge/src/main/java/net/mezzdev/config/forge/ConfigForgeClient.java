@@ -56,6 +56,7 @@ public final class ConfigForgeClient {
 				ServerConfigRuntime.onClientTick();
 			}
 		});
+		MinecraftForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingIn event) -> ServerConfigRuntime.onClientWorldStarted());
 		MinecraftForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingOut event) -> ServerConfigRuntime.onClientDisconnect());
 	}
 }

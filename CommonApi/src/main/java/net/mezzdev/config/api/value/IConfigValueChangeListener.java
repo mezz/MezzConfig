@@ -1,7 +1,7 @@
 package net.mezzdev.config.api.value;
 
 /**
- * Listener for config value changes.
+ * Listener for effective config value changes.
  * <p>
  * Register your listener here: {@link IConfigValue#addListener(IConfigValueChangeListener)}.
  * The registration method returns a callback that unsubscribes the listener.
@@ -16,7 +16,7 @@ package net.mezzdev.config.api.value;
 @FunctionalInterface
 public interface IConfigValueChangeListener<T> {
 	/**
-	 * Called when a config value changes.
+	 * Called when a config value becomes effective.
 	 *
 	 * @param change the applied change
 	 *

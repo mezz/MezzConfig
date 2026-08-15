@@ -104,11 +104,11 @@ public interface IConfigSchema {
 	 * Apply several config value updates together.
 	 * <p>
 	 * Queue updates inside the callback. Queued values are snapshotted immediately and the complete batch is validated
-	 * before any values are changed. If validation succeeds, every changed value is updated and persistence is scheduled
-	 * before listeners are notified. If the callback throws, no queued updates are applied.
+	 * before any state changes. Saved values are persisted together. Values without a restart requirement become effective
+	 * immediately; restart-required values remain pending. If the callback throws, no queued updates are applied.
 	 *
 	 * @param updateBatch callback that queues updates
-	 * @return changes that were applied
+	 * @return saved-value changes that were applied
 	 *
 	 * @throws IllegalArgumentException if a value is invalid or does not belong to this schema
 	 * @throws IllegalStateException if this context-specific schema is currently inactive
@@ -142,7 +142,8 @@ public interface IConfigSchema {
 	CompletableFuture<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch);
 
 	/**
-	 * Add a listener that is called with every batch of changes applied to this schema.
+	 * Add a listener that is called with every batch of effective-value changes applied to this schema. Pending changes do
+	 * not invoke this listener.
 	 * See {@link IConfigValueBatchChangeListener} for callback execution and failure behavior.
 	 *
 	 * @param listener callback accepting the applied changes

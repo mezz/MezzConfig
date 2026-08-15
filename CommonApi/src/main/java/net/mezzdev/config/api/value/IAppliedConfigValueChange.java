@@ -7,11 +7,12 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * One config value change that has already been applied.
+ * One config value state change that has already been applied.
  * <p>
  * Get changes from {@link IConfigSchema#batchUpdate(Consumer)},
  * {@link IConfigValueChangeListener#onChange(IAppliedConfigValueChange)}, or
  * {@link IConfigValueBatchChangeListener#onChange(List)}.
+ * Batch update results describe saved values. Listener changes describe effective values.
  * Old and new values satisfy the immutable value contract of {@link IConfigValue}; built-in lists are unmodifiable
  * snapshots and cannot be used to mutate config state.
  *

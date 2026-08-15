@@ -43,6 +43,7 @@ public final class ConfigNeoForgeClient {
 			return true;
 		});
 		NeoForge.EVENT_BUS.addListener((ClientTickEvent.Post event) -> ServerConfigRuntime.onClientTick());
+		NeoForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingIn event) -> ServerConfigRuntime.onClientWorldStarted());
 		NeoForge.EVENT_BUS.addListener((ClientPlayerNetworkEvent.LoggingOut event) -> ServerConfigRuntime.onClientDisconnect());
 	}
 }

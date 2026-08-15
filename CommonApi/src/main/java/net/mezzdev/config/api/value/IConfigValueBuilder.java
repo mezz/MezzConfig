@@ -75,13 +75,13 @@ public interface IConfigValueBuilder<T> {
 	IConfigValueBuilder<T> setEditMode(ConfigValueEditMode editMode);
 
 	/**
-	 * Set the restart requirement hint for this value.
+	 * Set when saved changes to this value become effective.
 	 * <p>
-	 * Config editors can use this to explain when changed values take effect. MezzConfig still updates the value when
-	 * it changes through the API or config file. If this is not called, values use
-	 * {@link ConfigValueRestartRequirement#NONE}.
+	 * Until that lifecycle boundary, {@link IConfigValue#getValue()} retains the effective value and
+	 * {@link IConfigValue#getPendingValue()} returns the saved change. If this is not called, values use
+	 * {@link ConfigValueRestartRequirement#NONE} and update immediately.
 	 *
-	 * @param restartRequirement restart requirement hint for config editors
+	 * @param restartRequirement when saved changes become effective
 	 * @return this builder
 	 *
 	 * @since 0.1.0

@@ -5,7 +5,7 @@ import net.mezzdev.config.api.schema.IConfigSchema;
 import java.util.List;
 
 /**
- * Listener for a batch of config value changes.
+ * Listener for a batch of effective config value changes.
  * <p>
  * Register a schema-wide listener here: {@link IConfigSchema#addListener(IConfigValueBatchChangeListener)}.
  * Register a value-scoped listener here: {@link IConfigValue#addBatchListener(IConfigValueBatchChangeListener)}.
@@ -22,7 +22,7 @@ import java.util.List;
 @FunctionalInterface
 public interface IConfigValueBatchChangeListener {
 	/**
-	 * Called after all config values in the batch have changed.
+	 * Called after all effective values in the batch have changed.
 	 *
 	 * @param changes all changes applied in the batch
 	 *

@@ -648,6 +648,97 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void gameRestartValuePersistsPendingSelectionUntilNextSchemaLoad(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[category]",
+			"enabled = false"
+		));
+		Deque<Runnable> scheduledTasks = new ArrayDeque<>();
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigSchema schema = new ConfigSchema(
+			path,
+			List.of(builder),
+			(command, delay) -> {
+				scheduledTasks.add(command);
+				return CompletableFuture.completedFuture(null);
+			}
+		);
+		assertFalse(enabled.getValue());
+		assertFalse(enabled.getPendingValue());
+		AtomicInteger notifications = new AtomicInteger();
+		enabled.addListener(ignored -> notifications.incrementAndGet());
+		assertTrue(enabled.set(true));
+
+		assertFalse(enabled.getValue());
+		assertTrue(enabled.getPendingValue());
+		assertEquals(0, notifications.get());
+		runScheduledTasks(scheduledTasks);
+		assertTrue(Files.readString(path).contains("enabled = true"));
+
+		ConfigCategoryBuilder nextBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> nextEnabled = nextBuilder.addBoolean("enabled", true)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		createSchema(path, nextBuilder);
+
+		assertTrue(nextEnabled.getValue());
+		assertTrue(nextEnabled.getPendingValue());
+	}
+
+	@Test
+	public void worldRestartPromotesOnlyWorldRestartValues() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> worldValue = builder.addBoolean("worldValue", true)
+			.setRestartRequirement(ConfigValueRestartRequirement.WORLD_RESTART)
+			.build();
+		ConfigValue<Boolean> gameValue = builder.addBoolean("gameValue", true)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		List<String> changes = new ArrayList<>();
+		schema.addListener(applied -> changes.add(formatChanges(applied)));
+
+		assertTrue(worldValue.getValue());
+		assertTrue(worldValue.set(false));
+		assertTrue(gameValue.set(false));
+		schema.promotePendingValuesAfterWorldRestart();
+
+		assertFalse(worldValue.getValue());
+		assertFalse(worldValue.getPendingValue());
+		assertTrue(gameValue.getValue());
+		assertFalse(gameValue.getPendingValue());
+		assertEquals(List.of("worldValue: true -> false"), changes);
+	}
+
+	@Test
+	public void mixedBatchNotifiesOnlyValuesThatBecomeEffective() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> immediate = builder.addBoolean("immediate", true)
+			.build();
+		ConfigValue<Boolean> afterRestart = builder.addBoolean("afterRestart", false)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		List<String> listenerChanges = new ArrayList<>();
+		schema.addListener(changes -> listenerChanges.add(formatChanges(changes)));
+
+		List<? extends IAppliedConfigValueChange<?>> savedChanges = schema.batchUpdate(updater -> {
+			updater.set(immediate, false);
+			updater.set(afterRestart, true);
+		});
+
+		assertEquals(2, savedChanges.size());
+		assertFalse(immediate.getValue());
+		assertFalse(afterRestart.getValue());
+		assertTrue(afterRestart.getPendingValue());
+		assertEquals(List.of("immediate: true -> false"), listenerChanges);
+	}
+
+	@Test
 	public void layeredSchemaLoadsPlayerValuesOverPackDefaults(@TempDir Path tempDir) throws IOException {
 		Path defaultPath = tempDir.resolve("test.ini");
 		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("test.ini");
@@ -744,6 +835,9 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
 			.build();
+		ConfigValue<Boolean> afterRestart = builder.addBoolean("afterRestart", true)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
 		ConfigSchema schema = createRemoteServerSchema(builder);
 
 		assertEquals(ConfigSchemaType.SERVER, schema.getType());
@@ -754,6 +848,7 @@ public class ConfigSchemaTest {
 		schema.applyRemoteSnapshot(List.of(
 			new ServerConfigValueData("category", "enabled", "false"),
 			new ServerConfigValueData("category", "count", "3"),
+			new ServerConfigValueData("category", "afterRestart", "true", "false"),
 			new ServerConfigValueData("newerServerCategory", "newerServerValue", "ignored")
 		), true);
 
@@ -763,6 +858,8 @@ public class ConfigSchemaTest {
 		assertEquals(Optional.empty(), schema.getPath());
 		assertFalse(enabled.getValue());
 		assertEquals(3, count.getValue());
+		assertTrue(afterRestart.getValue());
+		assertFalse(afterRestart.getPendingValue());
 		assertThrows(IllegalStateException.class, () -> enabled.set(true));
 		assertFalse(enabled.getValue());
 

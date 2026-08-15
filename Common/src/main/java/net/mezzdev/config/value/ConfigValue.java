@@ -38,7 +38,8 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	private List<ConfigEditorCategory> editorCategories = List.of();
 	private @Nullable List<IConfigValueChangeListener<T>> listeners;
 	private @Nullable List<IConfigValueBatchChangeListener> batchListeners;
-	private volatile T currentValue;
+	private volatile T effectiveValue;
+	private volatile T pendingValue;
 	@Nullable
 	private ConfigSchema schema;
 
@@ -84,7 +85,8 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 			throw new IllegalArgumentException("Default value for '%s' is invalid: %s".formatted(this.name, defaultValue));
 		}
 		this.defaultValue = snapshotValue(this.serializer, defaultValue);
-		this.currentValue = this.defaultValue;
+		this.effectiveValue = this.defaultValue;
+		this.pendingValue = this.defaultValue;
 	}
 
 	@SuppressWarnings("unchecked")
@@ -179,11 +181,23 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		if (schema != null) {
 			return schema.getEffectiveValue(this);
 		}
-		return getValueWithoutLoading();
+		return getEffectiveValueWithoutLoading();
 	}
 
-	public T getValueWithoutLoading() {
-		return currentValue;
+	@Override
+	public T getPendingValue() {
+		if (schema != null) {
+			return schema.getPendingValue(this);
+		}
+		return getPendingValueWithoutLoading();
+	}
+
+	public T getEffectiveValueWithoutLoading() {
+		return effectiveValue;
+	}
+
+	public T getPendingValueWithoutLoading() {
+		return pendingValue;
 	}
 
 	@Override
@@ -223,12 +237,15 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 			return !schema.batchUpdate(updater -> updater.set(this, value))
 				.isEmpty();
 		}
+		T previousEffectiveValue = effectiveValue;
 		AppliedConfigValueChange<T> change = setWithoutNotifying(value);
 		if (change == null) {
 			return false;
 		}
 		markDirty();
-		notifyListeners(change);
+		if (!previousEffectiveValue.equals(effectiveValue)) {
+			notifyListeners(new AppliedConfigValueChange<>(this, previousEffectiveValue, effectiveValue));
+		}
 		return true;
 	}
 
@@ -251,16 +268,48 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 
 	@Nullable
 	AppliedConfigValueChange<T> setValidatedValueWithoutNotifying(T newValue) {
-		if (!currentValue.equals(newValue)) {
-			T oldValue = currentValue;
-			currentValue = newValue;
-			return new AppliedConfigValueChange<>(this, oldValue, currentValue);
+		if (!pendingValue.equals(newValue)) {
+			T oldValue = pendingValue;
+			pendingValue = newValue;
+			if (restartRequirement == ConfigValueRestartRequirement.NONE) {
+				effectiveValue = newValue;
+			}
+			return new AppliedConfigValueChange<>(this, oldValue, pendingValue);
 		}
 		return null;
 	}
 
 	public void resetToDefaultWithoutNotifying() {
-		currentValue = defaultValue;
+		pendingValue = defaultValue;
+		if (restartRequirement == ConfigValueRestartRequirement.NONE) {
+			effectiveValue = defaultValue;
+		}
+	}
+
+	public void resetAllToDefaultWithoutNotifying() {
+		effectiveValue = defaultValue;
+		pendingValue = defaultValue;
+	}
+
+	public @Nullable AppliedConfigValueChange<T> promotePendingValueWithoutNotifying() {
+		if (!effectiveValue.equals(pendingValue)) {
+			T oldValue = effectiveValue;
+			effectiveValue = pendingValue;
+			return new AppliedConfigValueChange<>(this, oldValue, effectiveValue);
+		}
+		return null;
+	}
+
+	public @Nullable AppliedConfigValueChange<T> setSynchronizedValuesWithoutNotifying(T effectiveValue, T pendingValue) {
+		T newEffectiveValue = snapshotUpdateValue(effectiveValue);
+		T newPendingValue = snapshotUpdateValue(pendingValue);
+		T oldEffectiveValue = this.effectiveValue;
+		this.effectiveValue = newEffectiveValue;
+		this.pendingValue = newPendingValue;
+		if (!oldEffectiveValue.equals(newEffectiveValue)) {
+			return new AppliedConfigValueChange<>(this, oldEffectiveValue, newEffectiveValue);
+		}
+		return null;
 	}
 
 	void notifyListeners(AppliedConfigValueChange<T> change) {

@@ -430,7 +430,7 @@ public final class ConfigSerializer {
 
 		T value = defaultValue;
 		if (!saveDefaults) {
-			value = configValue.getValueWithoutLoading();
+			value = configValue.getPendingValueWithoutLoading();
 		}
 		String valueString = ConfigFileValueAdapter.serialize(serializer, value);
 		serialized.add("\t%s = %s".formatted(name, valueString));

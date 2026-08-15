@@ -44,7 +44,7 @@ public class ConfigSerializerLoadSaveTest {
 	}
 
 	@Test
-	public void loadUpdatesValuesWithRestartRequirements(@TempDir Path tempDir) throws IOException {
+	public void loadStagesValuesWithRestartRequirements(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[current]",
@@ -55,7 +55,8 @@ public class ConfigSerializerLoadSaveTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertFalse(enabled.getValue());
+		assertTrue(enabled.getValue());
+		assertFalse(enabled.getPendingValue());
 	}
 
 	@Test

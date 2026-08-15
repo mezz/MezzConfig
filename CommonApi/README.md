@@ -235,7 +235,7 @@ both. If the serialized format changes without a storage name change, use a
 serializer that accepts both formats, or move to a new storage name and migrate
 from the old one.
 
-Values can also declare editor hints for integrations such as MezzConfigGui:
+Values can also declare editor metadata and restart behavior:
 
 ```java
 IConfigEditorCategoryBuilder quick = schemaBuilder.addEditorCategory("quick");
@@ -258,13 +258,9 @@ also be used as editor categories. Config editors should use
 `IConfigSchema.getEditorCategories()` as the category display order.
 `ConfigValueEditMode` describes when editors should save changes. Use
 `ConfigValueRestartRequirement.WORLD_RESTART` or
-`ConfigValueRestartRequirement.GAME_RESTART` only to explain when changed values
-take effect. This applies equally to server schemas: `WORLD_RESTART` means the
-mod should apply the new value on the next world/server load, while
-`GAME_RESTART` means the next client or dedicated-server process start.
-MezzConfig still persists and synchronizes the selected value immediately; mods
-that only apply a value at startup or world load should read it during that
-lifecycle.
+`ConfigValueRestartRequirement.GAME_RESTART` when a saved change must wait for
+that lifecycle boundary. `getValue()` continues to return the effective value;
+`getPendingValue()` returns the saved selection.
 
 Use a batch updater when several config values should change together:
 
@@ -275,8 +271,9 @@ List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(update
 });
 ```
 
-The batch is validated before any values are changed, and listeners are notified
-after all changed values have updated and persistence has been scheduled.
+The batch is validated before any values are changed. Persistence is scheduled
+for all saved changes, while listeners are notified only for values that became
+effective immediately.
 `IConfigValue.set(...)` returns `true` for a change and `false` for a valid
 unchanged value. It throws `IllegalArgumentException` for invalid values and
 `IllegalStateException` when a context-specific schema is inactive.
