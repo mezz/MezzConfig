@@ -4,7 +4,8 @@ import org.gradle.api.Action
 import org.gradle.api.GradleException
 import org.gradle.api.Task
 
-class VerifyJccReport : Action<Task> {
+// CompatibilityTask.fail delegates to ConsoleTool's System.exit in JCC 0.1.18.
+class FailOnJccErrors : Action<Task> {
     override fun execute(task: Task) {
         val compatibilityTask = task as CompatibilityTask
         val report = JsonSlurper().parse(compatibilityTask.output.get().asFile)
@@ -27,7 +28,6 @@ plugins {
     id("maven-publish")
     id("net.neoforged.jarcompatibilitychecker")
 }
-
 
 // gradle.properties
 val minecraftVersion: String by extra
@@ -112,22 +112,19 @@ tasks.withType<JavaCompile> {
     }
 }
 
-tasks.named<CompatibilityTask>("checkJarCompatibility") {
+val checkJarCompatibility = tasks.named<CompatibilityTask>("checkJarCompatibility") {
     group = "verification"
     description = "Checks CommonApi API compatibility with the first released baseline."
-    dependsOn(tasks.jar)
 
     baseJar.set(apiBaselineArchive)
-    isAPI.set(true)
-    isBinary.set(false)
-    doLast(VerifyJccReport())
+    doLast(FailOnJccErrors())
     onlyIf("CommonApi $apiBaselineVersion has been published") {
         baseJar.get().asFile.exists()
     }
 }
 
 tasks.check {
-    dependsOn(tasks.named("checkJarCompatibility"))
+    dependsOn(checkJarCompatibility)
 }
 
 publishing {

@@ -18,7 +18,7 @@ plugins {
     id("com.dorongold.task-tree") version("4.0.0")
 
     // https://github.com/neoforged/JarCompatibilityChecker
-    id("net.neoforged.jarcompatibilitychecker") version("0.1.16") apply(false)
+    id("net.neoforged.jarcompatibilitychecker") version("0.1.18") apply(false)
 
     // https://maven.fabricmc.net/fabric-loom/fabric-loom.gradle.plugin/maven-metadata.xml
     id("fabric-loom") version("1.11.0-alpha.26") apply(false)
