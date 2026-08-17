@@ -1,12 +1,10 @@
 package net.mezzdev.config.neoforge;
 
 import net.neoforged.api.distmarker.Dist;
-import net.mezzdev.config.plugin.ServerConfigPluginLoader;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
@@ -37,12 +35,6 @@ public final class ConfigNeoForge {
 		});
 		if (dist.isClient()) {
 			ConfigNeoForgeClient.register();
-		} else {
-			ServerConfigPluginLoader.createServerConfigManager(
-				"MezzConfig Server File Watcher",
-				FMLPaths.CONFIGDIR.get(),
-				ConfigNeoForgePluginFinder.getServerPlugins()
-			);
 		}
 	}
 }

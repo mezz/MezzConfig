@@ -1,7 +1,5 @@
 package net.mezzdev.config.forge;
 
-import net.mezzdev.config.plugin.ConfigPluginLoader;
-import net.mezzdev.config.plugin.ServerConfigPluginLoader;
 import net.mezzdev.config.server.ServerConfigNetworking;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.minecraft.client.Minecraft;
@@ -13,10 +11,6 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.network.Channel;
 import net.minecraftforge.network.NetworkDirection;
-import net.minecraftforge.fml.loading.FMLLoader;
-import net.minecraftforge.fml.loading.FMLPaths;
-
-import java.nio.file.Path;
 
 public final class ConfigForgeClient {
 	private ConfigForgeClient() {
@@ -24,19 +18,6 @@ public final class ConfigForgeClient {
 	}
 
 	public static void register(ConfigForgeNetwork network) {
-		Path configRootDir = FMLPaths.CONFIGDIR.get();
-		ServerConfigPluginLoader.createIntegratedServerConfigManager(
-			"MezzConfig Integrated Server File Watcher",
-			configRootDir,
-			ConfigForgePluginFinder.getServerPlugins()
-		);
-		ConfigPluginLoader.createConfigManager(
-			"MezzConfig File Watcher",
-			configRootDir,
-			!FMLLoader.isProduction(),
-			ConfigForgePluginFinder.getPlugins(),
-			ConfigForgePluginFinder.getServerPlugins()
-		);
 		ServerConfigNetworking.setClientSender(payload -> {
 			ClientPacketListener listener = Minecraft.getInstance().getConnection();
 			if (listener == null) {

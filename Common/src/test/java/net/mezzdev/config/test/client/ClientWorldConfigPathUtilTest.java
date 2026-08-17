@@ -1,14 +1,12 @@
-package net.mezzdev.config.test.plugin;
+package net.mezzdev.config.test.client;
 
-import net.mezzdev.config.plugin.ClientWorldConfigPathUtil;
-import net.mezzdev.config.util.PlayerConfigPathUtil;
+import net.mezzdev.config.client.ClientWorldConfigPathUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -83,26 +81,17 @@ public class ClientWorldConfigPathUtilTest {
 
 	@Test
 	public void getServerPathPreservesExistingLegacyPath() throws IOException {
-		// Setup: an old JEI-style hashed server path already exists under the plugin config directory.
+		// Setup: an old JEI-style hashed server path already exists under the config directory.
 		String serverName = "Test Server";
 		String serverAddress = "play.example.com";
 		Path legacyPath = getLegacyServerPath(serverName, serverAddress);
 		Files.createDirectories(tempDir.resolve(legacyPath));
 
-		// Operation: build the client-world config directory with a plugin root available for legacy detection.
+		// Operation: build the client-world config directory with a config root available for legacy detection.
 		Path path = ClientWorldConfigPathUtil.getServerPath(tempDir, serverName, serverAddress);
 
 		// Assertions: the existing legacy path wins so migrated projects do not silently split config state.
 		assertEquals(legacyPath, path);
-	}
-
-	@Test
-	public void playerConfigDirectoryUsesStableProfileId() {
-		UUID playerId = UUID.fromString("12345678-1234-1234-1234-123456789abc");
-
-		Path path = PlayerConfigPathUtil.getPlayerConfigDir(tempDir, playerId);
-
-		assertEquals(tempDir.resolve("players").resolve(playerId.toString()), path);
 	}
 
 	@Test

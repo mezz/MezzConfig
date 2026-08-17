@@ -79,6 +79,7 @@ public interface IConfigValue<T> {
 
 	/**
 	 * Get the lifecycle boundary when saved changes become effective.
+	 *
 	 * @since 0.1.0
 	 */
 	ConfigValueRestartRequirement getRestartRequirement();
@@ -109,7 +110,7 @@ public interface IConfigValue<T> {
 	 *
 	 * @throws IllegalArgumentException if the value is invalid
 	 * @throws IllegalStateException if this value's context-specific schema is currently inactive
-	 * @throws IllegalStateException if this value belongs to a server schema; use
+	 * @throws IllegalStateException if this value belongs to a server-owned world schema; use
 	 * {@link IConfigSchema#requestBatchUpdate(Consumer)} instead
 	 *
 	 * @since 0.1.0

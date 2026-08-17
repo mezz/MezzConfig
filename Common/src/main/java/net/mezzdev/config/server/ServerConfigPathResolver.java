@@ -9,19 +9,22 @@ import java.util.Optional;
 public record ServerConfigPathResolver(
 	ServerConfigKey key,
 	Path relativeConfigFile,
-	boolean authoritative
+	Path defaultPath
 ) implements ConfigSchemaPathResolver {
 	public ServerConfigPathResolver {
 		key = ErrorUtil.checkNotNull(key, "key");
 		relativeConfigFile = ErrorUtil.checkNotNull(relativeConfigFile, "relativeConfigFile");
+		defaultPath = ErrorUtil.checkNotNull(defaultPath, "defaultPath");
 	}
 
 	@Override
 	public Optional<Path> resolvePath() {
-		if (!authoritative) {
-			return Optional.empty();
-		}
 		return ServerConfigRuntime.getWorldConfigRoot()
 			.map(root -> root.resolve(key.modId()).resolve(relativeConfigFile).normalize());
+	}
+
+	@Override
+	public Optional<Path> resolveDefaultPath() {
+		return ServerConfigRuntime.getWorldConfigRoot().map(ignored -> defaultPath);
 	}
 }

@@ -5,7 +5,7 @@ import org.jetbrains.annotations.ApiStatus;
 /**
  * Builds an editor-only category.
  * <p>
- * An instance is returned when your plugin creates an editor-only category here:
+ * An instance is returned when a schema creates an editor-only category here:
  * {@link IConfigSchemaBuilder#addEditorCategory(String)}.
  * Storage category builders from {@link IConfigSchemaBuilder#addCategory(String)} can also be used as editor
  * categories.

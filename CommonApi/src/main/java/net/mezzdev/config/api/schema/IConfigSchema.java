@@ -1,6 +1,6 @@
 package net.mezzdev.config.api.schema;
 
-import net.mezzdev.config.api.files.IConfigManager;
+import net.mezzdev.config.api.IConfigManager;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IConfigValue;
@@ -36,18 +36,24 @@ public interface IConfigSchema {
 	String getModId();
 
 	/**
-	 * Get the ownership and activation model for this schema.
+	 * Get who owns this schema's effective values.
 	 *
-	 * @since 0.2.0
+	 * @since 0.3.0
 	 */
-	ConfigSchemaType getType();
+	ConfigOwnership getOwnership();
+
+	/**
+	 * Get the context that selects this schema's backing file.
+	 *
+	 * @since 0.3.0
+	 */
+	ConfigScope getScope();
 
 	/**
 	 * Return whether this schema currently has effective values for the current context.
 	 * <p>
-	 * Always-active client schemas return {@code true}. Client-world schemas return {@code true} while connected to a
-	 * world or server. Server schemas return {@code true} on the active server and after a client receives the server's
-	 * authoritative snapshot.
+	 * Installation-scoped schemas are always active. World-scoped schemas are active while a world is available. A
+	 * server-owned world schema is also active on a client after it receives the server's authoritative snapshot.
 	 *
 	 * @since 0.2.0
 	 */
@@ -56,9 +62,9 @@ public interface IConfigSchema {
 	/**
 	 * Return whether the local user can currently request edits to this schema.
 	 * <p>
-	 * Active client-owned schemas are editable. A synchronized server schema is editable only when the server reported
-	 * that the local player has its operator permission level. The server checks permission again for every request, so
-	 * this is a presentation hint rather than an authorization boundary.
+	 * Active client-owned and locally hosted server schemas are editable. A synchronized server schema is editable only
+	 * when the server reported that the local player has its operator permission level. The server checks permission again
+	 * for every request, so this is a presentation hint rather than an authorization boundary.
 	 *
 	 * @since 0.2.0
 	 */
@@ -67,10 +73,9 @@ public interface IConfigSchema {
 	/**
 	 * Get the current path of this config schema.
 	 * <p>
-	 * Normal client schemas always have a player-specific path, although the file is not created until the player changes
-	 * a value. Context-specific schemas, such as client-world schemas, return an empty optional when there is no active
-	 * backing file for the current game state. A synchronized remote server schema also returns an empty optional because
-	 * its backing file belongs to the server; use {@link #isActive()} to distinguish that from an inactive schema.
+	 * Installation-scoped schemas always have a path. World-scoped schemas return an empty optional when no world is
+	 * available. A synchronized remote server schema also returns an empty optional because its backing file belongs to
+	 * the server; use {@link #isActive()} to distinguish that from an inactive schema.
 	 * <p>
 	 * Note that config values will read from this file automatically,
 	 * and updating config values will save the file automatically,
@@ -112,7 +117,8 @@ public interface IConfigSchema {
 	 *
 	 * @throws IllegalArgumentException if a value is invalid or does not belong to this schema
 	 * @throws IllegalStateException if this context-specific schema is currently inactive
-	 * @throws IllegalStateException if this is a server schema; use {@link #requestBatchUpdate(Consumer)} instead
+	 * @throws IllegalStateException if this is a server-owned world schema; use
+	 * {@link #requestBatchUpdate(Consumer)} instead
 	 *
 	 * @since 0.1.0
 	 */
@@ -123,12 +129,13 @@ public interface IConfigSchema {
 	 * Request several config value updates together.
 	 * <p>
 	 * For client-owned schemas, this has the same validation, persistence, and listener behavior as
-	 * {@link #batchUpdate(Consumer)} and returns an already-completed future. For a server schema, the values are sent to
-	 * the server without changing the local snapshot. The future completes after the server applies the accepted request
-	 * and sends its authoritative result. It completes exceptionally if the request cannot be sent, permission is denied,
-	 * the server rejects a value, or the server does not respond before the implementation's bounded request timeout.
+	 * {@link #batchUpdate(Consumer)} and returns an already-completed future. The same applies to installation-scoped
+	 * server-owned schemas. For a server-owned world schema, the values are sent to the server without changing the local
+	 * snapshot. The future completes after the server applies the accepted request and sends its authoritative result. It
+	 * completes exceptionally if the request cannot be sent, permission is denied, the server rejects a value, or the
+	 * server does not respond before the implementation's bounded request timeout.
 	 * <p>
-	 * Config editors should prefer this method so the same editing flow works for both client- and server-owned schemas.
+	 * Config editors should prefer this method so the same editing flow works for every schema.
 	 * Queued values are snapshotted and locally validated before the request is sent.
 	 *
 	 * @param updateBatch callback that queues updates

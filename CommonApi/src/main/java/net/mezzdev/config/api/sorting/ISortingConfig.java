@@ -1,6 +1,6 @@
 package net.mezzdev.config.api.sorting;
 
-import net.mezzdev.config.api.plugin.IConfigRegistration;
+import net.mezzdev.config.api.IConfigRegistration;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Collection;

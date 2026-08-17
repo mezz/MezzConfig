@@ -58,8 +58,22 @@ public final class ConfigSerializer {
 			}
 		}
 	);
+	public static final Settings DEFAULT_SETTINGS = new Settings(true, List.of());
 
 	private ConfigSerializer() {}
+
+	public record Settings(
+		boolean localizeComments,
+		List<String> headerComments
+	) {
+		public Settings {
+			headerComments = List.copyOf(headerComments);
+		}
+
+		public static Settings withLiteralComments(List<String> headerComments) {
+			return new Settings(false, headerComments);
+		}
+	}
 
 	private static String getLineErrorString(Path path, int lineNumber, String line, String errorMessage) {
 		return """
@@ -85,20 +99,29 @@ public final class ConfigSerializer {
 		Path path,
 		List<ConfigCategory> categories
 	) throws IOException {
-		return loadWithoutNotifying(path, categories, true);
+		return loadWithoutNotifying(path, categories, true, DEFAULT_SETTINGS);
 	}
 
 	public static List<AppliedConfigValueChange<?>> loadWithoutNotifyingUnconditionally(
 		Path path,
 		List<ConfigCategory> categories
 	) throws IOException {
-		return loadWithoutNotifying(path, categories, false);
+		return loadWithoutNotifyingUnconditionally(path, categories, DEFAULT_SETTINGS);
+	}
+
+	public static List<AppliedConfigValueChange<?>> loadWithoutNotifyingUnconditionally(
+		Path path,
+		List<ConfigCategory> categories,
+		Settings settings
+	) throws IOException {
+		return loadWithoutNotifying(path, categories, false, settings);
 	}
 
 	private static List<AppliedConfigValueChange<?>> loadWithoutNotifying(
 		Path path,
 		List<ConfigCategory> categories,
-		boolean skipFilesJustSaved
+		boolean skipFilesJustSaved,
+		Settings settings
 	) throws IOException {
 		if (skipFilesJustSaved) {
 			FileTime lastModifiedTime = Files.getLastModifiedTime(path);
@@ -115,7 +138,7 @@ public final class ConfigSerializer {
 			contents = ConfigFileReader.read(path);
 		} catch (ConfigFileReader.MalformedFileException e) {
 			LOGGER.error("Malformed config file '{}': {}", path, e.getMessage());
-			recoverMalformedFile(path, categories, new FailureFingerprint(e.fingerprint()), 1);
+			recoverMalformedFile(path, categories, new FailureFingerprint(e.fingerprint()), 1, settings);
 			return List.of();
 		}
 		List<String> lines = contents.lines();
@@ -228,7 +251,13 @@ public final class ConfigSerializer {
 			}
 		}
 		if (problems.count() > 0) {
-			recoverMalformedFile(path, categories, new FailureFingerprint(contents.fingerprint()), problems.count());
+			recoverMalformedFile(
+				path,
+				categories,
+				new FailureFingerprint(contents.fingerprint()),
+				problems.count(),
+				settings
+			);
 		} else {
 			recoveryAttempts.remove(path.toAbsolutePath().normalize());
 		}
@@ -248,7 +277,8 @@ public final class ConfigSerializer {
 		Path path,
 		List<ConfigCategory> categories,
 		FailureFingerprint fingerprint,
-		int problemCount
+		int problemCount,
+		Settings settings
 	) {
 		Path normalizedPath = path.toAbsolutePath().normalize();
 		synchronized (recoveryAttempts) {
@@ -266,7 +296,7 @@ public final class ConfigSerializer {
 				problemCount,
 				backup
 			);
-			save(path, categories);
+			save(path, categories, settings);
 			recoveryAttempts.remove(normalizedPath, fingerprint);
 		} catch (IOException | RuntimeException e) {
 			LOGGER.error("Could not safely back up and correct malformed config file '{}'; leaving it unchanged.", path, e);
@@ -370,23 +400,55 @@ public final class ConfigSerializer {
 	}
 
 	public static void save(Path path, List<ConfigCategory> categories) throws IOException {
-		save(path, categories, false);
+		save(path, categories, false, DEFAULT_SETTINGS);
 	}
 
 	public static void saveDefaults(Path path, List<ConfigCategory> categories) throws IOException {
-		save(path, categories, true);
+		saveDefaults(path, categories, DEFAULT_SETTINGS);
 	}
 
-	private static void save(Path path, List<ConfigCategory> categories, boolean saveDefaults) throws IOException {
+	public static void saveDefaults(
+		Path path,
+		List<ConfigCategory> categories,
+		Settings settings
+	) throws IOException {
+		save(path, categories, true, settings);
+	}
+
+	public static void save(
+		Path path,
+		List<ConfigCategory> categories,
+		Settings settings
+	) throws IOException {
+		save(path, categories, false, settings);
+	}
+
+	private static void save(
+		Path path,
+		List<ConfigCategory> categories,
+		boolean saveDefaults,
+		Settings settings
+	) throws IOException {
 		List<String> serialized = new ArrayList<>();
+		for (String headerComment : settings.headerComments()) {
+			serialized.add("# " + headerComment);
+		}
+		if (!settings.headerComments().isEmpty()) {
+			serialized.add("");
+		}
 		categories.forEach(category -> {
-			serializeCategory(serialized, category, saveDefaults);
+			serializeCategory(serialized, category, saveDefaults, settings);
 			serialized.add("");
 		});
 		LOGGER.debug("Saving config file: {}", path);
 		ConfigFileUtil.writeUsingTempFile(path, serialized);
-		FileTime lastModifiedTime = Files.getLastModifiedTime(path);
-		saveTimes.put(path, lastModifiedTime);
+		try {
+			FileTime lastModifiedTime = Files.getLastModifiedTime(path);
+			saveTimes.put(path, lastModifiedTime);
+		} catch (IOException e) {
+			saveTimes.remove(path);
+			LOGGER.warn("Saved config file '{}' but could not record its modified time.", path, e);
+		}
 	}
 
 	public static boolean canLocalizeComments() {
@@ -399,11 +461,16 @@ public final class ConfigSerializer {
 			language.has(CONFIG_REQUIRES_GAME_RESTART_KEY);
 	}
 
-	private static void serializeCategory(List<String> serialized, ConfigCategory category, boolean saveDefaults) {
-		addLocalizedNameAndDescription(serialized, category.getLocalizationKey(), "");
+	private static void serializeCategory(
+		List<String> serialized,
+		ConfigCategory category,
+		boolean saveDefaults,
+		Settings settings
+	) {
+		addNameAndDescription(serialized, category.getLocalizationKey(), "", settings);
 		serialized.add("[%s]".formatted(category.getName()));
 		for (ConfigValue<?> value : category.getConfigValues()) {
-			serializeConfigValue(serialized, value, saveDefaults);
+			serializeConfigValue(serialized, value, saveDefaults, settings);
 			serialized.add("");
 		}
 	}
@@ -411,22 +478,28 @@ public final class ConfigSerializer {
 	private static <T> void serializeConfigValue(
 		List<String> serialized,
 		ConfigValue<T> configValue,
-		boolean saveDefaults
+		boolean saveDefaults,
+		Settings settings
 	) {
 		String name = configValue.getName();
 		IConfigValueSerializer<T> serializer = configValue.getSerializer();
 
-		addLocalizedNameAndDescription(serialized, configValue.getLocalizationKey(), "\t");
+		addNameAndDescription(serialized, configValue.getLocalizationKey(), "\t", settings);
 
-		String validValues = getLocalizedComment(CONFIG_VALUE_VALUES_KEY, "Valid Values: %s", getConfigFileValidValuesDescription(serializer));
+		String validValues = getComment(
+			CONFIG_VALUE_VALUES_KEY,
+			"Valid Values: %s",
+			getConfigFileValidValuesDescription(serializer),
+			settings
+		);
 		addCommentedStrings(serialized, validValues);
 
 		T defaultValue = configValue.getDefaultValue();
 		String defaultValueSerialized = ConfigFileValueAdapter.serialize(serializer, defaultValue);
-		String defaultValueString = getLocalizedComment(CONFIG_DEFAULT_VALUE_KEY, "Default Value: %s", defaultValueSerialized);
+		String defaultValueString = getComment(CONFIG_DEFAULT_VALUE_KEY, "Default Value: %s", defaultValueSerialized, settings);
 		addCommentedStrings(serialized, defaultValueString);
 
-		addRestartRequirementComment(serialized, configValue);
+		addRestartRequirementComment(serialized, configValue, settings);
 
 		T value = defaultValue;
 		if (!saveDefaults) {
@@ -445,7 +518,17 @@ public final class ConfigSerializer {
 		return serializer.getValidValuesDescription();
 	}
 
-	private static void addLocalizedNameAndDescription(List<String> serialized, String localizationKey, String indentation) {
+	private static void addNameAndDescription(
+		List<String> serialized,
+		String localizationKey,
+		String indentation,
+		Settings settings
+	) {
+		if (!settings.localizeComments()) {
+			addCommentedStrings(serialized, "Name: " + localizationKey, indentation);
+			addCommentedStrings(serialized, "Description: " + localizationKey + ".description", indentation);
+			return;
+		}
 		Component nameComponent = Component.translatable(localizationKey);
 		String localizedName = getLocalizedComment(CONFIG_NAME_KEY, "Name: %s", nameComponent.getString());
 		addCommentedStrings(serialized, localizedName, indentation);
@@ -455,25 +538,50 @@ public final class ConfigSerializer {
 		addCommentedStrings(serialized, description, indentation);
 	}
 
-	private static void addRestartRequirementComment(List<String> serialized, ConfigValue<?> configValue) {
+	private static void addRestartRequirementComment(
+		List<String> serialized,
+		ConfigValue<?> configValue,
+		Settings settings
+	) {
 		ConfigValueRestartRequirement restartRequirement = configValue.getRestartRequirement();
 		switch (restartRequirement) {
 			case NONE -> {}
 			case WORLD_RESTART -> {
-				String requiresRestart = getLocalizedComment(
+				String requiresRestart = getComment(
 					CONFIG_REQUIRES_WORLD_RESTART_KEY,
-					"Requires a world restart to take effect."
+					"Requires a world restart to take effect.",
+					settings
 				);
 				addCommentedStrings(serialized, requiresRestart);
 			}
 			case GAME_RESTART -> {
-				String requiresRestart = getLocalizedComment(
+				String requiresRestart = getComment(
 					CONFIG_REQUIRES_GAME_RESTART_KEY,
-					"Requires a game restart to take effect."
+					"Requires a game restart to take effect.",
+					settings
 				);
 				addCommentedStrings(serialized, requiresRestart);
 			}
 		}
+	}
+
+	private static String getComment(String translationKey, String fallback, Settings settings) {
+		if (settings.localizeComments()) {
+			return getLocalizedComment(translationKey, fallback);
+		}
+		return fallback;
+	}
+
+	private static String getComment(
+		String translationKey,
+		String fallbackFormat,
+		String value,
+		Settings settings
+	) {
+		if (settings.localizeComments()) {
+			return getLocalizedComment(translationKey, fallbackFormat, value);
+		}
+		return fallbackFormat.formatted(value);
 	}
 
 	private static String getLocalizedComment(String translationKey, String fallback) {

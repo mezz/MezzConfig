@@ -13,11 +13,8 @@
 
   "environment": "*",
   "entrypoints": {
-    "mezz_config_plugin": [
-      "net.mezzdev.config.test.fabric.FabricTestConfigPlugin"
-	],
-	"mezz_config_server_plugin": [
-	  "net.mezzdev.config.test.fabric.FabricTestConfigPlugin"
+	"main": [
+	  "net.mezzdev.config.test.fabric.FabricTestMod"
     ]
   },
 

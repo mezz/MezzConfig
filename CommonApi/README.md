@@ -1,68 +1,69 @@
 # MezzConfig API
 
-MezzConfig lets mods register lightweight client-owned config schemas,
-server-authoritative config schemas, and string-backed client sort orders
-through loader-discovered plugins.
+MezzConfig lets mods directly create typed client-owned and server-owned config
+schemas, plus string-backed client sort orders.
 
-## Registering a plugin
+## Registering configs
 
-Implement `IConfigPlugin`.
+Create one registration for the owning mod, declare values, and build the
+schema before consuming them:
 
-- Forge and NeoForge discover plugins annotated with `@ConfigPlugin`; the
-  plugin class must have a public no-argument constructor.
-- Fabric discovers plugins from the `mezz_config_plugin` entrypoint in
-  `fabric.mod.json`.
+```java
+IConfigRegistration configs = Configs.forMod("example_mod");
+IConfigSchemaBuilder builder = configs.createClientSchemaBuilder(
+	"integrations.ini",
+	"example_mod.config.integrations"
+);
+IConfigValue<Boolean> enableIntegration = builder
+	.addCategory("general")
+	.addBoolean("enableIntegration", true)
+	.build();
+IConfigSchema schema = builder.build();
+```
 
-The plugin's `getModId()` owns the config subdirectory. During
-`registerConfigFiles(...)`, use `IConfigRegistration` to create schema builders
-or sorting configs.
+`Configs.forMod(...)` uses the conventional `config` directory. Its overload
+accepting a `Path` supports tests or applications with a different config root.
+`build()` loads an installation-scoped schema before it returns, so its values
+can be consumed immediately.
 
-Client config plugins are loaded only on the physical client, so they may use
-client-only classes.
+Build schemas from your mod's primary initializer or mod constructor, before
+client setup. MezzConfigGUI creates Forge and NeoForge's automatic config-screen
+factories during client setup. A schema built later remains registered and usable
+through MezzConfig, but it is not included in those automatically generated
+screens.
 
-For server-authoritative settings, implement `IServerConfigPlugin` as well as,
-or instead of, `IConfigPlugin`.
+The builder factory selects who owns the values:
 
-- Forge and NeoForge discover server plugins annotated with
-  `@ServerConfigPlugin`.
-- Fabric discovers them from the `mezz_config_server_plugin` entrypoint.
+- `createClientSchemaBuilder(...)` creates locally owned client settings.
+- `createServerSchemaBuilder(...)` creates server-owned settings.
 
-Server plugins load on dedicated servers and clients. Their registration code
-and referenced classes must therefore be safe to load without client-only
-Minecraft classes. A common-safe class may implement both plugin interfaces;
-on Forge and NeoForge, annotate it with both annotations, and on Fabric list it
-under both entrypoint keys.
+Both builders use `ConfigScope.INSTALLATION` by default. Installation schemas
+use one local file and are not synchronized:
 
-A physical client may invoke server registration separately to construct its
-synchronized client view and its integrated-server authoritative state. Keep
-registration repeatable and limited to declaring schemas; do not use one-time
-side effects or guards that skip a later registration call.
+```text
+config/<mod-id>/client/<file-name>
+config/<mod-id>/server/<file-name>
+```
+
+Call `setScope(ConfigScope.WORLD)` before `build()` when values belong to a
+world. Ownership and scope are independent: a client-owned world schema stores
+local preferences separately for each singleplayer world or multiplayer
+server, while a server-owned world schema is authoritative for the active world
+and synchronized to connected clients.
 
 ## Config schemas
 
-Use `IConfigRegistration.createSchemaBuilder(...)` to create a schema backed by
-a config file. Use `createClientWorldSchemaBuilder(...)` when the values should
-be separate for each singleplayer world or multiplayer server. Schemas contain
-storage categories, and categories contain config values.
-
-Normal schemas use the registered file as a modpack-owned default and keep each
-player's choices in a separate profile directory:
+Schemas contain storage categories, and categories contain config values.
+Client-owned world schemas use these locations:
 
 ```text
-config/<mod-id>/<file-name>                         # pack default
-config/<mod-id>/players/<profile-uuid>/<file-name>  # player choices
+config/<mod-id>/client/world/default/<file-name>       # distributable default
+config/<mod-id>/client/world/local/<world>/<file-name> # singleplayer world
+config/<mod-id>/client/world/server/<server>/<file-name> # multiplayer server
 ```
 
-MezzConfig generates the default file when it is missing. A modpack can edit
-that file, remove values it does not want to customize, and distribute it
-without including the `players` directory. At runtime, declared code defaults
-are loaded first, then the pack default, then the player's file. The player
-file is created only after a player changes a value, and from that point it
-takes precedence so a pack update cannot overwrite the player's choices.
-
-Client-world schemas follow the same rule. Their distributable defaults are in
-`config/<mod-id>/world/default`, while profile-specific values remain separated
-under `players/<profile-uuid>/world/local` or `players/<profile-uuid>/world/server`.
+MezzConfig generates a missing default file. Declared code defaults are loaded
+first, followed by the distributable default and then the active world's file.
 
 ### Malformed-file recovery
 
@@ -81,7 +82,7 @@ backup or repeat a failed correction attempt. Correction uses the same atomic
 replacement path as ordinary saves.
 
 Only the file containing the problem is replaced. In particular, recovery of a
-player, client-world, or world-server overlay does not modify its distributable
+client-world or world-server file does not modify its distributable
 pack default. Ordinary filesystem read/open failures are treated as potentially
 transient: they are diagnosed, but the path is not backed up, replaced, or
 deleted. File-watcher reloads and delayed saves are serialized per schema so
@@ -89,7 +90,8 @@ they cannot observe a half-written correction.
 
 ### Server-authoritative schemas
 
-Use `IServerConfigRegistration.createServerSchemaBuilder(...)` for settings
+Use `IConfigRegistration.createServerSchemaBuilder(...)` with
+`setScope(ConfigScope.WORLD)` for settings
 whose effective value is owned by the server. This is distinct from a
 client-world schema: a client-world schema merely selects a different local
 preference file for each connection, while a server schema is loaded, validated,
@@ -98,7 +100,7 @@ persisted, and authorized by the server.
 Server schemas use these locations:
 
 ```text
-config/<mod-id>/server/default/<file-name>  # distributable default
+config/<mod-id>/server/world/default/<file-name>  # distributable default
 <world>/serverconfig/<mod-id>/<file-name>   # active world's authoritative values
 ```
 
@@ -106,8 +108,6 @@ The world file is created when the server starts. Declared code defaults are
 loaded first, then the distributable default, then the world file. Connected
 clients do not read either server file; they receive the server's complete
 effective snapshot in memory when they join and whenever the values change.
-Integrated servers likewise keep their authoritative schema state separate
-from the client-facing snapshot.
 Editing the world file is detected and synchronized automatically. Large
 snapshots and update requests are split into bounded network fragments and
 reassembled before the complete batch is validated or applied. The internal
@@ -135,7 +135,7 @@ CompletableFuture<Void> result = schema.requestBatchUpdate(updater -> {
 ```
 
 For client schemas, the future is already complete after the normal local
-update. For server schemas, current values remain unchanged until an accepted
+update. For remote server-owned world schemas, current values remain unchanged until an accepted
 request returns in an authoritative snapshot. The future completes
 exceptionally when the player lacks permission, a value is rejected, the
 connection closes, a send fails, the server does not support the request, or no
@@ -143,7 +143,7 @@ response arrives within 15 seconds. At most 128 remote update requests may be
 pending at once. Every synchronized batch is fully decoded and validated before
 any value changes; if any known value is invalid, none of that batch is applied.
 Direct `IConfigValue.set(...)` and `IConfigSchema.batchUpdate(...)` calls are rejected
-for server schemas so an integrated client cannot bypass server authority.
+for server-owned world schemas so an integrated client cannot bypass server authority.
 
 The server-config channel is optional. Connecting to a server without it still
 succeeds; an attempted remote edit fails through its future. The current
@@ -225,7 +225,7 @@ integrations can group schemas by mod and create default config screens without
 adding GUI-specific API to MezzConfig.
 
 Generated config screens can get the active config manager from
-`net.mezzdev.config.api.files.ConfigManagers.getConfigManager()`.
+`Configs.getConfigManager()`.
 
 Use value legacy names when storage names change. If a value moved from another
 storage category, declare the old category and value name on that value. If
@@ -296,10 +296,9 @@ Use `IConfigRegistration.createSortingConfig(...)` for string-backed sort-order
 files. Saved sort orders can either preserve missing values by appending them
 from the default comparator, or allow values to be removed.
 
-Sort-order files use the same pack-default and profile-specific locations as
-normal schemas. The default file is generated the first time the complete set
-of sortable values is available; later user changes are written only to the
-profile-specific file.
+Sort-order files are installation-scoped under
+`config/<mod-id>/client/<file-name>`. The file is generated the first time the
+complete set of sortable values is available.
 
 Sortable values must be effectively immutable with stable equality and hash
 codes. Sorting methods return unmodifiable, duplicate-free snapshots and

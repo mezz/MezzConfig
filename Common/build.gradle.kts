@@ -102,6 +102,7 @@ tasks.test {
     include(
         "net/mezzdev/config/test/**",
         "net/mezzdev/config/file/**",
+        "net/mezzdev/config/registration/**",
         "net/mezzdev/config/server/**"
     )
     outputs.upToDateWhen { false }

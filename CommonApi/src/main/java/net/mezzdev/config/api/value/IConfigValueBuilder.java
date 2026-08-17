@@ -9,7 +9,7 @@ import java.util.function.Function;
 /**
  * Builds one config value.
  * <p>
- * An instance is returned when your plugin creates a config value here:
+ * An instance is returned when a config category creates a value here:
  * {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)}.
  *
  * @param <T> effectively immutable value type with stable equality

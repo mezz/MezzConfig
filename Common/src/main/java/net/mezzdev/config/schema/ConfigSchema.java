@@ -2,13 +2,13 @@ package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
-import net.mezzdev.config.api.schema.ConfigSchemaType;
+import net.mezzdev.config.api.schema.ConfigOwnership;
+import net.mezzdev.config.api.schema.ConfigScope;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.file.ConfigSerializer;
-import net.mezzdev.config.file.IConfigFileRegistrar;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigValueData;
@@ -24,6 +24,7 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -49,7 +50,9 @@ public class ConfigSchema implements IConfigSchema {
 
 	private final String modId;
 	private final ConfigSchemaPathResolver pathResolver;
-	private final ConfigSchemaType type;
+	private final ConfigOwnership ownership;
+	private final ConfigScope scope;
+	private final ConfigSchemaMode mode;
 	private final @Nullable ServerConfigKey serverKey;
 	private final List<ConfigCategory> categories;
 	private final List<ConfigEditorCategory> editorCategories;
@@ -69,8 +72,6 @@ public class ConfigSchema implements IConfigSchema {
 	private boolean translationKeysChecked;
 	private volatile boolean remotelyActive;
 	private volatile boolean remoteCanEdit;
-	private volatile @Nullable ConfigSchema serverCounterpart;
-	private volatile Map<ConfigValue<?>, ConfigValue<?>> serverValueCounterparts = Map.of();
 
 	public ConfigSchema(
 		Path path,
@@ -147,7 +148,8 @@ public class ConfigSchema implements IConfigSchema {
 			categoryBuilders,
 			editorCategoryBuilders,
 			scheduler,
-			ConfigSchemaType.CLIENT,
+			ConfigOwnership.CLIENT,
+			ConfigScope.INSTALLATION,
 			null
 		);
 	}
@@ -158,15 +160,18 @@ public class ConfigSchema implements IConfigSchema {
 		List<ConfigCategoryBuilder> categoryBuilders,
 		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
 		DelayedTaskScheduler scheduler,
-		ConfigSchemaType type,
+		ConfigOwnership ownership,
+		ConfigScope scope,
 		@Nullable ServerConfigKey serverKey
 	) {
 		this.modId = validateModId(modId);
 		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
-		this.type = ErrorUtil.checkNotNull(type, "type");
+		this.ownership = ErrorUtil.checkNotNull(ownership, "ownership");
+		this.scope = ErrorUtil.checkNotNull(scope, "scope");
+		this.mode = ConfigSchemaMode.forSchema(ownership, scope);
 		this.serverKey = serverKey;
-		if ((type == ConfigSchemaType.SERVER) != (serverKey != null)) {
-			throw new IllegalArgumentException("Server config schemas must have exactly one server key.");
+		if (isSynchronizedServerSchema() != (serverKey != null)) {
+			throw new IllegalArgumentException("World-scoped server config schemas must have exactly one server key.");
 		}
 		Map<ConfigCategoryBuilder, ConfigCategory> categoryMap = new IdentityHashMap<>();
 		Map<ConfigEditorCategoryBuilder, ConfigEditorCategory> editorCategoryMap = new IdentityHashMap<>();
@@ -212,7 +217,11 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		InitialSave initialSave = loadResult.initialSave();
 		if (registered && initialSave != null) {
-			saveInitialFileAfterLocalizationLoads(initialSave, 0);
+			if (mode.synchronousFileAccess()) {
+				saveInitialFile(initialSave);
+			} else {
+				saveInitialFileAfterLocalizationLoads(initialSave, 0);
+			}
 		}
 	}
 
@@ -227,7 +236,7 @@ public class ConfigSchema implements IConfigSchema {
 		Optional<Path> resolvedPath = pathResolver.resolvePath()
 			.map(Path::normalize);
 		Path path = resolvedPath.orElse(null);
-		if (type == ConfigSchemaType.SERVER && remotelyActive && path == null) {
+		if (isSynchronizedServerSchema() && remotelyActive && path == null) {
 			setActivePaths(defaultPath, null);
 			needsLoad.set(false);
 			return createLoadResult(previousEffectiveValues, previousPendingValues, null);
@@ -273,7 +282,7 @@ public class ConfigSchema implements IConfigSchema {
 		return createLoadResult(
 			previousEffectiveValues,
 			previousPendingValues,
-			getInitialSave(defaultPath, path, activePathChanged, type == ConfigSchemaType.SERVER)
+			getInitialSave(defaultPath, path, activePathChanged, isSynchronizedServerSchema())
 		);
 	}
 
@@ -294,9 +303,9 @@ public class ConfigSchema implements IConfigSchema {
 			return;
 		}
 		try {
-			ConfigSerializer.loadWithoutNotifyingUnconditionally(path, categories);
+			ConfigSerializer.loadWithoutNotifyingUnconditionally(path, categories, mode.serializationSettings());
 		} catch (IOException e) {
-			LOGGER.error("Failed to load config schema for: {}", path, e);
+			handleFileError("load", path, e);
 		}
 	}
 
@@ -415,14 +424,7 @@ public class ConfigSchema implements IConfigSchema {
 			return;
 		}
 		flushPendingSaveIfNeeded();
-		if (removeDefaultFileWatcherCallback != null) {
-			removeDefaultFileWatcherCallback.run();
-			removeDefaultFileWatcherCallback = null;
-		}
-		if (removeFileWatcherCallback != null) {
-			removeFileWatcherCallback.run();
-			removeFileWatcherCallback = null;
-		}
+		removeFileWatcherCallbacks();
 		activeDefaultPath = defaultPath;
 		activePath = path;
 		if (defaultPath != null && fileWatcher != null) {
@@ -444,23 +446,75 @@ public class ConfigSchema implements IConfigSchema {
 		needsLoad.set(true);
 	}
 
-	public void register(
-		@Nullable FileWatcher fileWatcher,
-		IConfigFileRegistrar configFileRegistrar,
-		boolean logUntranslatedKeys
-	) {
+	public synchronized void register(@Nullable FileWatcher fileWatcher, boolean logUntranslatedKeys) {
+		if (registered) {
+			throw new IllegalStateException("Config schema is already registered.");
+		}
 		this.fileWatcher = fileWatcher;
 		this.logUntranslatedKeys = logUntranslatedKeys;
 		this.registered = true;
-		loadIfNeeded();
-		configFileRegistrar.addConfigFile(this);
+		try {
+			loadIfNeeded();
+		} catch (RuntimeException | Error e) {
+			rollbackRegistration(e);
+			throw e;
+		}
+	}
+
+	public synchronized void rollbackRegistration(Throwable failure) {
+		registered = false;
+		fileWatcher = null;
+		logUntranslatedKeys = false;
+		try {
+			removeFileWatcherCallbacks();
+		} catch (RuntimeException | Error rollbackFailure) {
+			failure.addSuppressed(rollbackFailure);
+		}
+		activeDefaultPath = null;
+		activePath = null;
+		pendingSavePath = null;
+		needsLoad.set(true);
+		changeVersion.set(0);
+		restartValuesInitialized = false;
+		translationKeysChecked = false;
+		remotelyActive = false;
+		remoteCanEdit = false;
+		resetAllValuesToDefaults();
+	}
+
+	private void removeFileWatcherCallbacks() {
+		Runnable removeDefaultCallback = removeDefaultFileWatcherCallback;
+		Runnable removeCallback = removeFileWatcherCallback;
+		removeDefaultFileWatcherCallback = null;
+		removeFileWatcherCallback = null;
+		if (removeDefaultCallback == null) {
+			if (removeCallback != null) {
+				removeCallback.run();
+			}
+			return;
+		}
+		try {
+			removeDefaultCallback.run();
+		} catch (RuntimeException | Error e) {
+			if (removeCallback != null) {
+				try {
+					removeCallback.run();
+				} catch (RuntimeException | Error secondFailure) {
+					e.addSuppressed(secondFailure);
+				}
+			}
+			throw e;
+		}
+		if (removeCallback != null) {
+			removeCallback.run();
+		}
 	}
 
 	private void saveAfterLocalizationLoads(Path path, int attempt) {
 		if (!Objects.equals(path, activePath) && !Objects.equals(path, pendingSavePath)) {
 			return;
 		}
-		if (type == ConfigSchemaType.SERVER || ConfigSerializer.canLocalizeComments()) {
+		if (!mode.waitForLocalization() || ConfigSerializer.canLocalizeComments()) {
 			save(path);
 			return;
 		}
@@ -484,7 +538,7 @@ public class ConfigSchema implements IConfigSchema {
 		} else if (!Objects.equals(path, activePath)) {
 			return;
 		}
-		if (type == ConfigSchemaType.SERVER || ConfigSerializer.canLocalizeComments()) {
+		if (!mode.waitForLocalization() || ConfigSerializer.canLocalizeComments()) {
 			saveInitialFile(initialSave);
 			return;
 		}
@@ -499,28 +553,23 @@ public class ConfigSchema implements IConfigSchema {
 		delayedSave.run(() -> saveInitialFileAfterLocalizationLoads(initialSave, attempt + 1));
 	}
 
-	private void saveInitialFile(InitialSave initialSave) {
-		if (initialSave.defaults()) {
-			try {
+	private synchronized void saveInitialFile(InitialSave initialSave) {
+		try {
+			if (initialSave.defaults()) {
 				saveDefaultIfMissing(initialSave.path());
-			} catch (IOException e) {
-				LOGGER.error("Failed to save default config file: '{}'", initialSave.path(), e);
+			} else {
+				write(initialSave.path());
 			}
-		} else {
-			save(initialSave.path());
+		} catch (IOException e) {
+			handleFileError("save", initialSave.path(), e);
 		}
 	}
 
 	private synchronized void save(Path path) {
 		try {
-			Path defaultPath = activeDefaultPath;
-			if (defaultPath != null) {
-				saveDefaultIfMissing(defaultPath);
-			}
-			logUntranslatedKeysIfNeeded(path);
-			ConfigSerializer.save(path, categories);
+			write(path);
 		} catch (IOException e) {
-			LOGGER.error("Failed to save config file: '{}'", path, e);
+			handleFileError("save", path, e);
 		} finally {
 			if (Objects.equals(pendingSavePath, path)) {
 				pendingSavePath = null;
@@ -528,9 +577,27 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
+	private void write(Path path) throws IOException {
+		Path defaultPath = activeDefaultPath;
+		if (defaultPath != null) {
+			saveDefaultIfMissing(defaultPath);
+		}
+		if (mode.serializationSettings().localizeComments()) {
+			logUntranslatedKeysIfNeeded(path);
+		}
+		ConfigSerializer.save(path, categories, mode.serializationSettings());
+	}
+
+	private void handleFileError(String action, Path path, IOException error) {
+		if (mode.synchronousFileAccess()) {
+			throw new UncheckedIOException("Failed to %s config schema: %s".formatted(action, path), error);
+		}
+		LOGGER.error("Failed to {} config file: '{}'", action, path, error);
+	}
+
 	private void saveDefaultIfMissing(Path path) throws IOException {
 		if (!Files.exists(path)) {
-			ConfigSerializer.saveDefaults(path, categories);
+			ConfigSerializer.saveDefaults(path, categories, mode.serializationSettings());
 		}
 	}
 
@@ -553,7 +620,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	@Override
 	public List<? extends IAppliedConfigValueChange<?>> batchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
-		if (type == ConfigSchemaType.SERVER) {
+		if (isSynchronizedServerSchema()) {
 			throw new IllegalStateException("Server config schemas must be updated through requestBatchUpdate.");
 		}
 		ConfigBatchUpdater updater = createBatchUpdater(updateBatch);
@@ -564,18 +631,9 @@ public class ConfigSchema implements IConfigSchema {
 	public CompletableFuture<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
 		ConfigBatchUpdater updater = createBatchUpdater(updateBatch);
 		List<ConfigValueUpdate<?>> updates = updater.getUpdates();
-		if (type != ConfigSchemaType.SERVER) {
+		if (!isSynchronizedServerSchema()) {
 			applyBatchUpdates(updates);
 			return CompletableFuture.completedFuture(null);
-		}
-		ConfigSchema activeServerCounterpart = getActiveServerCounterpart();
-		if (activeServerCounterpart != null) {
-			validateUpdates(updates);
-			if (updates.isEmpty()) {
-				return CompletableFuture.completedFuture(null);
-			}
-			List<ConfigValueUpdate<?>> serverUpdates = activeServerCounterpart.deserializeUpdates(serializeUpdates(updates), false);
-			return ServerConfigRuntime.requestLocalUpdate(activeServerCounterpart, serverUpdates);
 		}
 		loadIfNeeded();
 		if (!isActive()) {
@@ -729,40 +787,47 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public ConfigSchemaType getType() {
-		return type;
+	public ConfigOwnership getOwnership() {
+		return ownership;
+	}
+
+	@Override
+	public ConfigScope getScope() {
+		return scope;
+	}
+
+	private boolean isSynchronizedServerSchema() {
+		return ownership == ConfigOwnership.SERVER && scope == ConfigScope.WORLD;
 	}
 
 	@Override
 	public boolean isActive() {
-		ConfigSchema activeServerCounterpart = getActiveServerCounterpart();
-		if (activeServerCounterpart != null) {
-			return activeServerCounterpart.isActive();
-		}
 		loadIfNeeded();
-		return activePath != null || (type == ConfigSchemaType.SERVER && remotelyActive);
+		return activePath != null || (isSynchronizedServerSchema() && remotelyActive);
 	}
 
 	@Override
 	public boolean canEdit() {
-		ConfigSchema activeServerCounterpart = getActiveServerCounterpart();
-		if (activeServerCounterpart != null) {
-			return activeServerCounterpart.isActive();
-		}
-		if (type == ConfigSchemaType.SERVER) {
-			return isActive() && remoteCanEdit;
+		if (isSynchronizedServerSchema()) {
+			return isActive() && (activePath != null || remoteCanEdit);
 		}
 		return isActive();
 	}
 
 	@Override
 	public Optional<Path> getPath() {
-		ConfigSchema activeServerCounterpart = getActiveServerCounterpart();
-		if (activeServerCounterpart != null) {
-			return activeServerCounterpart.getPath();
-		}
 		loadIfNeeded();
 		return Optional.ofNullable(activePath);
+	}
+
+	public Optional<Path> getRegistrationPath() {
+		return pathResolver.resolvePath()
+			.map(Path::normalize);
+	}
+
+	public Optional<Path> getDefaultPath() {
+		return pathResolver.resolveDefaultPath()
+			.map(Path::normalize);
 	}
 
 	public ServerConfigKey getServerKey() {
@@ -776,75 +841,20 @@ public class ConfigSchema implements IConfigSchema {
 		return changeVersion.get();
 	}
 
-	public synchronized void linkServerCounterpart(ConfigSchema serverCounterpart) {
-		serverCounterpart = ErrorUtil.checkNotNull(serverCounterpart, "serverCounterpart");
-		if (type != ConfigSchemaType.SERVER || serverCounterpart.type != ConfigSchemaType.SERVER) {
-			throw new IllegalArgumentException("Only server config schemas can be linked across logical sides.");
-		}
-		if (!getServerKey().equals(serverCounterpart.getServerKey())) {
-			throw new IllegalArgumentException("Linked server config schemas must have the same key.");
-		}
-		Map<ConfigValue<?>, ConfigValue<?>> valueCounterparts = new IdentityHashMap<>();
-		for (ConfigCategory category : categories) {
-			ConfigCategory serverCategory = serverCounterpart.categories.stream()
-				.filter(candidate -> candidate.getName().equals(category.getName()))
-				.findFirst()
-				.orElseThrow(() -> new IllegalArgumentException("Server schema is missing config category: " + category.getName()));
-			for (ConfigValue<?> value : category.getConfigValues()) {
-				ConfigValue<?> serverValue = serverCategory.getConfigValue(value.getName())
-					.orElseThrow(() -> new IllegalArgumentException("Server schema is missing config value: " + category.getName() + "." + value.getName()));
-				valueCounterparts.put(value, serverValue);
-			}
-		}
-		if (valueCounterparts.size() != serverCounterpart.getConfigValues().size()) {
-			throw new IllegalArgumentException("Linked server config schemas have different config values.");
-		}
-		this.serverValueCounterparts = Map.copyOf(valueCounterparts);
-		this.serverCounterpart = serverCounterpart;
-	}
-
 	public <T> T getEffectiveValue(ConfigValue<T> configValue) {
-		ConfigSchema activeServerCounterpart = getActiveServerCounterpart();
-		if (activeServerCounterpart == null) {
-			loadIfNeeded();
-			if (type != ConfigSchemaType.CLIENT && activePath == null && !remotelyActive) {
-				return configValue.getDefaultValue();
-			}
-			return configValue.getEffectiveValueWithoutLoading();
+		loadIfNeeded();
+		if (scope == ConfigScope.WORLD && activePath == null && !remotelyActive) {
+			return configValue.getDefaultValue();
 		}
-		@SuppressWarnings("unchecked")
-		ConfigValue<T> serverValue = (ConfigValue<T>) serverValueCounterparts.get(configValue);
-		if (serverValue == null) {
-			throw new IllegalArgumentException("Config value does not belong to this schema: " + configValue.getName());
-		}
-		activeServerCounterpart.loadIfNeeded();
-		return serverValue.getEffectiveValueWithoutLoading();
+		return configValue.getEffectiveValueWithoutLoading();
 	}
 
 	public <T> T getPendingValue(ConfigValue<T> configValue) {
-		ConfigSchema activeServerCounterpart = getActiveServerCounterpart();
-		if (activeServerCounterpart == null) {
-			loadIfNeeded();
-			if (type != ConfigSchemaType.CLIENT && activePath == null && !remotelyActive) {
-				return configValue.getDefaultValue();
-			}
-			return configValue.getPendingValueWithoutLoading();
+		loadIfNeeded();
+		if (scope == ConfigScope.WORLD && activePath == null && !remotelyActive) {
+			return configValue.getDefaultValue();
 		}
-		@SuppressWarnings("unchecked")
-		ConfigValue<T> serverValue = (ConfigValue<T>) serverValueCounterparts.get(configValue);
-		if (serverValue == null) {
-			throw new IllegalArgumentException("Config value does not belong to this schema: " + configValue.getName());
-		}
-		activeServerCounterpart.loadIfNeeded();
-		return serverValue.getPendingValueWithoutLoading();
-	}
-
-	private @Nullable ConfigSchema getActiveServerCounterpart() {
-		ConfigSchema serverCounterpart = this.serverCounterpart;
-		if (serverCounterpart != null && ServerConfigRuntime.isServerThread()) {
-			return serverCounterpart;
-		}
-		return null;
+		return configValue.getPendingValueWithoutLoading();
 	}
 
 	public List<ServerConfigValueData> serializeValues() {
@@ -944,14 +954,14 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	public List<AppliedConfigValueChange<?>> applyServerUpdates(List<? extends ConfigValueUpdate<?>> updates) {
-		if (type != ConfigSchemaType.SERVER) {
+		if (!isSynchronizedServerSchema()) {
 			throw new IllegalStateException("Config schema is not server-owned.");
 		}
 		return applyBatchUpdates(updates);
 	}
 
 	public synchronized void applyRemoteSnapshot(List<ServerConfigValueData> values, boolean canEdit) {
-		if (type != ConfigSchemaType.SERVER) {
+		if (!isSynchronizedServerSchema()) {
 			throw new IllegalStateException("Config schema is not server-owned.");
 		}
 		List<SynchronizedConfigValue<?>> synchronizedValues = new ArrayList<>();
@@ -993,7 +1003,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	public synchronized void clearRemoteSnapshot() {
-		if (type != ConfigSchemaType.SERVER) {
+		if (!isSynchronizedServerSchema()) {
 			return;
 		}
 		remoteCanEdit = false;

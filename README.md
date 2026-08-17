@@ -2,13 +2,13 @@
 
 MezzConfig is a lightweight configuration API and runtime for Minecraft mods.
 It provides typed client-owned and server-authoritative config schemas,
-file-backed values, synchronization, migration support, and loader-based plugin
-discovery on Fabric, Forge, and NeoForge.
+file-backed values, synchronization, migration support, and direct config
+registration.
 
 ## Using the API
 
 The stable integration surface is published from the `CommonApi` module. See
-the [API guide](CommonApi/README.md) for plugin registration, config schemas,
+the [API guide](CommonApi/README.md) for config schemas, ownership and scope,
 custom serializers, editor hints, and sorting configs.
 
 MezzConfig currently targets Minecraft 1.21.1 and Java 21. Loader-specific

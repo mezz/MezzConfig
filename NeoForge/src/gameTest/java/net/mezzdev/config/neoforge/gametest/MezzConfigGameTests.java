@@ -1,7 +1,8 @@
 package net.mezzdev.config.neoforge.gametest;
 
-import net.mezzdev.config.api.files.ConfigManagers;
-import net.mezzdev.config.api.schema.ConfigSchemaType;
+import net.mezzdev.config.api.Configs;
+import net.mezzdev.config.api.schema.ConfigOwnership;
+import net.mezzdev.config.api.schema.ConfigScope;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
@@ -23,13 +24,13 @@ public final class MezzConfigGameTests {
 
 	@GameTest
 	@EmptyTemplate
-	@TestHolder(description = "Dedicated-server startup activates an authoritative world config file.")
+	@TestHolder(description = "Starting a dedicated-server world activates its authoritative config file.")
 	public static void dedicatedServerActivatesAuthoritativeConfig(GameTestHelper helper) {
-		IConfigSchema schema = ConfigManagers.getConfigManager()
-			.orElseThrow(() -> failure("The dedicated server did not expose a config manager."))
+		IConfigSchema schema = Configs.getConfigManager()
 			.getSchemas()
 			.stream()
-			.filter(candidate -> candidate.getType() == ConfigSchemaType.SERVER)
+			.filter(candidate -> candidate.getOwnership() == ConfigOwnership.SERVER)
+			.filter(candidate -> candidate.getScope() == ConfigScope.WORLD)
 			.filter(candidate -> candidate.getModId().equals(TEST_MOD_ID))
 			.findFirst()
 			.orElseThrow(() -> failure("The NeoForge test server schema was not registered."));

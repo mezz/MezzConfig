@@ -1,6 +1,7 @@
 package net.mezzdev.config.server;
 
-import net.mezzdev.config.api.schema.ConfigSchemaType;
+import net.mezzdev.config.api.schema.ConfigOwnership;
+import net.mezzdev.config.api.schema.ConfigScope;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.value.ConfigValue;
@@ -113,7 +114,8 @@ public class ServerConfigRuntimeTest {
 			List.of(builder),
 			List.of(builder),
 			(command, delay) -> CompletableFuture.completedFuture(null),
-			ConfigSchemaType.SERVER,
+			ConfigOwnership.SERVER,
+			ConfigScope.WORLD,
 			new ServerConfigKey("test_mod", "server.ini")
 		);
 		return new TestSchema(schema, enabled);

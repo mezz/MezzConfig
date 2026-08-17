@@ -2,7 +2,7 @@
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 
-package net.mezzdev.config.plugin;
+package net.mezzdev.config.client;
 
 import javax.annotation.ParametersAreNonnullByDefault;
 

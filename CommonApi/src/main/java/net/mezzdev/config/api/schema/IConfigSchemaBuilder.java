@@ -1,19 +1,29 @@
 package net.mezzdev.config.api.schema;
 
-import net.mezzdev.config.api.plugin.IConfigRegistration;
+import net.mezzdev.config.api.IConfigRegistration;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
  * Builds one config schema.
  * <p>
- * Create a builder for your schema with {@link IConfigRegistration#createSchemaBuilder(String, String)},
- * {@link IConfigRegistration#createClientWorldSchemaBuilder(String, String)}, or
- * {@link net.mezzdev.config.api.plugin.IServerConfigRegistration#createServerSchemaBuilder(String, String)}.
+ * Create a builder with {@link IConfigRegistration#createClientSchemaBuilder(String, String)} or
+ * {@link IConfigRegistration#createServerSchemaBuilder(String, String)}.
  *
  * @since 0.1.0
  */
 @ApiStatus.NonExtendable
 public interface IConfigSchemaBuilder {
+	/**
+	 * Set the context that selects this schema's backing file.
+	 * Builders use {@link ConfigScope#INSTALLATION} by default.
+	 *
+	 * @param scope config scope
+	 * @return this builder
+	 *
+	 * @since 0.3.0
+	 */
+	IConfigSchemaBuilder setScope(ConfigScope scope);
+
 	/**
 	 * Add a storage category to this config schema.
 	 * Categories are returned from {@link IConfigSchema#getCategories()} in the order they are added here.
@@ -37,6 +47,9 @@ public interface IConfigSchemaBuilder {
 	/**
 	 * Build and register the config schema.
 	 * A builder may only be built once.
+	 * Build schemas from the mod's primary initializer or constructor, before client setup, when using automatically
+	 * generated config screens. MezzConfigGUI's Forge and NeoForge config-screen factories include the schemas registered
+	 * when client setup runs.
 	 *
 	 * @since 0.1.0
 	 */

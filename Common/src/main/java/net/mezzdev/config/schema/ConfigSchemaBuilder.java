@@ -1,7 +1,8 @@
 package net.mezzdev.config.schema;
 
+import net.mezzdev.config.api.schema.ConfigOwnership;
+import net.mezzdev.config.api.schema.ConfigScope;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
-import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.util.ConfigNameUtil;
@@ -13,17 +14,19 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 
 public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private final Set<String> categoryNames = new HashSet<>();
 	private final List<ConfigCategoryBuilder> categoryBuilders = new ArrayList<>();
 	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders = new ArrayList<>();
 	private final String modId;
-	private final ConfigSchemaPathResolver pathResolver;
+	private final Function<ConfigScope, ConfigSchemaPathResolver> pathResolverFactory;
 	private final String localizationPath;
 	private final ConfigManager configManager;
-	private final ConfigSchemaType type;
-	private final @Nullable ServerConfigKey serverKey;
+	private final ConfigOwnership ownership;
+	private final String configFileName;
+	private ConfigScope scope = ConfigScope.INSTALLATION;
 	private boolean built;
 
 	public ConfigSchemaBuilder(Path configFile, String localizationPath, ConfigManager configManager) {
@@ -39,26 +42,30 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	}
 
 	public ConfigSchemaBuilder(String modId, ConfigSchemaPathResolver pathResolver, String localizationPath, ConfigManager configManager) {
-		this(modId, pathResolver, localizationPath, configManager, ConfigSchemaType.CLIENT, null);
+		this(modId, ignored -> pathResolver, localizationPath, configManager, ConfigOwnership.CLIENT, "config.ini");
 	}
 
 	public ConfigSchemaBuilder(
 		String modId,
-		ConfigSchemaPathResolver pathResolver,
+		Function<ConfigScope, ConfigSchemaPathResolver> pathResolverFactory,
 		String localizationPath,
 		ConfigManager configManager,
-		ConfigSchemaType type,
-		@Nullable ServerConfigKey serverKey
+		ConfigOwnership ownership,
+		String configFileName
 	) {
 		this.modId = ConfigSchema.validateModId(modId);
-		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
+		this.pathResolverFactory = ErrorUtil.checkNotNull(pathResolverFactory, "pathResolverFactory");
 		this.localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 		this.configManager = ErrorUtil.checkNotNull(configManager, "configManager");
-		this.type = ErrorUtil.checkNotNull(type, "type");
-		this.serverKey = serverKey;
-		if ((type == ConfigSchemaType.SERVER) != (serverKey != null)) {
-			throw new IllegalArgumentException("Server config schemas must have exactly one server key.");
-		}
+		this.ownership = ErrorUtil.checkNotNull(ownership, "ownership");
+		this.configFileName = ErrorUtil.checkNotNull(configFileName, "configFileName");
+	}
+
+	@Override
+	public ConfigSchemaBuilder setScope(ConfigScope scope) {
+		checkNotBuilt();
+		this.scope = ErrorUtil.checkNotNull(scope, "scope");
+		return this;
 	}
 
 	@Override
@@ -90,13 +97,23 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	public ConfigSchema build() {
 		checkNotBuilt();
 		built = true;
+		ConfigSchemaPathResolver pathResolver = ErrorUtil.checkNotNull(
+			pathResolverFactory.apply(scope),
+			"pathResolver"
+		);
+		@Nullable
+		ServerConfigKey serverKey = null;
+		if (ownership == ConfigOwnership.SERVER && scope == ConfigScope.WORLD) {
+			serverKey = new ServerConfigKey(modId, configFileName);
+		}
 		ConfigSchema schema = new ConfigSchema(
 			modId,
 			pathResolver,
 			categoryBuilders,
 			editorCategoryBuilders,
 			configManager.getSaveScheduler(),
-			type,
+			ownership,
+			scope,
 			serverKey
 		);
 		configManager.registerSchema(schema);

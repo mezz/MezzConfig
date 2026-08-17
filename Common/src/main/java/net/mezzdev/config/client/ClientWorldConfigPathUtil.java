@@ -1,4 +1,4 @@
-package net.mezzdev.config.plugin;
+package net.mezzdev.config.client;
 
 import net.minecraft.FileUtil;
 import net.minecraft.SharedConstants;
@@ -24,8 +24,8 @@ public final class ClientWorldConfigPathUtil {
 
 	}
 
-	public static Optional<Path> getWorldPath(Path pluginConfigDir) {
-		Path configDir = ErrorUtil.checkNotNull(pluginConfigDir, "pluginConfigDir");
+	public static Optional<Path> getWorldPath(Path configDirectory) {
+		Path configDir = ErrorUtil.checkNotNull(configDirectory, "configDirectory");
 		Minecraft minecraft = Minecraft.getInstance();
 		return Optional.ofNullable(minecraft.getConnection())
 			.flatMap(clientPacketListener -> {
@@ -74,12 +74,12 @@ public final class ClientWorldConfigPathUtil {
 			.orElseGet(() -> getLegacyServerPath(name, address));
 	}
 
-	public static Path getServerPath(Path pluginConfigDir, String serverName, String serverAddress) {
-		return getServerPath(pluginConfigDir, serverName, serverAddress, false);
+	public static Path getServerPath(Path configDirectory, String serverName, String serverAddress) {
+		return getServerPath(configDirectory, serverName, serverAddress, false);
 	}
 
-	public static Path getServerPath(Path pluginConfigDir, String serverName, String serverAddress, boolean isLan) {
-		Path configDir = ErrorUtil.checkNotNull(pluginConfigDir, "pluginConfigDir");
+	public static Path getServerPath(Path configDirectory, String serverName, String serverAddress, boolean isLan) {
+		Path configDir = ErrorUtil.checkNotNull(configDirectory, "configDirectory");
 		Path legacyServerPath = getLegacyServerPath(serverName, serverAddress);
 		if (Files.exists(configDir.resolve(legacyServerPath))) {
 			return legacyServerPath;
@@ -92,8 +92,8 @@ public final class ClientWorldConfigPathUtil {
 		return SERVER_DIR_PATH;
 	}
 
-	public static Path getDefaultWorldPath(Path pluginConfigDir) {
-		Path configDir = ErrorUtil.checkNotNull(pluginConfigDir, "pluginConfigDir");
+	public static Path getDefaultWorldPath(Path configDirectory) {
+		Path configDir = ErrorUtil.checkNotNull(configDirectory, "configDirectory");
 		return configDir.resolve(DEFAULT_DIR_PATH);
 	}
 

@@ -3,7 +3,8 @@ package net.mezzdev.config.test.schema;
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
-import net.mezzdev.config.api.schema.ConfigSchemaType;
+import net.mezzdev.config.api.schema.ConfigOwnership;
+import net.mezzdev.config.api.schema.ConfigScope;
 import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
@@ -386,7 +387,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void schemaExposesOwningModIdForGuiDiscovery() {
-		// Setup: a schema is created for a specific plugin/mod id.
+		// Setup: a schema is created for a specific mod id.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		builder.addBoolean("enabled", true)
 			.build();
@@ -399,7 +400,7 @@ public class ConfigSchemaTest {
 			(command, delay) -> CompletableFuture.completedFuture(null)
 		);
 
-		// Assertions: GUI integrations can discover which mod owns this schema without their own registration plugin.
+		// Assertions: GUI integrations can discover which mod owns this schema from the schema itself.
 		assertEquals("example_mod", schema.getModId());
 	}
 
@@ -791,7 +792,7 @@ public class ConfigSchemaTest {
 			}
 		);
 
-		schema.register(null, ignored -> {}, false);
+		schema.register(null, false);
 		runScheduledTasks(scheduledTasks);
 
 		assertTrue(Files.readString(defaultPath).contains("enabled = true"));
@@ -840,7 +841,8 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createRemoteServerSchema(builder);
 
-		assertEquals(ConfigSchemaType.SERVER, schema.getType());
+		assertEquals(ConfigOwnership.SERVER, schema.getOwnership());
+		assertEquals(ConfigScope.WORLD, schema.getScope());
 		assertFalse(schema.isActive());
 		assertFalse(schema.canEdit());
 
@@ -909,7 +911,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void serverSchemaCreatesAnAuthoritativeWorldFileWhenActivated(@TempDir Path tempDir) throws IOException {
-		// Setup: the server schema has a pack default, but its world path is inactive during plugin registration.
+		// Setup: the server schema has a pack default, but its world path is inactive before a world starts.
 		Path defaultPath = tempDir.resolve("config").resolve("test_mod").resolve("server").resolve("default").resolve("server.ini");
 		Path worldPath = tempDir.resolve("world").resolve("serverconfig").resolve("test_mod").resolve("server.ini");
 		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.empty());
@@ -926,10 +928,11 @@ public class ConfigSchemaTest {
 				scheduledTasks.add(command);
 				return CompletableFuture.completedFuture(null);
 			},
-			ConfigSchemaType.SERVER,
+			ConfigOwnership.SERVER,
+			ConfigScope.WORLD,
 			new ServerConfigKey("test_mod", "server.ini")
 		);
-		schema.register(null, ignored -> {}, false);
+		schema.register(null, false);
 
 		// Operation: starting a world activates its serverconfig path.
 		activePath.set(Optional.of(worldPath));
@@ -1155,7 +1158,8 @@ public class ConfigSchemaTest {
 			List.of(builders),
 			List.of(builders),
 			(command, delay) -> CompletableFuture.completedFuture(null),
-			ConfigSchemaType.SERVER,
+			ConfigOwnership.SERVER,
+			ConfigScope.WORLD,
 			new ServerConfigKey("test_mod", "server.ini")
 		);
 	}

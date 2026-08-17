@@ -1,6 +1,6 @@
 package net.mezzdev.config.server;
 
-import net.mezzdev.config.api.files.ConfigManagers;
+import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.util.ErrorUtil;
@@ -42,7 +42,6 @@ public final class ServerConfigRuntime {
 	private static final ServerConfigPayloadReassembler SYNC_REASSEMBLER = new ServerConfigPayloadReassembler();
 	private static volatile @Nullable Path worldConfigRoot;
 	private static volatile @Nullable MinecraftServer activeServer;
-	private static volatile @Nullable ConfigManager serverConfigManager;
 
 	private ServerConfigRuntime() {
 
@@ -50,25 +49,6 @@ public final class ServerConfigRuntime {
 
 	public static Optional<Path> getWorldConfigRoot() {
 		return Optional.ofNullable(worldConfigRoot);
-	}
-
-	public static void setServerConfigManager(ConfigManager configManager) {
-		serverConfigManager = ErrorUtil.checkNotNull(configManager, "configManager");
-	}
-
-	public static void linkClientSchemas(ConfigManager clientConfigManager) {
-		ErrorUtil.checkNotNull(clientConfigManager, "clientConfigManager");
-		getServerConfigManager().ifPresent(serverManager -> {
-			for (ConfigSchema clientSchema : clientConfigManager.getServerSchemas()) {
-				serverManager.getServerSchema(clientSchema.getServerKey())
-					.ifPresent(clientSchema::linkServerCounterpart);
-			}
-		});
-	}
-
-	public static boolean isServerThread() {
-		MinecraftServer server = activeServer;
-		return server != null && server.isSameThread();
 	}
 
 	public static void onServerStarted(MinecraftServer server) {
@@ -81,17 +61,16 @@ public final class ServerConfigRuntime {
 		SERVER_SCHEMA_VERSIONS.clear();
 		PLAYER_EDIT_PERMISSIONS.clear();
 		UPDATE_REASSEMBLERS.clear();
-		getServerConfigManager().ifPresent(manager -> {
-			manager.onWorldStarted();
-			for (ConfigSchema schema : manager.getServerSchemas()) {
-				schema.loadIfNeeded();
-				SERVER_SCHEMA_VERSIONS.put(schema, schema.getChangeVersion());
-			}
-		});
+		ConfigManager manager = getConfigManager();
+		manager.onWorldStarted();
+		for (ConfigSchema schema : manager.getServerSchemas()) {
+			schema.loadIfNeeded();
+			SERVER_SCHEMA_VERSIONS.put(schema, schema.getChangeVersion());
+		}
 	}
 
 	public static void onClientWorldStarted() {
-		getClientConfigManager().ifPresent(ConfigManager::onWorldStarted);
+		getConfigManager().onWorldStarted();
 	}
 
 	public static void onServerStopped() {
@@ -107,10 +86,10 @@ public final class ServerConfigRuntime {
 		UPDATE_REASSEMBLERS.clear();
 		IllegalStateException exception = new IllegalStateException("The local server stopped before the config update completed.");
 		pendingLocalRequests.forEach(future -> future.completeExceptionally(exception));
-		getServerConfigManager().ifPresent(manager -> manager.getServerSchemas().forEach(schema -> {
+		getConfigManager().getServerSchemas().forEach(schema -> {
 			schema.clearRemoteSnapshot();
 			schema.loadIfNeeded();
-		}));
+		});
 	}
 
 	public static void onServerTick() {
@@ -119,29 +98,27 @@ public final class ServerConfigRuntime {
 			return;
 		}
 		expireUpdateReassemblers(System.nanoTime());
-		getServerConfigManager().ifPresent(manager -> {
-			for (ConfigSchema schema : manager.getServerSchemas()) {
-				schema.loadIfNeeded();
-				long version = schema.getChangeVersion();
-				Long previousVersion = SERVER_SCHEMA_VERSIONS.put(schema, version);
-				if (previousVersion != null && previousVersion != version) {
-					broadcastSchema(server, schema, null, 0, true, "");
-				}
+		ConfigManager manager = getConfigManager();
+		for (ConfigSchema schema : manager.getServerSchemas()) {
+			schema.loadIfNeeded();
+			long version = schema.getChangeVersion();
+			Long previousVersion = SERVER_SCHEMA_VERSIONS.put(schema, version);
+			if (previousVersion == null || previousVersion != version) {
+				broadcastSchema(server, schema, null, 0, true, "");
 			}
-		});
+		}
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
 			boolean canEdit = hasEditPermission(player);
 			Boolean previousCanEdit = PLAYER_EDIT_PERMISSIONS.put(player.getUUID(), canEdit);
 			if (previousCanEdit != null && previousCanEdit != canEdit) {
-				getServerConfigManager().ifPresent(manager -> manager.getServerSchemas().forEach(schema -> sendSchema(player, schema, 0, true, "")));
+				manager.getServerSchemas().forEach(schema -> sendSchema(player, schema, 0, true, ""));
 			}
 		}
 	}
 
 	public static void onPlayerJoin(ServerPlayer player) {
 		PLAYER_EDIT_PERMISSIONS.put(player.getUUID(), hasEditPermission(player));
-		getServerConfigManager().ifPresent(manager -> manager.getServerSchemas().forEach(schema -> sendSchema(player, schema, 0, true, "")
-		));
+		getConfigManager().getServerSchemas().forEach(schema -> sendSchema(player, schema, 0, true, ""));
 	}
 
 	public static void onPlayerDisconnect(ServerPlayer player) {
@@ -187,8 +164,7 @@ public final class ServerConfigRuntime {
 	}
 
 	public static void handleUpdate(ServerPlayer player, ServerConfigUpdatePayload payload) {
-		Optional<ConfigManager> manager = getServerConfigManager();
-		Optional<ConfigSchema> schema = manager.flatMap(configManager -> configManager.getServerSchema(payload.key()));
+		Optional<ConfigSchema> schema = getConfigManager().getServerSchema(payload.key());
 		if (schema.isEmpty()) {
 			sendRejected(player, payload, "The server does not have this config schema.", null);
 			return;
@@ -403,8 +379,7 @@ public final class ServerConfigRuntime {
 			if (pending != null && !pending.key().equals(payload.key())) {
 				throw new IllegalArgumentException("Server config response key does not match the pending request.");
 			}
-			Optional<ConfigSchema> schema = getClientConfigManager()
-				.flatMap(configManager -> configManager.getServerSchema(payload.key()));
+			Optional<ConfigSchema> schema = getConfigManager().getServerSchema(payload.key());
 			if (pending != null && payload.accepted() && schema.isEmpty()) {
 				throw new IllegalStateException("The client no longer has the requested server config schema: " + payload.key());
 			}
@@ -458,7 +433,7 @@ public final class ServerConfigRuntime {
 
 	public static void onClientDisconnect() {
 		SYNC_REASSEMBLER.clear();
-		getClientConfigManager().ifPresent(manager -> manager.getServerSchemas().forEach(ConfigSchema::clearRemoteSnapshot));
+		getConfigManager().getServerSchemas().forEach(ConfigSchema::clearRemoteSnapshot);
 		IllegalStateException exception = new IllegalStateException("Disconnected before the server config update completed.");
 		List<PendingRequest> pendingRequests;
 		synchronized (PENDING_REQUESTS) {
@@ -495,14 +470,8 @@ public final class ServerConfigRuntime {
 		}
 	}
 
-	private static Optional<ConfigManager> getServerConfigManager() {
-		return Optional.ofNullable(serverConfigManager);
-	}
-
-	private static Optional<ConfigManager> getClientConfigManager() {
-		return ConfigManagers.getConfigManager()
-			.filter(ConfigManager.class::isInstance)
-			.map(ConfigManager.class::cast);
+	private static ConfigManager getConfigManager() {
+		return (ConfigManager) Configs.getConfigManager();
 	}
 
 	private record PendingRequest(

@@ -6,8 +6,6 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.fabricmc.loader.api.FabricLoader;
-import net.mezzdev.config.plugin.ServerConfigPluginLoader;
 import net.mezzdev.config.server.ServerConfigNetworking;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigSyncChunkPayload;
@@ -19,12 +17,6 @@ import net.mezzdev.config.server.ServerConfigUpdateChunkPayload;
 public final class ConfigFabric implements DedicatedServerModInitializer {
 	@Override
 	public void onInitializeServer() {
-		FabricLoader fabricLoader = FabricLoader.getInstance();
-		ServerConfigPluginLoader.createServerConfigManager(
-			"MezzConfig Server File Watcher",
-			fabricLoader.getConfigDir(),
-			ConfigFabricPluginFinder.getServerPlugins()
-		);
 		registerCommonServerSupport();
 	}
 

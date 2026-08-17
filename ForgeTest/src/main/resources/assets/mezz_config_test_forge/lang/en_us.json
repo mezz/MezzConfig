@@ -2,11 +2,11 @@
   "mezz_config_test.forge.general": "Forge Test",
   "mezz_config_test.forge.general.description": "Forge-only test config values.",
   "mezz_config_test.forge.general.enabled": "Enabled",
-  "mezz_config_test.forge.general.enabled.description": "Boolean value registered by the Forge test config plugin.",
+  "mezz_config_test.forge.general.enabled.description": "Boolean value registered by the Forge test mod.",
   "mezz_config_test.forge.general.maxEntries": "Max Entries",
-  "mezz_config_test.forge.general.maxEntries.description": "Integer value registered by the Forge test config plugin.",
+  "mezz_config_test.forge.general.maxEntries.description": "Integer value registered by the Forge test mod.",
   "mezz_config_test.forge.general.mode": "Mode",
-  "mezz_config_test.forge.general.mode.description": "Enum value registered by the Forge test config plugin.",
+  "mezz_config_test.forge.general.mode.description": "Enum value registered by the Forge test mod.",
   "mezz_config_test.forge.general.modes": "Modes",
-  "mezz_config_test.forge.general.modes.description": "Enum list value registered by the Forge test config plugin."
+  "mezz_config_test.forge.general.modes.description": "Enum list value registered by the Forge test mod."
 }

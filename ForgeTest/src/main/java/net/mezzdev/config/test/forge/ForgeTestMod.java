@@ -1,30 +1,27 @@
 package net.mezzdev.config.test.forge;
 
-import net.mezzdev.config.api.plugin.ConfigPlugin;
-import net.mezzdev.config.api.plugin.IConfigPlugin;
-import net.mezzdev.config.api.plugin.IConfigRegistration;
-import net.mezzdev.config.api.plugin.IServerConfigPlugin;
-import net.mezzdev.config.api.plugin.IServerConfigRegistration;
-import net.mezzdev.config.api.plugin.ServerConfigPlugin;
+import net.mezzdev.config.api.Configs;
+import net.mezzdev.config.api.IConfigRegistration;
+import net.mezzdev.config.api.schema.ConfigScope;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.minecraftforge.fml.common.Mod;
 
 import java.util.List;
 
-@ConfigPlugin
-@ServerConfigPlugin
-public final class ForgeTestConfigPlugin implements IConfigPlugin, IServerConfigPlugin {
-	private static final String MOD_ID = "mezz_config_test_forge";
+@Mod(ForgeTestMod.MOD_ID)
+public final class ForgeTestMod {
+	public static final String MOD_ID = "mezz_config_test_forge";
 
-	@Override
-	public String getModId() {
-		return MOD_ID;
+	public ForgeTestMod() {
+		IConfigRegistration registration = Configs.forMod(MOD_ID);
+		registerClientConfig(registration);
+		registerServerConfig(registration);
 	}
 
-	@Override
-	public void registerConfigFiles(IConfigRegistration registration) {
-		IConfigSchemaBuilder schema = registration.createSchemaBuilder("forge-test.ini", "mezz_config_test.forge");
+	private static void registerClientConfig(IConfigRegistration registration) {
+		IConfigSchemaBuilder schema = registration.createClientSchemaBuilder("forge-test.ini", "mezz_config_test.forge");
 		IConfigCategoryBuilder general = schema.addCategory("general");
 		general.addBoolean("enabled", true)
 			.build();
@@ -37,9 +34,9 @@ public final class ForgeTestConfigPlugin implements IConfigPlugin, IServerConfig
 		schema.build();
 	}
 
-	@Override
-	public void registerServerConfigFiles(IServerConfigRegistration registration) {
-		IConfigSchemaBuilder schema = registration.createServerSchemaBuilder("server-test.ini", "mezz_config_test.forge.server");
+	private static void registerServerConfig(IConfigRegistration registration) {
+		IConfigSchemaBuilder schema = registration.createServerSchemaBuilder("server-test.ini", "mezz_config_test.forge.server")
+			.setScope(ConfigScope.WORLD);
 		IConfigCategoryBuilder general = schema.addCategory("general");
 		general.addBoolean("enabled", true)
 			.build();

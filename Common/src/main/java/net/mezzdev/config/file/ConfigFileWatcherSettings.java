@@ -29,6 +29,14 @@ public record ConfigFileWatcherSettings(
 		);
 	}
 
+	public static ConfigFileWatcherSettings disabled() {
+		return new ConfigFileWatcherSettings(
+			false,
+			FileWatcher.DEFAULT_CHANGE_SETTLING_DELAY,
+			FileWatcher.DEFAULT_MISSING_DIRECTORY_RETRY_INTERVAL
+		);
+	}
+
 	private static Duration requirePositiveDuration(Duration duration, String name) {
 		duration = ErrorUtil.checkNotNull(duration, name);
 		if (duration.isNegative() || duration.isZero()) {
