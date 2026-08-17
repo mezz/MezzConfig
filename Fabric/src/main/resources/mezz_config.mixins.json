@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "net.mezzdev.config.fabric.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "PlayerListMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

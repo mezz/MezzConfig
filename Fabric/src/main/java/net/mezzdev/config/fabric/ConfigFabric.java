@@ -2,7 +2,6 @@ package net.mezzdev.config.fabric;
 
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -36,7 +35,6 @@ public final class ConfigFabric implements DedicatedServerModInitializer {
 		});
 		ServerLifecycleEvents.SERVER_STARTED.register(ServerConfigRuntime::onServerStarted);
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> ServerConfigRuntime.onServerStopped());
-		ServerTickEvents.END_SERVER_TICK.register(server -> ServerConfigRuntime.onServerTick());
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> ServerConfigRuntime.onPlayerJoin(handler.player));
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ServerConfigRuntime.onPlayerDisconnect(handler.player));
 	}

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -126,6 +127,31 @@ public class ServerConfigPayloadCodecTest {
 		assertEquals(1, reassembler.pendingMessageCount());
 		assertEquals(1, reassembler.expire(1 + ServerConfigPayloadReassembler.INCOMPLETE_MESSAGE_TIMEOUT.toNanos()));
 		assertTrue(reassembler.isEmpty());
+	}
+
+	@Test
+	public void incompleteMessageReportsTimeUntilNextExpiration() {
+		byte[] data = new byte[ServerConfigPayloadChunker.MAX_CHUNK_DATA_LENGTH + 1];
+		byte[] firstChunk = ServerConfigPayloadChunker.split(data, 506).getFirst();
+		byte[] laterChunk = ServerConfigPayloadChunker.split(data, 507).getFirst();
+		ServerConfigPayloadReassembler reassembler = new ServerConfigPayloadReassembler();
+		long createdNanos = 100;
+		long timeoutNanos = ServerConfigPayloadReassembler.INCOMPLETE_MESSAGE_TIMEOUT.toNanos();
+
+		assertTrue(reassembler.accept(firstChunk, createdNanos).isEmpty());
+		assertTrue(reassembler.accept(laterChunk, createdNanos + 5).isEmpty());
+		assertEquals(
+			ServerConfigPayloadReassembler.INCOMPLETE_MESSAGE_TIMEOUT,
+			reassembler.getTimeUntilNextExpiration(createdNanos).orElseThrow()
+		);
+		assertEquals(
+			Duration.ZERO,
+			reassembler.getTimeUntilNextExpiration(createdNanos + timeoutNanos).orElseThrow()
+		);
+		assertEquals(1, reassembler.expire(createdNanos + timeoutNanos));
+		assertEquals(Duration.ofNanos(5), reassembler.getTimeUntilNextExpiration(createdNanos + timeoutNanos).orElseThrow());
+		assertEquals(1, reassembler.expire(createdNanos + timeoutNanos + 5));
+		assertTrue(reassembler.getTimeUntilNextExpiration(Long.MAX_VALUE).isEmpty());
 	}
 
 	@Test

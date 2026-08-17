@@ -4,10 +4,11 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.entity.player.PermissionsChangedEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.common.Mod;
 
@@ -22,11 +23,6 @@ public final class ConfigForge {
 		ConfigForgeNetwork network = new ConfigForgeNetwork();
 		MinecraftForge.EVENT_BUS.addListener((ServerStartedEvent event) -> ServerConfigRuntime.onServerStarted(event.getServer()));
 		MinecraftForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> ServerConfigRuntime.onServerStopped());
-		MinecraftForge.EVENT_BUS.addListener((TickEvent.ServerTickEvent event) -> {
-			if (event.phase == TickEvent.Phase.END) {
-				ServerConfigRuntime.onServerTick();
-			}
-		});
 		MinecraftForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedInEvent event) -> {
 			if (event.getEntity() instanceof ServerPlayer player) {
 				ServerConfigRuntime.onPlayerJoin(player);
@@ -37,6 +33,16 @@ public final class ConfigForge {
 				ServerConfigRuntime.onPlayerDisconnect(player);
 			}
 		});
+		MinecraftForge.EVENT_BUS.addListener(
+			EventPriority.LOWEST,
+			true,
+			PermissionsChangedEvent.class,
+			event -> {
+				if (event.getEntity() instanceof ServerPlayer player) {
+					ServerConfigRuntime.onPlayerPermissionsChanging(player);
+				}
+			}
+		);
 		ConfigForgeClientSafeRunner clientSafeRunner = new ConfigForgeClientSafeRunner(network);
 		DistExecutor.safeRunWhenOn(Dist.CLIENT, () -> clientSafeRunner::registerClient);
 	}

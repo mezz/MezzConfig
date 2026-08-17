@@ -6,6 +6,7 @@ import net.mezzdev.config.api.schema.ConfigScope;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.server.ServerConfigKey;
+import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.util.ErrorUtil;
 import net.mezzdev.deduplicatingrunner.DelayedExecutor;
 import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
@@ -101,6 +102,13 @@ public class ConfigManager implements IConfigManager {
 				schema.rollbackRegistration(e);
 			}
 			throw e;
+		}
+		if (schema.getOwnership() == ConfigOwnership.SERVER && schema.getScope() == ConfigScope.WORLD) {
+			try {
+				ServerConfigRuntime.onServerSchemaRegistered(schema);
+			} catch (RuntimeException e) {
+				LOGGER.error("Failed to synchronize newly registered server config schema: {}", schema.getServerKey(), e);
+			}
 		}
 	}
 

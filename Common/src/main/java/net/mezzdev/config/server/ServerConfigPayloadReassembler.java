@@ -70,6 +70,20 @@ final class ServerConfigPayloadReassembler {
 		return expired;
 	}
 
+	synchronized Optional<Duration> getTimeUntilNextExpiration(long nowNanos) {
+		return assemblies.values()
+			.stream()
+			.mapToLong(Assembly::createdNanos)
+			.min()
+			.stream()
+			.mapToObj(createdNanos -> {
+				long elapsedNanos = nowNanos - createdNanos;
+				long remainingNanos = Math.max(0, INCOMPLETE_MESSAGE_TIMEOUT_NANOS - elapsedNanos);
+				return Duration.ofNanos(remainingNanos);
+			})
+			.findFirst();
+	}
+
 	synchronized boolean isEmpty() {
 		return assemblies.isEmpty();
 	}

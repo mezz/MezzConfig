@@ -444,6 +444,9 @@ public class ConfigSchema implements IConfigSchema {
 
 	private void onFileChanged() {
 		needsLoad.set(true);
+		if (isSynchronizedServerSchema()) {
+			ServerConfigRuntime.onServerSchemaFileChanged(this);
+		}
 	}
 
 	public synchronized void register(@Nullable FileWatcher fileWatcher, boolean logUntranslatedKeys) {

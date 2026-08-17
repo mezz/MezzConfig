@@ -23,6 +23,9 @@
       "net.mezzdev.config.fabric.ConfigFabricClient"
     ]
   },
+	"mixins": [
+	  "mezz_config.mixins.json"
+	],
 
   "depends": {
     "fabricloader": "${fabricLoaderVersionRange}",

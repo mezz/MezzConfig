@@ -6,6 +6,7 @@ import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.util.ErrorUtil;
 import net.mezzdev.config.value.ConfigValueUpdate;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.storage.LevelResource;
 import org.apache.logging.log4j.LogManager;
@@ -16,7 +17,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -92,28 +92,30 @@ public final class ServerConfigRuntime {
 		});
 	}
 
-	public static void onServerTick() {
+	public static void onServerSchemaRegistered(ConfigSchema schema) {
+		synchronizeServerSchema(schema);
+	}
+
+	public static void onServerSchemaFileChanged(ConfigSchema schema) {
+		synchronizeServerSchema(schema);
+	}
+
+	private static void synchronizeServerSchema(ConfigSchema schema) {
 		MinecraftServer server = activeServer;
 		if (server == null) {
 			return;
 		}
-		expireUpdateReassemblers(System.nanoTime());
-		ConfigManager manager = getConfigManager();
-		for (ConfigSchema schema : manager.getServerSchemas()) {
+		server.execute(() -> {
+			if (activeServer != server) {
+				return;
+			}
 			schema.loadIfNeeded();
 			long version = schema.getChangeVersion();
 			Long previousVersion = SERVER_SCHEMA_VERSIONS.put(schema, version);
 			if (previousVersion == null || previousVersion != version) {
 				broadcastSchema(server, schema, null, 0, true, "");
 			}
-		}
-		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			boolean canEdit = hasEditPermission(player);
-			Boolean previousCanEdit = PLAYER_EDIT_PERMISSIONS.put(player.getUUID(), canEdit);
-			if (previousCanEdit != null && previousCanEdit != canEdit) {
-				manager.getServerSchemas().forEach(schema -> sendSchema(player, schema, 0, true, ""));
-			}
-		}
+		});
 	}
 
 	public static void onPlayerJoin(ServerPlayer player) {
@@ -127,12 +129,31 @@ public final class ServerConfigRuntime {
 		UPDATE_REASSEMBLERS.remove(playerId);
 	}
 
+	public static void onPlayerPermissionsChanged(ServerPlayer player) {
+		boolean canEdit = hasEditPermission(player);
+		Boolean previousCanEdit = PLAYER_EDIT_PERMISSIONS.replace(player.getUUID(), canEdit);
+		if (previousCanEdit != null && previousCanEdit != canEdit) {
+			getConfigManager().getServerSchemas().forEach(schema -> sendSchema(player, schema, 0, true, ""));
+		}
+	}
+
+	public static void onPlayerPermissionsChanging(ServerPlayer player) {
+		MinecraftServer server = player.getServer();
+		if (server != null && activeServer == server) {
+			server.tell(new TickTask(
+				server.getTickCount(),
+				() -> onPlayerPermissionsChanged(player)
+			));
+		}
+	}
+
 	public static void handleUpdateChunk(ServerPlayer player, ServerConfigUpdateChunkPayload chunk) {
 		UUID playerId = player.getUUID();
 		ServerConfigPayloadReassembler reassembler = UPDATE_REASSEMBLERS.computeIfAbsent(
 			playerId,
 			ignored -> new ServerConfigPayloadReassembler()
 		);
+		boolean wasEmpty = reassembler.isEmpty();
 		try {
 			reassembler.accept(chunk.payloadInternal())
 				.ifPresent(data -> {
@@ -148,18 +169,40 @@ public final class ServerConfigRuntime {
 		} finally {
 			if (reassembler.isEmpty()) {
 				UPDATE_REASSEMBLERS.remove(playerId, reassembler);
+			} else if (wasEmpty) {
+				scheduleUpdateReassemblerExpiration(playerId, reassembler);
 			}
 		}
 	}
 
-	private static void expireUpdateReassemblers(long nowNanos) {
-		Iterator<Map.Entry<UUID, ServerConfigPayloadReassembler>> iterator = UPDATE_REASSEMBLERS.entrySet().iterator();
-		while (iterator.hasNext()) {
-			ServerConfigPayloadReassembler reassembler = iterator.next().getValue();
-			reassembler.expire(nowNanos);
-			if (reassembler.isEmpty()) {
-				iterator.remove();
-			}
+	private static void scheduleUpdateReassemblerExpiration(
+		UUID playerId,
+		ServerConfigPayloadReassembler reassembler
+	) {
+		MinecraftServer server = activeServer;
+		if (server == null || UPDATE_REASSEMBLERS.get(playerId) != reassembler) {
+			return;
+		}
+		reassembler.getTimeUntilNextExpiration(System.nanoTime())
+			.ifPresent(delay -> getConfigManager().getSaveScheduler().schedule(
+				() -> server.execute(() -> expireUpdateReassembler(server, playerId, reassembler)),
+				delay
+			));
+	}
+
+	private static void expireUpdateReassembler(
+		MinecraftServer server,
+		UUID playerId,
+		ServerConfigPayloadReassembler reassembler
+	) {
+		if (activeServer != server || UPDATE_REASSEMBLERS.get(playerId) != reassembler) {
+			return;
+		}
+		reassembler.expire(System.nanoTime());
+		if (reassembler.isEmpty()) {
+			UPDATE_REASSEMBLERS.remove(playerId, reassembler);
+		} else {
+			scheduleUpdateReassemblerExpiration(playerId, reassembler);
 		}
 	}
 
