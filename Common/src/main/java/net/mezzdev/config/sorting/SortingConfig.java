@@ -29,7 +29,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 	private static final int MAX_LOGGED_PROBLEMS = 100;
 
 	private final @Nullable Path defaultPath;
-	private final Path path;
+	private final @Nullable Path path;
 	private final Comparator<String> defaultSortOrder;
 	private final boolean allowsRemovingValues;
 	private final List<Runnable> changeListeners = new ArrayList<>();
@@ -56,6 +56,23 @@ public final class SortingConfig implements ISortingConfig<String> {
 	) {
 		this.defaultPath = defaultPath;
 		this.path = Objects.requireNonNull(path, "path");
+		this.defaultSortOrder = Objects.requireNonNull(defaultSortOrder, "defaultSortOrder");
+		this.allowsRemovingValues = allowsRemovingValues;
+	}
+
+	public static SortingConfig inMemory(
+		Comparator<String> defaultSortOrder,
+		boolean allowsRemovingValues
+	) {
+		return new SortingConfig(defaultSortOrder, allowsRemovingValues);
+	}
+
+	private SortingConfig(
+		Comparator<String> defaultSortOrder,
+		boolean allowsRemovingValues
+	) {
+		this.defaultPath = null;
+		this.path = null;
 		this.defaultSortOrder = Objects.requireNonNull(defaultSortOrder, "defaultSortOrder");
 		this.allowsRemovingValues = allowsRemovingValues;
 	}
@@ -189,6 +206,10 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	private boolean save(SavedValues savedValues) {
+		Path path = this.path;
+		if (path == null) {
+			return true;
+		}
 		if (writesBlockedByReadFailure) {
 			return false;
 		}
@@ -260,6 +281,9 @@ public final class SortingConfig implements ISortingConfig<String> {
 
 	private LoadedSavedValues loadSavedValuesFromFile() {
 		Path loadPath = path;
+		if (loadPath == null) {
+			return new LoadedSavedValues(SavedValues.EMPTY, null, false, false);
+		}
 		if (!Files.exists(loadPath)) {
 			loadPath = defaultPath;
 		}

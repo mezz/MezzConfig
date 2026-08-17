@@ -26,11 +26,18 @@ accepting a `Path` supports tests or applications with a different config root.
 `build()` loads an installation-scoped schema before it returns, so its values
 can be consumed immediately.
 
-Build schemas from your mod's primary initializer or mod constructor, before
-client setup. MezzConfigGUI creates Forge and NeoForge's automatic config-screen
-factories during client setup. A schema built later remains registered and usable
-through MezzConfig, but it is not included in those automatically generated
-screens.
+Build client and server schemas together from your mod's common initializer or
+mod constructor. On a dedicated server, client schema declarations remain safe
+to run so shared registration code can initialize its fields, but the resulting
+schemas stay inactive and default-backed: MezzConfig does not register them,
+create their files, or start a client file watcher. Client sort orders similarly
+stay in memory without file access.
+
+Register schemas before client config-screen setup when using automatically
+generated screens. MezzConfigGUI creates Forge and NeoForge's automatic
+config-screen factories during client setup. A schema built later remains
+registered and usable through MezzConfig, but it is not included in those
+automatically generated screens.
 
 The builder factory selects who owns the values:
 
@@ -50,6 +57,11 @@ world. Ownership and scope are independent: a client-owned world schema stores
 local preferences separately for each singleplayer world or multiplayer
 server, while a server-owned world schema is authoritative for the active world
 and synchronized to connected clients.
+
+Register server-owned world schemas on both physical sides from common setup.
+The dedicated or integrated server uses its file-backed authoritative instance;
+a remote client keeps the same schema in memory and activates it from server
+snapshots without reading or creating the server's world files.
 
 ## Config schemas
 
@@ -108,7 +120,10 @@ The world file is created when the server starts. Declared code defaults are
 loaded first, then the distributable default, then the world file. Connected
 clients do not read either server file; they receive the server's complete
 effective snapshot in memory when they join and whenever the values change.
-Editing the world file is detected and synchronized automatically. Large
+Editing the world file is detected and synchronized automatically. Client-owned
+files use a 500-millisecond quiet period, while server-owned files use a separate
+watcher profile with a two-second quiet period so a multi-step editor save can
+settle before MezzConfig reloads and broadcasts it. Large
 snapshots and update requests are split into bounded network fragments and
 reassembled before the complete batch is validated or applied. The internal
 protocol accepts out-of-order and interleaved messages, rejects duplicates and

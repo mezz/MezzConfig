@@ -1,6 +1,6 @@
 package net.mezzdev.config.fabric;
 
-import net.fabricmc.api.DedicatedServerModInitializer;
+import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -11,11 +11,11 @@ import net.mezzdev.config.server.ServerConfigSyncChunkPayload;
 import net.mezzdev.config.server.ServerConfigUpdateChunkPayload;
 
 /**
- * Fabric dedicated-server entry point and common networking registration.
+ * Fabric common entry point and server networking registration.
  */
-public final class ConfigFabric implements DedicatedServerModInitializer {
+public final class ConfigFabric implements ModInitializer {
 	@Override
-	public void onInitializeServer() {
+	public void onInitialize() {
 		registerCommonServerSupport();
 	}
 

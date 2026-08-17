@@ -26,6 +26,7 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private final ConfigManager configManager;
 	private final ConfigOwnership ownership;
 	private final String configFileName;
+	private final boolean registrationEnabled;
 	private ConfigScope scope = ConfigScope.INSTALLATION;
 	private boolean built;
 
@@ -53,12 +54,25 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 		ConfigOwnership ownership,
 		String configFileName
 	) {
+		this(modId, pathResolverFactory, localizationPath, configManager, ownership, configFileName, true);
+	}
+
+	public ConfigSchemaBuilder(
+		String modId,
+		Function<ConfigScope, ConfigSchemaPathResolver> pathResolverFactory,
+		String localizationPath,
+		ConfigManager configManager,
+		ConfigOwnership ownership,
+		String configFileName,
+		boolean registrationEnabled
+	) {
 		this.modId = ConfigSchema.validateModId(modId);
 		this.pathResolverFactory = ErrorUtil.checkNotNull(pathResolverFactory, "pathResolverFactory");
 		this.localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 		this.configManager = ErrorUtil.checkNotNull(configManager, "configManager");
 		this.ownership = ErrorUtil.checkNotNull(ownership, "ownership");
 		this.configFileName = ErrorUtil.checkNotNull(configFileName, "configFileName");
+		this.registrationEnabled = registrationEnabled;
 	}
 
 	@Override
@@ -116,7 +130,9 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 			scope,
 			serverKey
 		);
-		configManager.registerSchema(schema);
+		if (registrationEnabled) {
+			configManager.registerSchema(schema);
+		}
 		return schema;
 	}
 

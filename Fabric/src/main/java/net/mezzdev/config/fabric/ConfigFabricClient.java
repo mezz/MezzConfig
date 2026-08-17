@@ -14,7 +14,6 @@ import net.mezzdev.config.server.ServerConfigSyncChunkPayload;
 public final class ConfigFabricClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
-		ConfigFabric.registerCommonServerSupport();
 		ClientPlayNetworking.registerGlobalReceiver(
 			ServerConfigSyncChunkPayload.TYPE,
 			(payload, context) -> ServerConfigRuntime.handleSyncChunk(payload)

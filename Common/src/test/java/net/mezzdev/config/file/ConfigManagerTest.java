@@ -6,6 +6,7 @@ import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaPathResolver;
 import net.mezzdev.config.server.ServerConfigKey;
+import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,17 +21,62 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigManagerTest {
 	@Test
-	public void schemasRegisteredAfterManagerSnapshotRemainVisible() {
-		ConfigManager manager = new ConfigManager(
-			"Disabled Test File Watcher",
-			new ConfigFileWatcherSettings(false, Duration.ofMillis(1), Duration.ofMillis(1))
+	public void clientAndServerDefaultsUseTheirExpectedChangeSettlingDelays() {
+		ConfigFileWatcherSettings clientSettings = ConfigFileWatcherSettings.clientDefaults();
+		ConfigFileWatcherSettings serverSettings = ConfigFileWatcherSettings.serverDefaults();
+
+		assertEquals(ConfigFileWatcherSettings.DEFAULT_CLIENT_CHANGE_SETTLING_DELAY, clientSettings.changeSettlingDelay());
+		assertEquals(ConfigFileWatcherSettings.DEFAULT_SERVER_CHANGE_SETTLING_DELAY, serverSettings.changeSettlingDelay());
+		assertEquals(
+			ConfigFileWatcherSettings.DEFAULT_CLIENT_MISSING_DIRECTORY_RETRY_INTERVAL,
+			clientSettings.missingDirectoryRetryInterval()
 		);
+		assertEquals(
+			ConfigFileWatcherSettings.DEFAULT_SERVER_MISSING_DIRECTORY_RETRY_INTERVAL,
+			serverSettings.missingDirectoryRetryInterval()
+		);
+		assertTrue(serverSettings.changeSettlingDelay().compareTo(clientSettings.changeSettlingDelay()) > 0);
+	}
+
+	@Test
+	public void schemasRegisteredAfterWatchingStartsUseTheirOwnershipSettings(@TempDir Path tempDir) throws IOException {
+		ConfigManager manager = new ConfigManager(
+			"Ownership Test File Watcher",
+			ConfigFileWatcherSettings.clientDefaults().withEnabled(false),
+			new ConfigFileWatcherSettings(true, Duration.ofMillis(25), Duration.ofSeconds(1))
+		);
+		Path clientPath = tempDir.resolve("client.ini");
+		Path serverPath = tempDir.resolve("server.ini");
+		InstallationSchema client = createInstallationSchema(
+			clientPath,
+			ConfigOwnership.CLIENT
+		);
+		InstallationSchema server = createInstallationSchema(
+			serverPath,
+			ConfigOwnership.SERVER
+		);
+		manager.startWatching();
+		manager.registerSchema(client.schema());
+		manager.registerSchema(server.schema());
+
+		Files.writeString(clientPath, "[general]\nenabled = false\n");
+		Files.writeString(serverPath, "[general]\nenabled = false\n");
+
+		awaitValue(server.enabled(), false);
+		assertTrue(client.enabled().getValue());
+		assertFalse(server.enabled().getValue());
+	}
+
+	@Test
+	public void schemasRegisteredAfterManagerSnapshotRemainVisible() {
+		ConfigManager manager = createDisabledConfigManager();
 		List<?> beforeRegistration = List.copyOf(manager.getSchemas());
 		ConfigSchema schema = createServerSchema(
 			new ServerConfigKey("late_test_mod", "server.ini"),
@@ -45,10 +91,7 @@ public class ConfigManagerTest {
 
 	@Test
 	public void duplicateServerSchemaDoesNotInitializeOrReplaceOriginal() {
-		ConfigManager manager = new ConfigManager(
-			"Disabled Test File Watcher",
-			new ConfigFileWatcherSettings(false, Duration.ofMillis(1), Duration.ofMillis(1))
-		);
+		ConfigManager manager = createDisabledConfigManager();
 		ServerConfigKey key = new ServerConfigKey("test_mod", "server.ini");
 		ConfigSchema original = createServerSchema(key, () -> Optional.empty());
 		AtomicInteger duplicatePathResolutions = new AtomicInteger();
@@ -67,10 +110,7 @@ public class ConfigManagerTest {
 
 	@Test
 	public void failedRegistrationCanRetryWithoutRetainedState(@TempDir Path tempDir) throws IOException {
-		ConfigManager manager = new ConfigManager(
-			"Disabled Test File Watcher",
-			new ConfigFileWatcherSettings(false, Duration.ofMillis(1), Duration.ofMillis(1))
-		);
+		ConfigManager manager = createDisabledConfigManager();
 		Path path = tempDir.resolve("client.ini");
 		Files.createDirectory(path);
 		ConfigSchema schema = createInstallationSchema(path);
@@ -101,15 +141,50 @@ public class ConfigManagerTest {
 		);
 	}
 
-	private static ConfigSchema createInstallationSchema(Path path) {
-		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
-		category.addBoolean("enabled", true)
-			.build();
-		return new ConfigSchema(
-			"test_mod",
-			path,
-			List.of(category),
-			(command, delay) -> CompletableFuture.completedFuture(null)
+	private static ConfigManager createDisabledConfigManager() {
+		return new ConfigManager(
+			"Disabled Test File Watcher",
+			ConfigFileWatcherSettings.clientDefaults().withEnabled(false),
+			ConfigFileWatcherSettings.serverDefaults().withEnabled(false)
 		);
 	}
+
+	private static ConfigSchema createInstallationSchema(Path path) {
+		return createInstallationSchema(path, ConfigOwnership.CLIENT).schema();
+	}
+
+	private static InstallationSchema createInstallationSchema(Path path, ConfigOwnership ownership) {
+		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = category.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = new ConfigSchema(
+			"test_mod",
+			() -> Optional.of(path),
+			List.of(category),
+			List.of(category),
+			(command, delay) -> CompletableFuture.completedFuture(null),
+			ownership,
+			ConfigScope.INSTALLATION,
+			null
+		);
+		return new InstallationSchema(schema, enabled);
+	}
+
+	private static <T> void awaitValue(ConfigValue<T> value, T expected) {
+		long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+		while (System.nanoTime() < deadline) {
+			if (expected.equals(value.getValue())) {
+				return;
+			}
+			try {
+				Thread.sleep(20);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				throw new AssertionError("Interrupted while waiting for config reload.", e);
+			}
+		}
+		throw new AssertionError("Config value was not reloaded with: " + expected);
+	}
+
+	private record InstallationSchema(ConfigSchema schema, ConfigValue<Boolean> enabled) {}
 }

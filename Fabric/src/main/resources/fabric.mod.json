@@ -16,7 +16,7 @@
 
   "environment": "*",
   "entrypoints": {
-	"server": [
+	"main": [
 	  "net.mezzdev.config.fabric.ConfigFabric"
 	],
     "client": [

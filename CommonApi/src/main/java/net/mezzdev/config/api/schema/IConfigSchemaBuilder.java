@@ -47,9 +47,10 @@ public interface IConfigSchemaBuilder {
 	/**
 	 * Build and register the config schema.
 	 * A builder may only be built once.
-	 * Build schemas from the mod's primary initializer or constructor, before client setup, when using automatically
-	 * generated config screens. MezzConfigGUI's Forge and NeoForge config-screen factories include the schemas registered
-	 * when client setup runs.
+	 * Build client and server schemas from the mod's primary initializer or constructor. On a dedicated server, client
+	 * schemas are built as inactive, default-backed objects and are not registered. Register schemas before client
+	 * config-screen setup when using automatically generated config screens. MezzConfigGUI's Forge and NeoForge
+	 * config-screen factories include the schemas registered when client setup runs.
 	 *
 	 * @since 0.1.0
 	 */

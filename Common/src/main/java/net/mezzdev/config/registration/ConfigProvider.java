@@ -22,8 +22,12 @@ import net.mezzdev.config.util.ErrorUtil;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Iterator;
+import java.util.Optional;
+import java.util.ServiceLoader;
 
 public final class ConfigProvider implements IConfigProvider {
+	private static final boolean CLIENT_CONFIGS_AVAILABLE = loadClientConfigsAvailable();
 	private static final ConfigManager CONFIG_MANAGER = createConfigManager();
 
 	@Override
@@ -73,6 +77,17 @@ public final class ConfigProvider implements IConfigProvider {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path relativeConfigFile = getRelativeConfigFile(configFileName);
 			String normalizedFileName = relativeConfigFile.toString().replace(File.separatorChar, '/');
+			if (ownership == ConfigOwnership.CLIENT && !CLIENT_CONFIGS_AVAILABLE) {
+				return new ConfigSchemaBuilder(
+					modId,
+					ignored -> Optional::empty,
+					localizationPath,
+					configManager,
+					ownership,
+					normalizedFileName,
+					false
+				);
+			}
 			return new ConfigSchemaBuilder(
 				modId,
 				scope -> createPathResolver(ownership, scope, relativeConfigFile, normalizedFileName),
@@ -123,8 +138,12 @@ public final class ConfigProvider implements IConfigProvider {
 			Comparator<String> defaultSortOrder,
 			boolean allowsRemovingValues
 		) {
+			Path relativeConfigFile = getRelativeConfigFile(configFileName);
+			if (!CLIENT_CONFIGS_AVAILABLE) {
+				return SortingConfig.inMemory(defaultSortOrder, allowsRemovingValues);
+			}
 			Path configFile = modDirectory.resolve("client")
-				.resolve(getRelativeConfigFile(configFileName))
+				.resolve(relativeConfigFile)
 				.normalize();
 			return new SortingConfig(configFile, defaultSortOrder, allowsRemovingValues);
 		}
@@ -135,6 +154,22 @@ public final class ConfigProvider implements IConfigProvider {
 		ConfigManager configManager = new ConfigManager("MezzConfig File Watcher");
 		configManager.startWatching();
 		return configManager;
+	}
+
+	private static boolean loadClientConfigsAvailable() {
+		Iterator<ConfigPhysicalSideProvider> providers = ServiceLoader.load(
+				ConfigPhysicalSideProvider.class,
+				ConfigProvider.class.getClassLoader()
+			)
+			.iterator();
+		if (!providers.hasNext()) {
+			throw new IllegalStateException("MezzConfig physical-side provider is not present.");
+		}
+		ConfigPhysicalSideProvider provider = providers.next();
+		if (providers.hasNext()) {
+			throw new IllegalStateException("More than one MezzConfig physical-side provider is present.");
+		}
+		return provider.isPhysicalClient();
 	}
 
 	private static Path getRelativeConfigFile(String configFileName) {

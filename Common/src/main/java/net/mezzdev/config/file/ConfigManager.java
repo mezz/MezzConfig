@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,7 +33,7 @@ public class ConfigManager implements IConfigManager {
 	private static final Duration SAVE_SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
 	private static final String SAVE_SCHEDULER_THREAD_NAME = "MezzConfig Save Scheduler";
 
-	private final @Nullable FileWatcher fileWatcher;
+	private final Map<ConfigOwnership, FileWatcherRegistration> fileWatchers;
 	private final DelayedExecutor saveExecutor;
 	private final List<ConfigSchema> schemas = new ArrayList<>();
 	private final Map<RegistrationKey, ConfigSchema> schemasByKey = new LinkedHashMap<>();
@@ -44,45 +45,45 @@ public class ConfigManager implements IConfigManager {
 	}
 
 	public ConfigManager(String fileWatcherThreadName) {
-		this(fileWatcherThreadName, ConfigFileWatcherSettings.defaults());
-	}
-
-	public ConfigManager(String fileWatcherThreadName, ConfigFileWatcherSettings fileWatcherSettings) {
-		this(fileWatcherThreadName, fileWatcherSettings, false);
+		this(
+			fileWatcherThreadName,
+			ConfigFileWatcherSettings.clientDefaults(),
+			ConfigFileWatcherSettings.serverDefaults()
+		);
 	}
 
 	public ConfigManager(
 		String fileWatcherThreadName,
-		ConfigFileWatcherSettings fileWatcherSettings,
+		ConfigFileWatcherSettings clientFileWatcherSettings,
+		ConfigFileWatcherSettings serverFileWatcherSettings
+	) {
+		this(fileWatcherThreadName, clientFileWatcherSettings, serverFileWatcherSettings, false);
+	}
+
+	public ConfigManager(
+		String fileWatcherThreadName,
+		ConfigFileWatcherSettings clientFileWatcherSettings,
+		ConfigFileWatcherSettings serverFileWatcherSettings,
 		boolean logUntranslatedKeys
 	) {
 		fileWatcherThreadName = ErrorUtil.checkNotNull(fileWatcherThreadName, "fileWatcherThreadName");
-		fileWatcherSettings = ErrorUtil.checkNotNull(fileWatcherSettings, "fileWatcherSettings");
-		this.fileWatcher = createFileWatcher(fileWatcherThreadName, fileWatcherSettings);
+		clientFileWatcherSettings = ErrorUtil.checkNotNull(clientFileWatcherSettings, "clientFileWatcherSettings");
+		serverFileWatcherSettings = ErrorUtil.checkNotNull(serverFileWatcherSettings, "serverFileWatcherSettings");
+		this.fileWatchers = new EnumMap<>(ConfigOwnership.class);
+		this.fileWatchers.put(ConfigOwnership.CLIENT, new FileWatcherRegistration(
+			fileWatcherThreadName,
+			clientFileWatcherSettings,
+			ConfigOwnership.CLIENT
+		));
+		this.fileWatchers.put(ConfigOwnership.SERVER, new FileWatcherRegistration(
+			fileWatcherThreadName,
+			serverFileWatcherSettings,
+			ConfigOwnership.SERVER
+		));
 		this.logUntranslatedKeys = logUntranslatedKeys;
 		this.saveExecutor = new DelayedExecutor(SAVE_SHUTDOWN_TIMEOUT, SAVE_SCHEDULER_THREAD_NAME);
 		Runtime.getRuntime()
 			.addShutdownHook(new Thread(saveExecutor::shutdown, SAVE_SCHEDULER_THREAD_NAME + " Shutdown"));
-	}
-
-	private static @Nullable FileWatcher createFileWatcher(
-		String fileWatcherThreadName,
-		ConfigFileWatcherSettings fileWatcherSettings
-	) {
-		if (!fileWatcherSettings.enabled()) {
-			LOGGER.info("Automatic config file watching is disabled.");
-			return null;
-		}
-		try {
-			return new FileWatcher(
-				fileWatcherThreadName,
-				fileWatcherSettings.changeSettlingDelay(),
-				fileWatcherSettings.missingDirectoryRetryInterval()
-			);
-		} catch (FileWatcherUnavailableException e) {
-			LOGGER.error("Automatic config file watching is unavailable.", e);
-			return null;
-		}
 	}
 
 	public DelayedTaskScheduler getSaveScheduler() {
@@ -93,6 +94,7 @@ public class ConfigManager implements IConfigManager {
 		RegistrationKey key = reserve(schema);
 		boolean initialized = false;
 		try {
+			FileWatcher fileWatcher = getFileWatcher(schema.getOwnership());
 			schema.register(fileWatcher, logUntranslatedKeys);
 			initialized = true;
 			publish(key, schema);
@@ -110,6 +112,10 @@ public class ConfigManager implements IConfigManager {
 				LOGGER.error("Failed to synchronize newly registered server config schema: {}", schema.getServerKey(), e);
 			}
 		}
+	}
+
+	private @Nullable FileWatcher getFileWatcher(ConfigOwnership ownership) {
+		return fileWatchers.get(ownership).getOrCreate();
 	}
 
 	private synchronized RegistrationKey reserve(ConfigSchema schema) {
@@ -158,9 +164,7 @@ public class ConfigManager implements IConfigManager {
 	}
 
 	public void startWatching() {
-		if (fileWatcher != null) {
-			fileWatcher.start();
-		}
+		fileWatchers.values().forEach(FileWatcherRegistration::start);
 	}
 
 	public void onWorldStarted() {
@@ -193,4 +197,61 @@ public class ConfigManager implements IConfigManager {
 	}
 
 	private record RegistrationKey(ConfigOwnership ownership, ConfigScope scope, Object identity) {}
+
+	private static final class FileWatcherRegistration {
+		private final String threadName;
+		private final ConfigFileWatcherSettings settings;
+		private final ConfigOwnership ownership;
+		private boolean initialized;
+		private boolean startRequested;
+		private @Nullable FileWatcher fileWatcher;
+
+		private FileWatcherRegistration(
+			String threadName,
+			ConfigFileWatcherSettings settings,
+			ConfigOwnership ownership
+		) {
+			this.threadName = threadName;
+			this.settings = settings;
+			this.ownership = ownership;
+		}
+
+		private synchronized @Nullable FileWatcher getOrCreate() {
+			if (!initialized) {
+				initialized = true;
+				fileWatcher = createFileWatcher();
+				if (startRequested && fileWatcher != null) {
+					fileWatcher.start();
+				}
+			}
+			return fileWatcher;
+		}
+
+		private synchronized void start() {
+			if (startRequested) {
+				return;
+			}
+			startRequested = true;
+			if (fileWatcher != null) {
+				fileWatcher.start();
+			}
+		}
+
+		private @Nullable FileWatcher createFileWatcher() {
+			if (!settings.enabled()) {
+				LOGGER.info("Automatic {} config file watching is disabled.", ownership);
+				return null;
+			}
+			try {
+				return new FileWatcher(
+					threadName + " " + ownership,
+					settings.changeSettlingDelay(),
+					settings.missingDirectoryRetryInterval()
+				);
+			} catch (FileWatcherUnavailableException e) {
+				LOGGER.error("Automatic {} config file watching is unavailable.", ownership, e);
+				return null;
+			}
+		}
+	}
 }

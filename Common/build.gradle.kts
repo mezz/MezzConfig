@@ -72,13 +72,6 @@ neoForge {
     addModdingDependenciesTo(sourceSets.test.get())
 }
 
-sourceSets {
-    named("test") {
-        //The test module has no resources
-        resources.setSrcDirs(emptyList<String>())
-    }
-}
-
 dependencies {
     fileWatcherLicense("mezz:FileWatcher:$fileWatcherVersion")
     deduplicatingRunnerLicense("mezz:DeduplicatingRunner:$deduplicatingRunnerVersion")

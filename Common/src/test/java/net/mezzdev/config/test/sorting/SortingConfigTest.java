@@ -19,6 +19,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SortingConfigTest {
 	@Test
+	public void inMemoryConfigRetainsChangesWithoutPersistence() {
+		SortingConfig sortingConfig = SortingConfig.inMemory(Comparator.naturalOrder(), true);
+
+		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("second", "first")));
+		assertTrue(sortingConfig.setSortedValues(List.of("second")));
+		assertEquals(List.of("second"), sortingConfig.getSortedValues(List.of("first", "second")));
+		assertFalse(sortingConfig.isVisible(List.of("first", "second"), "first"));
+	}
+
+	@Test
 	public void missingValuesAreAppendedUsingDefaultOrder(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("sort-order.txt");
 		Files.write(path, List.of("[visible]", "second", "[hidden]"));

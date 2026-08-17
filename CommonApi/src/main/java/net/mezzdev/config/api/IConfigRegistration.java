@@ -15,6 +15,8 @@ import java.util.Comparator;
 public interface IConfigRegistration {
 	/**
 	 * Create a client-owned config schema builder with installation scope.
+	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
+	 * inactive, default-backed, and is not registered or connected to a file.
 	 * The schema loads synchronously when built. Use
 	 * {@link IConfigSchemaBuilder#setScope(net.mezzdev.config.api.schema.ConfigScope)} for world-specific values.
 	 *
@@ -41,6 +43,7 @@ public interface IConfigRegistration {
 
 	/**
 	 * Create an installation-scoped, string-backed client sort order.
+	 * On a dedicated server, the sort order remains in memory and does not access a file.
 	 *
 	 * @param configFileName relative file name inside the mod's client config directory
 	 * @param defaultSortOrder default order for values that are not in the file yet

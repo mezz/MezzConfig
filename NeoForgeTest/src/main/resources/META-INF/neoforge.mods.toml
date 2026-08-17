@@ -32,5 +32,6 @@ In-game test config registrations for MezzConfig on NeoForge.
     modId="${configModId}"
     type="required"
     versionRange="[0,)"
-    ordering="AFTER"
+    # Intentionally load first to verify physical-side detection does not depend on MezzConfig's constructor.
+    ordering="BEFORE"
     side="BOTH"
