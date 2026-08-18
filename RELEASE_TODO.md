@@ -264,7 +264,7 @@ mistaken for a requirement without supporting evidence.
 
 ### Make the Standalone API Artifact Self-Describing
 
-- [ ] Remove undeclared annotation dependencies from the API jar or publish
+- [x] Remove undeclared annotation dependencies from the API jar or publish
       them correctly.
 
   **Reason:** API `package-info` classes reference JSR-305 and Minecraft
@@ -272,11 +272,11 @@ mistaken for a requirement without supporting evidence.
   A shared compile-only consumer should not need undeclared classes merely to
   interpret the API's nullness contract.
 
-  - [ ] Prefer a self-contained package nullness annotation such as JSpecify
+  - [x] Prefer a self-contained package nullness annotation such as JSpecify
         `@NullMarked`, or explicitly declare every required dependency.
-  - [ ] Run `jdeps --missing-deps` with the declared dependency classpath and
+  - [x] Run `jdeps --missing-deps` with the declared dependency classpath and
         require no unexplained missing API signature types.
-  - [ ] Validate the generated API POM and a small standalone consumer build.
+  - [x] Validate the generated API POM and a small standalone consumer build.
 
 ### Make the Publishing Pipeline Run the Full Release Gate
 

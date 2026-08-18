@@ -1,10 +1,7 @@
 @ApiStatus.Internal
-@ParametersAreNonnullByDefault
-@MethodsReturnNonnullByDefault
+@NullMarked
 
 package net.mezzdev.config.api.internal;
 
-import javax.annotation.ParametersAreNonnullByDefault;
-
-import net.minecraft.MethodsReturnNonnullByDefault;
 import org.jetbrains.annotations.ApiStatus;
+import org.jspecify.annotations.NullMarked;

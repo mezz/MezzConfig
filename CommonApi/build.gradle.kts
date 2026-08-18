@@ -36,6 +36,7 @@ val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
+val jspecifyVersion: String by extra
 val apiBaselineVersion: String by extra
 val specificationVersion: String by extra
 val isInitialApiRelease = apiBaselineVersion == specificationVersion
@@ -81,6 +82,7 @@ sourceSets {
 
 dependencies {
     implementation("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
+    implementation("org.jspecify:jspecify:$jspecifyVersion")
 }
 
 val apiBaseline by configurations.creating {
@@ -146,6 +148,11 @@ publishing {
                     "groupId" to "org.jetbrains",
                     "artifactId" to "annotations",
                     "version" to jetbrainsAnnotationsVersion
+                ),
+                mapOf(
+                    "groupId" to "org.jspecify",
+                    "artifactId" to "jspecify",
+                    "version" to jspecifyVersion
                 )
             )
 
