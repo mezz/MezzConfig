@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -100,14 +101,21 @@ public class ConfigSerializerRecoveryTest {
 	public void unchangedFailedCorrectionIsNotBackedUpOrRewrittenAgain(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of("[general]", "value = malformed"));
+		AtomicBoolean serializationFails = new AtomicBoolean();
 		IConfigValueSerializer<String> serializer = new IConfigValueSerializer<>() {
 			@Override
 			public String serialize(String value) {
-				throw new IllegalStateException("expected test serialization failure");
+				if (serializationFails.get()) {
+					throw new IllegalStateException("expected test serialization failure");
+				}
+				return value;
 			}
 
 			@Override
 			public IDeserializeResult<String> deserialize(String string) {
+				if (string.equals("default")) {
+					return IDeserializeResult.success(string);
+				}
 				return IDeserializeResult.failure("expected malformed value");
 			}
 
@@ -123,6 +131,7 @@ public class ConfigSerializerRecoveryTest {
 		};
 		ConfigValue<String> value = new ConfigValue<>(LOCALIZATION_PATH, "value", "default", serializer);
 		ConfigCategory category = createCategory(value);
+		serializationFails.set(true);
 
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));

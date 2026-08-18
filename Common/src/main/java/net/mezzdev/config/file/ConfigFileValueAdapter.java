@@ -9,21 +9,31 @@ import net.mezzdev.config.api.value.IDeserializeResult;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 public final class ConfigFileValueAdapter {
 	private static final int MAX_DIAGNOSTICS = 100;
+	private static final int MAX_DIAGNOSTIC_CHARACTERS = 1_024;
 
 	private ConfigFileValueAdapter() {}
 
 	public static <T> String serialize(IConfigValueSerializer<T> serializer, T value) {
-		return ConfigFileValueCodec.serialize(serializeUnknown(serializer, value));
+		try {
+			return ConfigFileValueCodec.serialize(serializeUnknown(serializer, value));
+		} catch (RuntimeException e) {
+			throw new IllegalArgumentException(
+				summarize("Config serializer failed to serialize a value: " + getExceptionMessage(e)),
+				e
+			);
+		}
 	}
 
 	private static JsonElement serializeUnknown(IConfigValueSerializer<?> serializer, Object value) {
+		if (!isValidUnknown(serializer, value)) {
+			throw new IllegalArgumentException("Config serializer rejected a value that MezzConfig was asked to store.");
+		}
 		if (serializer instanceof IConfigListValueSerializer<?> listSerializer && value instanceof List<?> list) {
-			if (!isValidUnknown(serializer, value)) {
-				throw new IllegalArgumentException("Invalid list config value: " + serializer.getValidValuesDescription());
-			}
 			JsonArray array = new JsonArray(list.size());
 			list.stream()
 				.map(element -> serializeUnknown(listSerializer.getElementSerializer(), element))
@@ -32,10 +42,34 @@ public final class ConfigFileValueAdapter {
 		}
 		@SuppressWarnings("unchecked")
 		IConfigValueSerializer<Object> typedSerializer = (IConfigValueSerializer<Object>) serializer;
-		return new JsonPrimitive(typedSerializer.serialize(value));
+		String serialized = typedSerializer.serialize(value);
+		if (serialized == null) {
+			throw new IllegalArgumentException("Config serializer returned null from serialize.");
+		}
+		return new JsonPrimitive(serialized);
 	}
 
 	public static <T> IDeserializeResult<T> deserialize(IConfigValueSerializer<T> serializer, JsonElement value) {
+		try {
+			return normalizeResult(serializer, deserializeUnchecked(serializer, value));
+		} catch (RuntimeException e) {
+			return IDeserializeResult.failure(summarize(
+				"Config serializer failed to deserialize a value: " + getExceptionMessage(e)
+			));
+		}
+	}
+
+	public static <T> IDeserializeResult<T> deserializeScalar(IConfigValueSerializer<T> serializer, String value) {
+		try {
+			return normalizeResult(serializer, serializer.deserialize(value));
+		} catch (RuntimeException e) {
+			return IDeserializeResult.failure(summarize(
+				"Config serializer failed to deserialize a value: " + getExceptionMessage(e)
+			));
+		}
+	}
+
+	private static <T> IDeserializeResult<T> deserializeUnchecked(IConfigValueSerializer<T> serializer, JsonElement value) {
 		if (serializer instanceof IConfigListValueSerializer<?> listSerializer) {
 			return deserializeList(serializer, listSerializer, value);
 		}
@@ -43,6 +77,90 @@ public final class ConfigFileValueAdapter {
 			return serializer.deserialize(primitive.getAsString());
 		}
 		return IDeserializeResult.failure("Expected a scalar config value.");
+	}
+
+	public static <T> void validateRoundTrip(IConfigValueSerializer<T> serializer, T value) {
+		String firstSerialized = serializeDirect(serializer, value);
+		String secondSerialized = serializeDirect(serializer, value);
+		if (!firstSerialized.equals(secondSerialized)) {
+			throw new IllegalArgumentException("Config serializer returned different text for the same value.");
+		}
+		IDeserializeResult<T> directResult = deserializeScalar(serializer, firstSerialized);
+		T directValue = requireRoundTripResult(directResult);
+		if (!value.equals(directValue)) {
+			throw new IllegalArgumentException("Config serializer did not round-trip its value.");
+		}
+
+		String storedValue = serialize(serializer, value);
+		IDeserializeResult<JsonElement> decodedValue = ConfigFileValueCodec.deserialize(storedValue);
+		if (!decodedValue.getDiagnostics().isEmpty() || decodedValue.getResult().isEmpty()) {
+			throw new IllegalArgumentException("Config serializer produced an invalid stored representation.");
+		}
+		T storedRoundTripValue = requireRoundTripResult(deserialize(serializer, decodedValue.getResult().orElseThrow()));
+		if (!value.equals(storedRoundTripValue)) {
+			throw new IllegalArgumentException("Config serializer did not round-trip its stored value.");
+		}
+	}
+
+	private static <T> String serializeDirect(IConfigValueSerializer<T> serializer, T value) {
+		try {
+			String serialized = serializer.serialize(value);
+			if (serialized == null) {
+				throw new IllegalArgumentException("Config serializer returned null from serialize.");
+			}
+			return serialized;
+		} catch (RuntimeException e) {
+			throw new IllegalArgumentException(
+				summarize("Config serializer failed to serialize a value: " + getExceptionMessage(e)),
+				e
+			);
+		}
+	}
+
+	private static <T> T requireRoundTripResult(IDeserializeResult<T> result) {
+		if (!result.getDiagnostics().isEmpty() || result.getResult().isEmpty()) {
+			String diagnostics = String.join("; ", result.getDiagnostics());
+			throw new IllegalArgumentException(summarize(
+				"Config serializer could not deserialize its own value: " + diagnostics
+			));
+		}
+		return result.getResult().orElseThrow();
+	}
+
+	private static <T> IDeserializeResult<T> normalizeResult(
+		IConfigValueSerializer<T> serializer,
+		IDeserializeResult<T> result
+	) {
+		result = Objects.requireNonNull(result, "Config serializer returned null from deserialize.");
+		Optional<T> optionalResult = Objects.requireNonNull(result.getResult(), "Deserialization result returned null result state.");
+		List<String> rawDiagnostics = Objects.requireNonNull(
+			result.getDiagnostics(),
+			"Deserialization result returned null diagnostics."
+		);
+		List<String> diagnostics = new ArrayList<>();
+		for (String diagnostic : rawDiagnostics) {
+			if (diagnostic == null || diagnostic.isBlank()) {
+				addDiagnostic(diagnostics, "Config serializer returned a null or blank diagnostic.");
+			} else {
+				addDiagnostic(diagnostics, diagnostic);
+			}
+		}
+		if (optionalResult.isEmpty()) {
+			if (diagnostics.isEmpty()) {
+				addDiagnostic(diagnostics, "Config serializer returned no value or diagnostic.");
+			}
+			return IDeserializeResult.failure(diagnostics);
+		}
+
+		T deserializedValue = optionalResult.orElseThrow();
+		if (!serializer.isValid(deserializedValue)) {
+			addDiagnostic(diagnostics, "Config serializer returned a value that it reports as invalid.");
+			return IDeserializeResult.failure(diagnostics);
+		}
+		if (diagnostics.isEmpty()) {
+			return IDeserializeResult.success(deserializedValue);
+		}
+		return IDeserializeResult.partialSuccess(deserializedValue, diagnostics);
 	}
 
 	private static <T> IDeserializeResult<T> deserializeList(
@@ -88,10 +206,25 @@ public final class ConfigFileValueAdapter {
 
 	private static void addDiagnostic(List<String> diagnostics, String diagnostic) {
 		if (diagnostics.size() < MAX_DIAGNOSTICS) {
-			diagnostics.add(diagnostic);
+			diagnostics.add(summarize(diagnostic));
 		} else if (diagnostics.size() == MAX_DIAGNOSTICS) {
 			diagnostics.add("Further array element diagnostics were suppressed.");
 		}
+	}
+
+	private static String getExceptionMessage(RuntimeException exception) {
+		String message = exception.getMessage();
+		if (message == null || message.isBlank()) {
+			message = exception.getClass().getSimpleName();
+		}
+		return summarize(message);
+	}
+
+	private static String summarize(String diagnostic) {
+		if (diagnostic.length() <= MAX_DIAGNOSTIC_CHARACTERS) {
+			return diagnostic;
+		}
+		return diagnostic.substring(0, MAX_DIAGNOSTIC_CHARACTERS - 1) + "…";
 	}
 
 	private static IDeserializeResult<?> deserializeUnknown(IConfigValueSerializer<?> serializer, JsonElement value) {

@@ -57,24 +57,24 @@ mistaken for a requirement without supporting evidence.
 
 ### Make Custom Serializers Safe at Trust Boundaries
 
-- [ ] Define and enforce the complete `IConfigValueSerializer` contract.
+- [x] Define and enforce the complete `IConfigValueSerializer` contract.
 
   **Reason:** Custom deserializers are called directly while reading files and
   network state. A serializer can currently throw or return a successful value
   that fails `isValid`, allowing malformed external input to abort schema
   loading instead of participating in documented recovery.
 
-  - [ ] Document `deserialize` as total and non-throwing for arbitrary input.
-  - [ ] Require success and partial-success results to contain values accepted
+  - [x] Document `deserialize` as total and non-throwing for arbitrary input.
+  - [x] Require success and partial-success results to contain values accepted
         by `isValid`.
-  - [ ] Document deterministic serialization, stable equality, immutability,
+  - [x] Document deterministic serialization, stable equality, immutability,
         and round-trip expectations.
-  - [ ] Convert serializer exceptions at file and network decoding boundaries
+  - [x] Convert serializer exceptions at file and network decoding boundaries
         into bounded diagnostics.
-  - [ ] Reject invalid successful results without applying them.
-  - [ ] Define how serialization failures during saving and snapshot validation
+  - [x] Reject invalid successful results without applying them.
+  - [x] Define how serialization failures during saving and snapshot validation
         are reported.
-  - [ ] Test throwing serializers, invalid success and partial-success results,
+  - [x] Test throwing serializers, invalid success and partial-success results,
         serialization failures, malformed remote values, and recovery that
         preserves valid neighboring values.
 

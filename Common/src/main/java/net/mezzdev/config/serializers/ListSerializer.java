@@ -12,7 +12,6 @@ import net.mezzdev.config.util.ErrorUtil;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Serializer for comma-separated list config values.
@@ -42,9 +41,7 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 
 	@Override
 	public String serialize(List<T> values) {
-		return values.stream()
-			.map(elementSerializer::serialize)
-			.collect(Collectors.joining(", "));
+		return ConfigFileValueAdapter.serialize(this, values);
 	}
 
 	@Override
@@ -71,7 +68,7 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 		List<T> results = Arrays.stream(split)
 			.map(String::trim)
 			.filter(s -> !s.isEmpty())
-			.map(elementSerializer::deserialize)
+			.map(value -> ConfigFileValueAdapter.deserializeScalar(elementSerializer, value))
 			.<T>mapMulti((r, c) -> {
 				r.getResult().ifPresent(c);
 				diagnostics.addAll(r.getDiagnostics());

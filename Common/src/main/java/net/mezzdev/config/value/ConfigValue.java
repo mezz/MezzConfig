@@ -8,6 +8,7 @@ import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
+import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.schema.ConfigEditorCategory;
 import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
@@ -84,10 +85,11 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		this.editMode = ErrorUtil.checkNotNull(editMode, "editMode");
 		this.restartRequirement = ErrorUtil.checkNotNull(restartRequirement, "restartRequirement");
 		this.editorCategoryBuilders = getEditorCategoryBuilders(editorCategoryBuilders);
-		if (!this.serializer.isValid(defaultValue)) {
+		if (!isValid(this.serializer, defaultValue)) {
 			throw new IllegalArgumentException("Default value for '%s' is invalid: %s".formatted(this.name, defaultValue));
 		}
 		this.defaultValue = snapshotValue(this.serializer, defaultValue);
+		validateSerializerRoundTrip(this.serializer, this.defaultValue, this.name);
 		this.effectiveValue = this.defaultValue;
 		this.pendingValue = this.defaultValue;
 	}
@@ -214,7 +216,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	public List<String> setFromSerializedValue(String value, List<AppliedConfigValueChange<?>> changes) {
-		IDeserializeResult<T> deserializeResult = serializer.deserialize(value);
+		IDeserializeResult<T> deserializeResult = ConfigFileValueAdapter.deserializeScalar(serializer, value);
 		return setFromDeserializedValue(deserializeResult, changes);
 	}
 
@@ -254,14 +256,50 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	void validateUpdateValue(T value) {
-		if (value == null || !serializer.isValid(value)) {
+		if (value == null || !isValid(serializer, value)) {
 			throw new IllegalArgumentException("Invalid value for '%s': %s\n%s".formatted(name, value, serializer.getValidValuesDescription()));
 		}
 	}
 
 	T snapshotUpdateValue(T value) {
 		validateUpdateValue(value);
-		return snapshotValue(serializer, value);
+		T snapshot = snapshotValue(serializer, value);
+		validateSerializerRoundTrip(serializer, snapshot, name);
+		return snapshot;
+	}
+
+	private static <T> boolean isValid(IConfigValueSerializer<T> serializer, T value) {
+		try {
+			return serializer.isValid(value);
+		} catch (RuntimeException e) {
+			throw new IllegalArgumentException("Config serializer failed to validate a value.", e);
+		}
+	}
+
+	private static <T> void validateSerializerRoundTrip(
+		IConfigValueSerializer<T> serializer,
+		T value,
+		String configValueName
+	) {
+		try {
+			ConfigFileValueAdapter.validateRoundTrip(serializer, value);
+		} catch (RuntimeException e) {
+			throw new IllegalArgumentException(
+				"Serializer for config value '%s' cannot round-trip a valid value: %s".formatted(
+					configValueName,
+					getExceptionMessage(e)
+				),
+				e
+			);
+		}
+	}
+
+	private static String getExceptionMessage(RuntimeException exception) {
+		String message = exception.getMessage();
+		if (message == null || message.isBlank()) {
+			return exception.getClass().getSimpleName();
+		}
+		return message;
 	}
 
 	@Nullable

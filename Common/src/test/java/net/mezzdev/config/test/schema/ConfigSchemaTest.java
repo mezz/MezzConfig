@@ -1021,6 +1021,50 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void malformedRemoteSerializerValueRejectsTheWholeSnapshot() {
+		IConfigValueSerializer<String> throwingSerializer = new IConfigValueSerializer<>() {
+			@Override
+			public String serialize(String value) {
+				return value;
+			}
+
+			@Override
+			public IDeserializeResult<String> deserialize(String string) {
+				if (string.equals("boom")) {
+					throw new IllegalArgumentException("malformed external value");
+				}
+				return IDeserializeResult.success(string);
+			}
+
+			@Override
+			public boolean isValid(String value) {
+				return true;
+			}
+
+			@Override
+			public String getValidValuesDescription() {
+				return "any string";
+			}
+		};
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<String> text = builder.addValue("text", "default", throwingSerializer)
+			.build();
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createRemoteServerSchema(builder);
+
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> schema.applyRemoteSnapshot(List.of(
+			new ServerConfigValueData("category", "text", "boom"),
+			new ServerConfigValueData("category", "enabled", "false")
+		), true));
+
+		assertTrue(exception.getMessage().contains("failed to deserialize"));
+		assertEquals("default", text.getValue());
+		assertTrue(enabled.getValue());
+		assertFalse(schema.isActive());
+	}
+
+	@Test
 	public void serverSynchronizationPreservesStructuredListValues(@TempDir Path tempDir) {
 		List<String> effectiveStrings = List.of("a,b", "", " surrounding ", "[brackets]", "\"quoted\"");
 		List<String> pendingStrings = List.of("next,value", "", " pending whitespace ");

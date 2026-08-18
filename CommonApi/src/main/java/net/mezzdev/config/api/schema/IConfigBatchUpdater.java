@@ -26,7 +26,7 @@ public interface IConfigBatchUpdater {
 	 * @param value new value
 	 * @return this updater
 	 *
-	 * @throws IllegalArgumentException if the value is invalid
+	 * @throws IllegalArgumentException if the value is invalid or cannot be safely serialized
 	 * @throws IllegalStateException if this updater is no longer active
 	 *
 	 * @since 0.1.0

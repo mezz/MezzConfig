@@ -110,7 +110,7 @@ public interface IConfigValue<T> {
 	 * @param value new value
 	 * @return {@code true} if the saved value changed, or {@code false} if it was valid but already pending
 	 *
-	 * @throws IllegalArgumentException if the value is invalid
+	 * @throws IllegalArgumentException if the value is invalid or cannot be safely serialized
 	 * @throws IllegalStateException if this value's context-specific schema is currently inactive
 	 * @throws IllegalStateException if this value belongs to a server-owned world schema; use
 	 * {@link IConfigSchema#requestBatchUpdate(Consumer)} instead

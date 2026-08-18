@@ -20,7 +20,10 @@ import java.util.Optional;
  * Config values must be effectively immutable while held by MezzConfig, and their {@link Object#equals(Object)} result
  * must remain stable. Custom serializers must return immutable values from {@link #deserialize(String)}, and callers
  * must not pass mutable values to config value builders or updates.
- * Shared custom serializer instances must be thread-safe.
+ * Shared custom serializer instances must be thread-safe. For every value accepted by {@link #isValid(Object)},
+ * serialization must be deterministic, non-null, and round-trip to an equal value without diagnostics. Deserialization
+ * must return a non-null result without throwing for every non-null input; every returned value must pass
+ * {@link #isValid(Object)}. MezzConfig rejects contract violations at registration, update, file, and network boundaries.
  *
  * @param <T> effectively immutable value type with stable equality
  *
@@ -28,7 +31,7 @@ import java.util.Optional;
  */
 public interface IConfigValueSerializer<T> {
 	/**
-	 * Serialize the config value to a string.
+	 * Serialize a valid config value to deterministic, non-null text without throwing.
 	 *
 	 * @since 0.1.0
 	 */
@@ -36,14 +39,15 @@ public interface IConfigValueSerializer<T> {
 
 	/**
 	 * Deserialize the config value from a string.
-	 * The returned result must obey the state invariants documented by {@link IDeserializeResult}.
+	 * This must return a non-null result without throwing for arbitrary non-null input. The result must obey the state
+	 * invariants documented by {@link IDeserializeResult}; every present value must be accepted by {@link #isValid(Object)}.
 	 *
 	 * @since 0.1.0
 	 */
 	IDeserializeResult<T> deserialize(String string);
 
 	/**
-	 * Check if a given value is valid for this config value.
+	 * Check without throwing whether a given value is valid for this config value.
 	 *
 	 * @since 0.1.0
 	 */

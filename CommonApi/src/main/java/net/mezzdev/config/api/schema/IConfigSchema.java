@@ -117,7 +117,7 @@ public interface IConfigSchema {
 	 * @param updateBatch callback that queues updates
 	 * @return saved-value changes that were applied
 	 *
-	 * @throws IllegalArgumentException if a value is invalid or does not belong to this schema
+	 * @throws IllegalArgumentException if a value is invalid, cannot be safely serialized, or does not belong to this schema
 	 * @throws IllegalStateException if this context-specific schema is currently inactive
 	 * @throws IllegalStateException if this is a server-owned world schema; use
 	 * {@link #requestBatchUpdate(Consumer)} instead
@@ -144,7 +144,7 @@ public interface IConfigSchema {
 	 * @param updateBatch callback that queues updates
 	 * @return completion of the local update or server request
 	 *
-	 * @throws IllegalArgumentException if a value is invalid or does not belong to this schema
+	 * @throws IllegalArgumentException if a value is invalid, cannot be safely serialized, or does not belong to this schema
 	 * @throws IllegalStateException if this schema is currently inactive
 	 *
 	 * @since 0.2.0

@@ -229,7 +229,7 @@ public class ConfigValueSerializerTest {
 		assertEquals(List.of(true, false, true), deserializeValue(serializer, "true, false, TRUE"));
 		assertEquals(List.of(true, false), deserializeValue(serializer, "[true, false]"));
 		assertEquals(List.of(), deserializeValue(serializer, ""));
-		assertEquals("true, false", serializer.serialize(List.of(true, false)));
+		assertEquals("[\"true\",\"false\"]", serializer.serialize(List.of(true, false)));
 		assertTrue(serializer.isValid(List.of(true, false)));
 	}
 
@@ -279,7 +279,7 @@ public class ConfigValueSerializerTest {
 		);
 
 		assertEquals(List.of(true, false), deserializeValue(serializer, "true, false"));
-		assertEquals("true, false", serializer.serialize(List.of(true, false)));
+		assertEquals("[\"true\",\"false\"]", serializer.serialize(List.of(true, false)));
 		assertTrue(serializer instanceof IConfigListValueSerializer<?>);
 		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) serializer;
 		assertSame(BooleanSerializer.INSTANCE, listSerializer.getElementSerializer());
@@ -292,7 +292,7 @@ public class ConfigValueSerializerTest {
 		ListSerializer<TestEnum> serializer = new ListSerializer<>(new EnumSerializer<>(TestEnum.class));
 
 		assertEquals(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE), deserializeValue(serializer, "[FIRST_VALUE, SECOND_VALUE]"));
-		assertEquals("FIRST_VALUE, SECOND_VALUE", serializer.serialize(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE)));
+		assertEquals("[\"FIRST_VALUE\",\"SECOND_VALUE\"]", serializer.serialize(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE)));
 		assertEquals("A list containing values of:\n[FIRST_VALUE, SECOND_VALUE]", serializer.getValidValuesDescription());
 	}
 
@@ -303,6 +303,7 @@ public class ConfigValueSerializerTest {
 		String encoded = "[\"\", \"a,b\", \" surrounding \", \"[section]\", \"line one\\nline two\", \"\\\\path\"]";
 
 		assertEquals(expected, deserializeValue(serializer, encoded));
+		assertEquals(expected, deserializeValue(serializer, serializer.serialize(expected)));
 	}
 
 	@Test
