@@ -26,6 +26,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -91,8 +92,38 @@ public final class ConfigSerializer {
 		Path path,
 		List<ConfigCategory> categories
 	) throws IOException {
-		List<AppliedConfigValueChange<?>> changes = loadWithoutNotifying(path, categories);
-		return ConfigValue.notifyChangedValues(changes);
+		Map<ConfigValue<?>, Object> previousEffectiveValues = new IdentityHashMap<>();
+		categories.stream()
+			.flatMap(category -> category.getConfigValues().stream())
+			.forEach(value -> previousEffectiveValues.put(value, value.getEffectiveValueWithoutLoading()));
+		List<AppliedConfigValueChange<?>> pendingChanges = loadWithoutNotifying(path, categories);
+		List<AppliedConfigValueChange<?>> immutablePendingChanges = ConfigValue.notifyPendingChangedValues(pendingChanges);
+		ConfigValue.notifyChangedValues(getEffectiveChanges(pendingChanges, previousEffectiveValues));
+		return immutablePendingChanges;
+	}
+
+	private static List<AppliedConfigValueChange<?>> getEffectiveChanges(
+		List<? extends AppliedConfigValueChange<?>> pendingChanges,
+		Map<ConfigValue<?>, Object> previousValues
+	) {
+		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
+		for (AppliedConfigValueChange<?> pendingChange : pendingChanges) {
+			ConfigValue<?> configValue = pendingChange.configValue();
+			addEffectiveChange(changes, configValue, previousValues.get(configValue));
+		}
+		return List.copyOf(changes);
+	}
+
+	@SuppressWarnings("unchecked")
+	private static <T> void addEffectiveChange(
+		List<AppliedConfigValueChange<?>> changes,
+		ConfigValue<T> configValue,
+		Object oldValue
+	) {
+		T currentValue = configValue.getEffectiveValueWithoutLoading();
+		if (!Objects.equals(oldValue, currentValue)) {
+			changes.add(new AppliedConfigValueChange<>(configValue, (T) oldValue, currentValue));
+		}
 	}
 
 	public static List<AppliedConfigValueChange<?>> loadWithoutNotifying(

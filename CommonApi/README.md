@@ -291,8 +291,11 @@ List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(update
 ```
 
 The batch is validated before any values are changed. Persistence is scheduled
-for all saved changes, while listeners are notified only for values that became
-effective immediately.
+for all saved changes. Effective listeners registered with `addListener(...)`
+are notified only for values that became effective immediately. Pending
+listeners registered with `addPendingListener(...)` are notified for every
+saved-value change, including changes waiting for a restart. Value-scoped batch
+listeners use `addBatchListener(...)` and `addPendingBatchListener(...)`.
 `IConfigValue.set(...)` returns `true` for a change and `false` for a valid
 unchanged value. It throws `IllegalArgumentException` for invalid values and
 `IllegalStateException` when a context-specific schema is inactive.
@@ -302,7 +305,8 @@ instead, because it also handles server-authoritative schemas.
 Listener registration returns an unsubscribe callback. Each owner should retain
 and invoke its callbacks during teardown. Listeners run synchronously on the
 thread applying the change; a failing listener is logged without preventing
-persistence or later listeners from running.
+persistence or later listeners from running. Listener parameters use the JDK
+`Consumer` type; no MezzConfig-specific listener types are required.
 
 The core API exposes serialization, validation, storage names, localization
 keys, lightweight editor category hints, and edit-mode hints. GUI-specific

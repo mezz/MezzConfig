@@ -3,10 +3,9 @@ package net.mezzdev.config.value;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValue;
-import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
-import net.mezzdev.config.api.value.IConfigValueChangeListener;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
 import net.mezzdev.config.schema.ConfigEditorCategory;
@@ -23,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
@@ -36,8 +36,10 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	private final ConfigValueRestartRequirement restartRequirement;
 	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders;
 	private List<ConfigEditorCategory> editorCategories = List.of();
-	private @Nullable List<IConfigValueChangeListener<T>> listeners;
-	private @Nullable List<IConfigValueBatchChangeListener> batchListeners;
+	private @Nullable List<Consumer<? super IAppliedConfigValueChange<T>>> listeners;
+	private @Nullable List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> batchListeners;
+	private @Nullable List<Consumer<? super IAppliedConfigValueChange<T>>> pendingListeners;
+	private @Nullable List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> pendingBatchListeners;
 	private volatile T effectiveValue;
 	private volatile T pendingValue;
 	@Nullable
@@ -243,8 +245,9 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 			return false;
 		}
 		markDirty();
+		notifyPendingChangedValues(List.of(change));
 		if (!previousEffectiveValue.equals(effectiveValue)) {
-			notifyListeners(new AppliedConfigValueChange<>(this, previousEffectiveValue, effectiveValue));
+			notifyChangedValues(List.of(new AppliedConfigValueChange<>(this, previousEffectiveValue, effectiveValue)));
 		}
 		return true;
 	}
@@ -312,18 +315,32 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		return null;
 	}
 
-	void notifyListeners(AppliedConfigValueChange<T> change) {
-		notifyChangedValues(List.of(change));
+	public static List<AppliedConfigValueChange<?>> notifyChangedValues(List<? extends AppliedConfigValueChange<?>> changes) {
+		return notifyChangedValues(changes, false);
 	}
 
-	public static List<AppliedConfigValueChange<?>> notifyChangedValues(List<? extends AppliedConfigValueChange<?>> changes) {
+	public static List<AppliedConfigValueChange<?>> notifyPendingChangedValues(
+		List<? extends AppliedConfigValueChange<?>> changes
+	) {
+		return notifyChangedValues(changes, true);
+	}
+
+	private static List<AppliedConfigValueChange<?>> notifyChangedValues(
+		List<? extends AppliedConfigValueChange<?>> changes,
+		boolean pending
+	) {
 		if (changes.isEmpty()) {
 			return List.of();
 		}
 		List<AppliedConfigValueChange<?>> immutableChanges = List.copyOf(changes);
 		for (AppliedConfigValueChange<?> change : immutableChanges) {
-			change.configValue()
-				.notifyListeners(immutableChanges);
+			if (pending) {
+				change.configValue()
+					.notifyPendingListeners(immutableChanges);
+			} else {
+				change.configValue()
+					.notifyListeners(immutableChanges);
+			}
 		}
 		return immutableChanges;
 	}
@@ -331,22 +348,46 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	public void notifyListeners(List<? extends AppliedConfigValueChange<?>> changes) {
 		AppliedConfigValueChange<T> change = getChange(changes);
 		if (listeners != null) {
-			List<IConfigValueChangeListener<T>> listeners = List.copyOf(this.listeners);
-			for (IConfigValueChangeListener<T> listener : listeners) {
+			List<Consumer<? super IAppliedConfigValueChange<T>>> listeners = List.copyOf(this.listeners);
+			for (Consumer<? super IAppliedConfigValueChange<T>> listener : listeners) {
 				try {
-					listener.onChange(change);
+					listener.accept(change);
 				} catch (RuntimeException e) {
 					LOGGER.error("Config value listener failed for '{}'.", name, e);
 				}
 			}
 		}
 		if (batchListeners != null) {
-			List<IConfigValueBatchChangeListener> batchListeners = List.copyOf(this.batchListeners);
-			for (IConfigValueBatchChangeListener listener : batchListeners) {
+			List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> batchListeners = List.copyOf(this.batchListeners);
+			for (Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener : batchListeners) {
 				try {
-					listener.onChange(changes);
+					listener.accept(changes);
 				} catch (RuntimeException e) {
 					LOGGER.error("Config value batch listener failed for '{}'.", name, e);
+				}
+			}
+		}
+	}
+
+	private void notifyPendingListeners(List<? extends AppliedConfigValueChange<?>> changes) {
+		AppliedConfigValueChange<T> change = getChange(changes);
+		if (pendingListeners != null) {
+			List<Consumer<? super IAppliedConfigValueChange<T>>> listeners = List.copyOf(this.pendingListeners);
+			for (Consumer<? super IAppliedConfigValueChange<T>> listener : listeners) {
+				try {
+					listener.accept(change);
+				} catch (RuntimeException e) {
+					LOGGER.error("Pending config value listener failed for '{}'.", name, e);
+				}
+			}
+		}
+		if (pendingBatchListeners != null) {
+			List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> listeners = List.copyOf(this.pendingBatchListeners);
+			for (Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener : listeners) {
+				try {
+					listener.accept(changes);
+				} catch (RuntimeException e) {
+					LOGGER.error("Pending config value batch listener failed for '{}'.", name, e);
 				}
 			}
 		}
@@ -369,7 +410,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	@Override
-	public Runnable addListener(IConfigValueChangeListener<T> listener) {
+	public Runnable addListener(Consumer<? super IAppliedConfigValueChange<T>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
 		if (this.listeners == null) {
 			this.listeners = new ArrayList<>();
@@ -383,7 +424,21 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	@Override
-	public Runnable addBatchListener(IConfigValueBatchChangeListener listener) {
+	public Runnable addPendingListener(Consumer<? super IAppliedConfigValueChange<T>> listener) {
+		ErrorUtil.checkNotNull(listener, "listener");
+		if (this.pendingListeners == null) {
+			this.pendingListeners = new ArrayList<>();
+		}
+		this.pendingListeners.add(listener);
+		return () -> {
+			if (this.pendingListeners != null) {
+				this.pendingListeners.remove(listener);
+			}
+		};
+	}
+
+	@Override
+	public Runnable addBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
 		if (this.batchListeners == null) {
 			this.batchListeners = new ArrayList<>();
@@ -392,6 +447,20 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		return () -> {
 			if (this.batchListeners != null) {
 				this.batchListeners.remove(listener);
+			}
+		};
+	}
+
+	@Override
+	public Runnable addPendingBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
+		ErrorUtil.checkNotNull(listener, "listener");
+		if (this.pendingBatchListeners == null) {
+			this.pendingBatchListeners = new ArrayList<>();
+		}
+		this.pendingBatchListeners.add(listener);
+		return () -> {
+			if (this.pendingBatchListeners != null) {
+				this.pendingBatchListeners.remove(listener);
 			}
 		};
 	}

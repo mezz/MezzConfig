@@ -2,7 +2,6 @@ package net.mezzdev.config.api.schema;
 
 import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
-import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IConfigValue;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
@@ -151,12 +150,27 @@ public interface IConfigSchema {
 	/**
 	 * Add a listener that is called with every batch of effective-value changes applied to this schema. Pending changes do
 	 * not invoke this listener.
-	 * See {@link IConfigValueBatchChangeListener} for callback execution and failure behavior.
+	 * Callbacks run synchronously on the thread applying the batch. A runtime exception from one callback is logged and
+	 * does not prevent persistence or later callbacks.
 	 *
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener
 	 *
 	 * @since 0.1.0
 	 */
-	Runnable addListener(IConfigValueBatchChangeListener listener);
+	Runnable addListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
+
+	/**
+	 * Add a listener that is called with every batch of pending saved-value changes applied to this schema.
+	 * <p>
+	 * Values without a restart requirement appear in both effective and pending notifications. Restart-required values
+	 * appear in pending notifications when saved and effective notifications later when the applicable restart promotes
+	 * them. Callbacks have the same synchronous execution and failure isolation as {@link #addListener(Consumer)}.
+	 *
+	 * @param listener callback accepting the pending changes
+	 * @return a callback that removes this listener
+	 *
+	 * @since 0.3.0
+	 */
+	Runnable addPendingListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
 }

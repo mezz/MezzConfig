@@ -19,6 +19,9 @@ import java.util.function.Consumer;
  * <p>
  * Add a value to your category with the add methods on {@link IConfigCategoryBuilder}.
  * Get registered values here: {@link IConfigCategory#getConfigValues()}.
+ * <p>
+ * Listener callbacks run synchronously on the thread applying the change; MezzConfig does not dispatch them to another
+ * thread. A runtime exception from one callback is logged and does not prevent persistence or later callbacks.
  *
  * @param <T> an effectively immutable value type with stable {@link Object#equals(Object)} behavior
  *
@@ -120,28 +123,49 @@ public interface IConfigValue<T> {
 	/**
 	 * Add a listener that is called when this config value's effective value changes. Pending changes do not invoke this
 	 * listener.
-	 * See {@link IConfigValueChangeListener} for callback execution and failure behavior.
-	 *
 	 * @param listener callback accepting the applied change
 	 * @return a callback that removes this listener
 	 *
 	 * @since 0.1.0
 	 */
-	Runnable addListener(IConfigValueChangeListener<T> listener);
+	Runnable addListener(Consumer<? super IAppliedConfigValueChange<T>> listener);
+
+	/**
+	 * Add a listener that is called when this config value's pending saved value changes.
+	 * <p>
+	 * Values without a restart requirement invoke both effective and pending listeners. Restart-required values invoke
+	 * pending listeners when saved and effective listeners later when the applicable restart promotes the value.
+	 *
+	 * @param listener callback accepting the pending change
+	 * @return a callback that removes this listener
+	 *
+	 * @since 0.3.0
+	 */
+	Runnable addPendingListener(Consumer<? super IAppliedConfigValueChange<T>> listener);
 
 	/**
 	 * Add a listener that is called with all effective-value changes from a batch containing this config value. Pending
 	 * changes do not invoke this listener.
 	 * <p>
 	 * Use this when the listener needs to observe other config values updated in the same batch.
-	 * See {@link IConfigValueBatchChangeListener} for callback execution and failure behavior.
-	 *
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener
 	 *
 	 * @since 0.1.0
 	 */
-	Runnable addBatchListener(IConfigValueBatchChangeListener listener);
+	Runnable addBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
+
+	/**
+	 * Add a listener that is called with all pending-value changes from a batch containing this config value.
+	 * <p>
+	 * Use this when the listener needs to observe other pending values updated in the same batch.
+	 *
+	 * @param listener callback accepting the pending changes
+	 * @return a callback that removes this listener
+	 *
+	 * @since 0.3.0
+	 */
+	Runnable addPendingBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
 
 	/**
 	 * Get the helper for serializing values to and from Strings, and validating values.

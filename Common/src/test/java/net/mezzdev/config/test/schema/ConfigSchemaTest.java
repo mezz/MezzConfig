@@ -727,7 +727,15 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createSchema(builder);
 		List<String> listenerChanges = new ArrayList<>();
+		List<String> pendingListenerChanges = new ArrayList<>();
+		List<String> pendingValueBatches = new ArrayList<>();
+		List<String> pendingSchemaBatches = new ArrayList<>();
 		schema.addListener(changes -> listenerChanges.add(formatChanges(changes)));
+		afterRestart.addPendingListener(change -> pendingListenerChanges.add(
+			"%s -> %s".formatted(change.oldValue(), change.newValue())
+		));
+		afterRestart.addPendingBatchListener(changes -> pendingValueBatches.add(formatChanges(changes)));
+		schema.addPendingListener(changes -> pendingSchemaBatches.add(formatChanges(changes)));
 
 		List<? extends IAppliedConfigValueChange<?>> savedChanges = schema.batchUpdate(updater -> {
 			updater.set(immediate, false);
@@ -739,6 +747,40 @@ public class ConfigSchemaTest {
 		assertFalse(afterRestart.getValue());
 		assertTrue(afterRestart.getPendingValue());
 		assertEquals(List.of("immediate: true -> false"), listenerChanges);
+		assertEquals(List.of("false -> true"), pendingListenerChanges);
+		assertEquals(
+			List.of("immediate: true -> false, afterRestart: false -> true"),
+			pendingValueBatches
+		);
+		assertEquals(pendingValueBatches, pendingSchemaBatches);
+	}
+
+	@Test
+	public void contextReloadNotifiesPendingListenersWithoutPromotingRestartValue(@TempDir Path tempDir) throws IOException {
+		Path firstPath = tempDir.resolve("world").resolve("first.ini");
+		Path secondPath = tempDir.resolve("world").resolve("second.ini");
+		Files.createDirectories(firstPath.getParent());
+		Files.write(firstPath, List.of("[category]", "enabled = false"));
+		Files.write(secondPath, List.of("[category]", "enabled = true"));
+		AtomicReference<Optional<Path>> resolvedPath = new AtomicReference<>(Optional.of(firstPath));
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigSchema schema = createSchema(createPathResolver(resolvedPath), builder);
+		assertFalse(enabled.getValue());
+		List<String> pendingChanges = new ArrayList<>();
+		AtomicInteger effectiveNotifications = new AtomicInteger();
+		schema.addPendingListener(changes -> pendingChanges.add(formatChanges(changes)));
+		schema.addListener(ignored -> effectiveNotifications.incrementAndGet());
+
+		resolvedPath.set(Optional.of(secondPath));
+		schema.loadIfNeeded();
+
+		assertFalse(enabled.getValue());
+		assertTrue(enabled.getPendingValue());
+		assertEquals(List.of("enabled: false -> true"), pendingChanges);
+		assertEquals(0, effectiveNotifications.get());
 	}
 
 	@Test
@@ -842,6 +884,10 @@ public class ConfigSchemaTest {
 			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 		ConfigSchema schema = createRemoteServerSchema(builder);
+		List<String> pendingRestartChanges = new ArrayList<>();
+		afterRestart.addPendingListener(change -> pendingRestartChanges.add(
+			"%s -> %s".formatted(change.oldValue(), change.newValue())
+		));
 
 		assertEquals(ConfigOwnership.SERVER, schema.getOwnership());
 		assertEquals(ConfigScope.WORLD, schema.getScope());
@@ -864,6 +910,7 @@ public class ConfigSchemaTest {
 		assertEquals(3, count.getValue());
 		assertTrue(afterRestart.getValue());
 		assertFalse(afterRestart.getPendingValue());
+		assertEquals(List.of("true -> false"), pendingRestartChanges);
 		assertThrows(IllegalStateException.class, () -> enabled.set(true));
 		assertFalse(enabled.getValue());
 
@@ -885,6 +932,7 @@ public class ConfigSchemaTest {
 		// Assertions: known synchronized values apply and missing values safely use their declared defaults.
 		assertTrue(enabled.getValue());
 		assertEquals(1, count.getValue());
+		assertEquals(List.of("true -> false", "false -> true"), pendingRestartChanges);
 	}
 
 	@Test

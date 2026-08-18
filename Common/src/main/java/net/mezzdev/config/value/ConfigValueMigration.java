@@ -4,31 +4,44 @@ import net.mezzdev.config.util.ErrorUtil;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
 public final class ConfigValueMigration<T> {
+	private final ConfigValue<T> configValue;
 	private final BiFunction<String, List<AppliedConfigValueChange<?>>, List<String>> migration;
 
-	private ConfigValueMigration(BiFunction<String, List<AppliedConfigValueChange<?>>, List<String>> migration) {
+	private ConfigValueMigration(
+		ConfigValue<T> configValue,
+		BiFunction<String, List<AppliedConfigValueChange<?>>, List<String>> migration
+	) {
+		this.configValue = ErrorUtil.checkNotNull(configValue, "configValue");
 		this.migration = ErrorUtil.checkNotNull(migration, "migration");
 	}
 
 	public static <T> ConfigValueMigration<T> deserialize(ConfigValue<T> configValue) {
 		ErrorUtil.checkNotNull(configValue, "configValue");
-		return new ConfigValueMigration<>(configValue::setFromSerializedValue);
+		return new ConfigValueMigration<>(configValue, configValue::setFromSerializedValue);
 	}
 
 	public static <T> ConfigValueMigration<T> migrate(ConfigValue<T> configValue, Function<String, T> migration) {
 		ErrorUtil.checkNotNull(configValue, "configValue");
 		ErrorUtil.checkNotNull(migration, "migration");
-		return new ConfigValueMigration<>((value, changes) -> migrateValue(configValue, migration, value, changes));
+		return new ConfigValueMigration<>(configValue, (value, changes) -> migrateValue(configValue, migration, value, changes));
 	}
 
 	public List<String> migrate(String value) {
+		T previousEffectiveValue = configValue.getEffectiveValueWithoutLoading();
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
 		List<String> diagnostics = migrate(value, changes);
-		ConfigValue.notifyChangedValues(changes);
+		ConfigValue.notifyPendingChangedValues(changes);
+		T effectiveValue = configValue.getEffectiveValueWithoutLoading();
+		if (!Objects.equals(previousEffectiveValue, effectiveValue)) {
+			ConfigValue.notifyChangedValues(List.of(
+				new AppliedConfigValueChange<>(configValue, previousEffectiveValue, effectiveValue)
+			));
+		}
 		return diagnostics;
 	}
 

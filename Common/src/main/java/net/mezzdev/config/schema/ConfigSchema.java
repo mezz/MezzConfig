@@ -5,7 +5,6 @@ import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
 import net.mezzdev.config.api.schema.ConfigOwnership;
 import net.mezzdev.config.api.schema.ConfigScope;
-import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
@@ -68,7 +67,8 @@ public class ConfigSchema implements IConfigSchema {
 	private @Nullable Path pendingSavePath;
 	private @Nullable Runnable removeDefaultFileWatcherCallback;
 	private @Nullable Runnable removeFileWatcherCallback;
-	private @Nullable List<IConfigValueBatchChangeListener> listeners;
+	private @Nullable List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> listeners;
+	private @Nullable List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> pendingListeners;
 	private boolean registered;
 	private boolean restartValuesInitialized;
 	private boolean logUntranslatedKeys;
@@ -210,14 +210,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	public void loadIfNeeded() {
 		LoadResult loadResult = loadIfNeededWithoutNotifying();
-		List<AppliedConfigValueChange<?>> changes = loadResult.changes();
-		if (loadResult.pendingValuesChanged() && changes.isEmpty()) {
-			changeVersion.incrementAndGet();
-		}
-		if (!changes.isEmpty()) {
-			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
-			notifyListeners(immutableChanges);
-		}
+		notifyChanges(loadResult.effectiveChanges(), loadResult.pendingChanges());
 		InitialSave initialSave = loadResult.initialSave();
 		if (registered && initialSave != null) {
 			if (mode.synchronousFileAccess()) {
@@ -296,7 +289,7 @@ public class ConfigSchema implements IConfigSchema {
 	) {
 		return new LoadResult(
 			getEffectiveChanges(previousEffectiveValues),
-			havePendingValuesChanged(previousPendingValues),
+			getPendingChanges(previousPendingValues),
 			initialSave
 		);
 	}
@@ -342,10 +335,21 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private List<AppliedConfigValueChange<?>> getEffectiveChanges(Map<ConfigValue<?>, Object> previousValues) {
+		return getChanges(previousValues, false);
+	}
+
+	private List<AppliedConfigValueChange<?>> getPendingChanges(Map<ConfigValue<?>, Object> previousValues) {
+		return getChanges(previousValues, true);
+	}
+
+	private List<AppliedConfigValueChange<?>> getChanges(
+		Map<ConfigValue<?>, Object> previousValues,
+		boolean pending
+	) {
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
 		for (ConfigValue<?> configValue : getConfigValues()) {
 			Object oldValue = previousValues.get(configValue);
-			AppliedConfigValueChange<?> change = getEffectiveChange(configValue, oldValue);
+			AppliedConfigValueChange<?> change = getChange(configValue, oldValue, pending);
 			if (change != null) {
 				changes.add(change);
 			}
@@ -360,21 +364,21 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@SuppressWarnings("unchecked")
-	private static <T> @Nullable AppliedConfigValueChange<T> getEffectiveChange(ConfigValue<T> configValue, Object oldValue) {
-		T currentValue = configValue.getEffectiveValueWithoutLoading();
+	private static <T> @Nullable AppliedConfigValueChange<T> getChange(
+		ConfigValue<T> configValue,
+		Object oldValue,
+		boolean pending
+	) {
+		T currentValue;
+		if (pending) {
+			currentValue = configValue.getPendingValueWithoutLoading();
+		} else {
+			currentValue = configValue.getEffectiveValueWithoutLoading();
+		}
 		if (!Objects.equals(oldValue, currentValue)) {
 			return new AppliedConfigValueChange<>(configValue, (T) oldValue, currentValue);
 		}
 		return null;
-	}
-
-	private boolean havePendingValuesChanged(Map<ConfigValue<?>, Object> previousValues) {
-		for (ConfigValue<?> configValue : getConfigValues()) {
-			if (!Objects.equals(previousValues.get(configValue), configValue.getPendingValueWithoutLoading())) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	private void resetValuesToDefaults() {
@@ -396,10 +400,7 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		List<AppliedConfigValueChange<?>> changes = promotePendingValuesWithoutNotifying(boundary);
 		restartValuesInitialized = true;
-		if (!changes.isEmpty()) {
-			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
-			notifyListeners(immutableChanges);
-		}
+		notifyChanges(changes, List.of());
 	}
 
 	private List<AppliedConfigValueChange<?>> promotePendingValuesWithoutNotifying(
@@ -686,12 +687,7 @@ public class ConfigSchema implements IConfigSchema {
 
 		markDirty();
 		List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
-		if (effectiveChanges.isEmpty()) {
-			changeVersion.incrementAndGet();
-		} else {
-			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(effectiveChanges);
-			notifyListeners(immutableChanges);
-		}
+		notifyChanges(effectiveChanges, pendingChanges);
 		return List.copyOf(pendingChanges);
 	}
 
@@ -748,7 +744,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public Runnable addListener(IConfigValueBatchChangeListener listener) {
+	public Runnable addListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
 		if (this.listeners == null) {
 			this.listeners = new ArrayList<>();
@@ -761,17 +757,50 @@ public class ConfigSchema implements IConfigSchema {
 		};
 	}
 
-	private void notifyListeners(List<? extends IAppliedConfigValueChange<?>> changes) {
-		if (!changes.isEmpty()) {
-			changeVersion.incrementAndGet();
+	@Override
+	public Runnable addPendingListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
+		ErrorUtil.checkNotNull(listener, "listener");
+		if (this.pendingListeners == null) {
+			this.pendingListeners = new ArrayList<>();
 		}
-		if (listeners != null && !changes.isEmpty()) {
-			List<IConfigValueBatchChangeListener> listeners = List.copyOf(this.listeners);
-			for (IConfigValueBatchChangeListener listener : listeners) {
+		this.pendingListeners.add(listener);
+		return () -> {
+			if (this.pendingListeners != null) {
+				this.pendingListeners.remove(listener);
+			}
+		};
+	}
+
+	private void notifyChanges(
+		List<? extends AppliedConfigValueChange<?>> effectiveChanges,
+		List<? extends AppliedConfigValueChange<?>> pendingChanges
+	) {
+		if (effectiveChanges.isEmpty() && pendingChanges.isEmpty()) {
+			return;
+		}
+		changeVersion.incrementAndGet();
+		if (!pendingChanges.isEmpty()) {
+			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyPendingChangedValues(pendingChanges);
+			notifyListeners(immutableChanges, pendingListeners, "pending config schema");
+		}
+		if (!effectiveChanges.isEmpty()) {
+			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(effectiveChanges);
+			notifyListeners(immutableChanges, listeners, "config schema");
+		}
+	}
+
+	private void notifyListeners(
+		List<? extends IAppliedConfigValueChange<?>> changes,
+		@Nullable List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> registeredListeners,
+		String description
+	) {
+		if (registeredListeners != null) {
+			List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> listeners = List.copyOf(registeredListeners);
+			for (Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener : listeners) {
 				try {
-					listener.onChange(changes);
+					listener.accept(changes);
 				} catch (RuntimeException e) {
-					LOGGER.error("Config schema listener failed for '{}'.", activePath, e);
+					LOGGER.error("{} listener failed for '{}'.", description, activePath, e);
 				}
 			}
 		}
@@ -998,14 +1027,9 @@ public class ConfigSchema implements IConfigSchema {
 		remoteCanEdit = canEdit;
 		remotelyActive = true;
 		needsLoad.set(false);
-		List<AppliedConfigValueChange<?>> changes = getEffectiveChanges(previousEffectiveValues);
-		if (changes.isEmpty() && havePendingValuesChanged(previousPendingValues)) {
-			changeVersion.incrementAndGet();
-		}
-		if (!changes.isEmpty()) {
-			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
-			notifyListeners(immutableChanges);
-		}
+		List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
+		List<AppliedConfigValueChange<?>> pendingChanges = getPendingChanges(previousPendingValues);
+		notifyChanges(effectiveChanges, pendingChanges);
 	}
 
 	private static <T> SynchronizedConfigValue<T> deserializeSynchronizedValue(ResolvedServerConfigValue value) {
@@ -1028,20 +1052,19 @@ public class ConfigSchema implements IConfigSchema {
 		if (!remotelyActive) {
 			return;
 		}
-		Map<ConfigValue<?>, Object> previousValues = getEffectiveValues();
+		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
+		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
 		remotelyActive = false;
 		resetAllValuesToDefaults();
 		needsLoad.set(true);
-		List<AppliedConfigValueChange<?>> changes = getEffectiveChanges(previousValues);
-		if (!changes.isEmpty()) {
-			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(changes);
-			notifyListeners(immutableChanges);
-		}
+		List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
+		List<AppliedConfigValueChange<?>> pendingChanges = getPendingChanges(previousPendingValues);
+		notifyChanges(effectiveChanges, pendingChanges);
 	}
 
 	private record LoadResult(
-		List<AppliedConfigValueChange<?>> changes,
-		boolean pendingValuesChanged,
+		List<AppliedConfigValueChange<?>> effectiveChanges,
+		List<AppliedConfigValueChange<?>> pendingChanges,
 		@Nullable InitialSave initialSave
 	) {}
 

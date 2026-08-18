@@ -1,6 +1,8 @@
 package net.mezzdev.config.test.value;
 
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
+import net.mezzdev.config.api.value.ConfigValueEditMode;
+import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.IntegerSerializer;
 import net.mezzdev.config.value.ConfigValue;
@@ -65,6 +67,33 @@ public class ConfigValueTest {
 		assertTrue(value.set(7));
 
 		assertEquals(List.of("5 -> 7"), changes);
+	}
+
+	@Test
+	public void restartRequiredSetNotifiesOnlyPendingListeners() {
+		ConfigValue<Boolean> value = new ConfigValue<>(
+			"mezz_config.config.test.category",
+			"enabled",
+			false,
+			BooleanSerializer.INSTANCE,
+			ConfigValueEditMode.BATCH,
+			ConfigValueRestartRequirement.GAME_RESTART,
+			List.of()
+		);
+		List<String> pendingChanges = new ArrayList<>();
+		List<String> pendingBatches = new ArrayList<>();
+		AtomicInteger effectiveNotifications = new AtomicInteger();
+		value.addPendingListener(change -> pendingChanges.add("%s -> %s".formatted(change.oldValue(), change.newValue())));
+		value.addPendingBatchListener(changes -> pendingBatches.add("batch: " + changes.size()));
+		value.addListener(ignored -> effectiveNotifications.incrementAndGet());
+
+		assertTrue(value.set(true));
+
+		assertFalse(value.getValue());
+		assertTrue(value.getPendingValue());
+		assertEquals(List.of("false -> true"), pendingChanges);
+		assertEquals(List.of("batch: 1"), pendingBatches);
+		assertEquals(0, effectiveNotifications.get());
 	}
 
 	@Test
