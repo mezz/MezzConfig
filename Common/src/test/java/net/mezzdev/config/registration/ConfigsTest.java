@@ -18,6 +18,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Comparator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -122,6 +123,97 @@ public class ConfigsTest {
 			() -> createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true)
 		);
 		assertTrue(Configs.getSchemas().contains(original.schema()));
+	}
+
+	@Test
+	public void clientInstallationAndWorldSchemasCannotShareDefaultPath(@TempDir Path configRoot) throws IOException {
+		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+		Path path = getClientPath(configRoot).getParent()
+			.resolve("world/default")
+			.resolve(FILE_NAME);
+		createSchema(
+			registration.createClientSchemaBuilder("world/default/" + FILE_NAME, "registration_test.client"),
+			true
+		);
+		String originalContents = Files.readString(path);
+
+		assertThrows(
+			IllegalArgumentException.class,
+			() -> createSchema(
+				registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client_world")
+					.setScope(ConfigScope.WORLD),
+				false
+			)
+		);
+
+		assertEquals(originalContents, Files.readString(path));
+	}
+
+	@Test
+	public void serverInstallationAndWorldSchemasCannotShareDefaultPath(@TempDir Path configRoot) throws IOException {
+		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+		Path path = getServerWorldDefaultPath(configRoot);
+		createSchema(
+			registration.createServerSchemaBuilder("world/default/" + FILE_NAME, "registration_test.server"),
+			true
+		);
+		String originalContents = Files.readString(path);
+
+		assertThrows(
+			IllegalArgumentException.class,
+			() -> createSchema(
+				registration.createServerSchemaBuilder(FILE_NAME, "registration_test.server_world")
+					.setScope(ConfigScope.WORLD),
+				false
+			)
+		);
+
+		assertEquals(originalContents, Files.readString(path));
+	}
+
+	@Test
+	public void sortingConfigRejectsSchemaCollisionBeforeCreatingFile(@TempDir Path configRoot) {
+		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+		Path path = getClientPath(configRoot);
+		registration.createSortingConfig(FILE_NAME, Comparator.naturalOrder(), true);
+
+		assertThrows(
+			IllegalArgumentException.class,
+			() -> createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true)
+		);
+
+		assertFalse(Files.exists(path));
+	}
+
+	@Test
+	public void schemaRejectsSortingCollisionWithoutModifyingFile(@TempDir Path configRoot) throws IOException {
+		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+		Path path = getClientPath(configRoot);
+		createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
+		String originalContents = Files.readString(path);
+
+		assertThrows(
+			IllegalArgumentException.class,
+			() -> registration.createSortingConfig(FILE_NAME, Comparator.naturalOrder(), true)
+		);
+
+		assertEquals(originalContents, Files.readString(path));
+	}
+
+	@Test
+	public void conventionalAndExplicitRootsUseTheSamePathIdentity(@TempDir Path tempDir) {
+		String fileName = "path-identity/" + tempDir.getFileName() + ".ini";
+		Path conventionalRoot = Path.of("build", "test-config");
+		IConfigRegistration conventional = Configs.forMod(MOD_ID);
+		IConfigRegistration explicit = Configs.forMod(conventionalRoot.toAbsolutePath(), MOD_ID);
+		conventional.createSortingConfig(fileName, Comparator.naturalOrder(), true);
+
+		assertThrows(
+			IllegalArgumentException.class,
+			() -> explicit.createSortingConfig(fileName, Comparator.naturalOrder(), true)
+		);
+
+		assertFalse(Files.exists(conventionalRoot.resolve(MOD_ID).resolve("client").resolve(fileName)));
 	}
 
 	@Test

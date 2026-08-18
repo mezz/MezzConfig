@@ -8,6 +8,9 @@ import java.util.Comparator;
 
 /**
  * Creates config schemas and sort orders owned by one mod.
+ * Every file-backed schema and sorting config must have a unique normalized absolute path. A path collision is rejected
+ * before the conflicting config reads, creates, or modifies the file. In-memory sorting configs on a dedicated server
+ * do not reserve a file path.
  *
  * @since 0.3.0
  */
@@ -49,6 +52,7 @@ public interface IConfigRegistration {
 	 * @param defaultSortOrder default order for values that are not in the file yet
 	 * @param allowsRemovingValues whether values may be removed from this sort order
 	 * @return the created sort order
+	 * @throws IllegalArgumentException when the sort order's file path is already reserved
 	 *
 	 * @since 0.3.0
 	 */

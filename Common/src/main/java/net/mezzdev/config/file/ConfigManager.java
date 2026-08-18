@@ -6,6 +6,7 @@ import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigRuntime;
+import net.mezzdev.config.sorting.SortingConfig;
 import net.mezzdev.config.util.ErrorUtil;
 import net.mezzdev.deduplicatingrunner.DelayedExecutor;
 import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
@@ -19,10 +20,12 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -37,6 +40,7 @@ public class ConfigManager {
 	private final List<ConfigSchema> schemas = new ArrayList<>();
 	private final Map<RegistrationKey, ConfigSchema> schemasByKey = new LinkedHashMap<>();
 	private final Set<RegistrationKey> reservedKeys = new HashSet<>();
+	private final ConfigPathReservations pathReservations = new ConfigPathReservations();
 	private final boolean logUntranslatedKeys;
 
 	public ConfigManager() {
@@ -94,7 +98,11 @@ public class ConfigManager {
 		boolean initialized = false;
 		try {
 			FileWatcher fileWatcher = getFileWatcher(schema.getOwnership());
-			schema.register(fileWatcher, logUntranslatedKeys);
+			schema.register(
+				fileWatcher,
+				logUntranslatedKeys,
+				paths -> pathReservations.replace(schema, getSchemaDescription(schema), paths)
+			);
 			initialized = true;
 			publish(key, schema);
 		} catch (RuntimeException | Error e) {
@@ -111,6 +119,31 @@ public class ConfigManager {
 				LOGGER.error("Failed to synchronize newly registered server config schema: {}", schema.getServerKey(), e);
 			}
 		}
+	}
+
+	public SortingConfig createSortingConfig(
+		Path path,
+		Comparator<String> defaultSortOrder,
+		boolean allowsRemovingValues
+	) {
+		SortingConfig sortingConfig = new SortingConfig(path, defaultSortOrder, allowsRemovingValues);
+		pathReservations.replace(sortingConfig, "a sorting config", List.of(path));
+		return sortingConfig;
+	}
+
+	public SortingConfig createInMemorySortingConfig(
+		Comparator<String> defaultSortOrder,
+		boolean allowsRemovingValues
+	) {
+		return SortingConfig.inMemory(defaultSortOrder, allowsRemovingValues);
+	}
+
+	private static String getSchemaDescription(ConfigSchema schema) {
+		return "a %s %s config schema for mod '%s'".formatted(
+			schema.getOwnership().name().toLowerCase(Locale.ROOT),
+			schema.getScope().name().toLowerCase(Locale.ROOT),
+			schema.getModId()
+		);
 	}
 
 	private @Nullable FileWatcher getFileWatcher(ConfigOwnership ownership) {

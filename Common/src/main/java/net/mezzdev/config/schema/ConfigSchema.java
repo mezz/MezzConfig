@@ -50,6 +50,7 @@ public class ConfigSchema implements IConfigSchema {
 	static final String DEFAULT_MOD_ID = "mezz_config";
 	private static final Duration SAVE_DELAY_TIME = Duration.ofSeconds(2);
 	private static final int LOCALIZATION_SAVE_RETRY_LIMIT = 30;
+	private static final Consumer<? super Collection<Path>> NO_PATH_RESERVATION = ignored -> {};
 
 	private final String modId;
 	private final ConfigSchemaPathResolver pathResolver;
@@ -77,6 +78,7 @@ public class ConfigSchema implements IConfigSchema {
 	private boolean translationKeysChecked;
 	private volatile boolean remotelyActive;
 	private volatile boolean remoteCanEdit;
+	private Consumer<? super Collection<Path>> pathReservation = NO_PATH_RESERVATION;
 
 	public ConfigSchema(
 		Path path,
@@ -231,14 +233,16 @@ public class ConfigSchema implements IConfigSchema {
 		boolean previousRemoteCanEdit = remoteCanEdit;
 		Path previousDefaultPath = activeDefaultPath;
 		Path previousPath = activePath;
+		updatePathReservations(previousDefaultPath, previousPath);
 		Path defaultPath = pathResolver.resolveDefaultPath()
 			.map(Path::normalize)
 			.orElse(null);
 		Optional<Path> resolvedPath = pathResolver.resolvePath()
 			.map(Path::normalize);
 		Path path = resolvedPath.orElse(null);
+		updatePathReservations(defaultPath, path, previousDefaultPath, previousPath);
 		if (isSynchronizedServerSchema() && remotelyActive && path == null) {
-			setActivePaths(defaultPath, null);
+			transitionActivePaths(defaultPath, null, previousDefaultPath, previousPath);
 			needsLoad.set(false);
 			return createLoadResult(previousEffectiveValues, previousPendingValues, null);
 		}
@@ -249,7 +253,7 @@ public class ConfigSchema implements IConfigSchema {
 		boolean activePathChanged = !Objects.equals(path, previousPath);
 		boolean pathsChanged = defaultPathChanged || activePathChanged;
 		if (pathsChanged) {
-			setActivePaths(defaultPath, path);
+			transitionActivePaths(defaultPath, path, previousDefaultPath, previousPath);
 			needsLoad.set(true);
 		}
 
@@ -512,6 +516,49 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
+	private void updatePathReservations(@Nullable Path defaultPath, @Nullable Path path) {
+		updatePathReservations(defaultPath, path, null, null);
+	}
+
+	private void updatePathReservations(
+		@Nullable Path defaultPath,
+		@Nullable Path path,
+		@Nullable Path previousDefaultPath,
+		@Nullable Path previousPath
+	) {
+		List<Path> paths = new ArrayList<>(pathResolver.getPersistentReservationPaths());
+		addPathIfPresent(paths, defaultPath);
+		addPathIfPresent(paths, path);
+		addPathIfPresent(paths, previousDefaultPath);
+		addPathIfPresent(paths, previousPath);
+		pathReservation.accept(paths);
+	}
+
+	private static void addPathIfPresent(List<Path> paths, @Nullable Path path) {
+		if (path != null) {
+			paths.add(path);
+		}
+	}
+
+	private void transitionActivePaths(
+		@Nullable Path defaultPath,
+		@Nullable Path path,
+		@Nullable Path previousDefaultPath,
+		@Nullable Path previousPath
+	) {
+		try {
+			setActivePaths(defaultPath, path);
+		} catch (RuntimeException | Error e) {
+			try {
+				updatePathReservations(previousDefaultPath, previousPath);
+			} catch (RuntimeException | Error reservationFailure) {
+				e.addSuppressed(reservationFailure);
+			}
+			throw e;
+		}
+		updatePathReservations(defaultPath, path);
+	}
+
 	private void flushPendingSaveIfNeeded() {
 		Path pendingPath = pendingSavePath;
 		if (pendingPath != null && Objects.equals(activePath, pendingPath)) {
@@ -527,11 +574,20 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	public synchronized void register(@Nullable FileWatcher fileWatcher, boolean logUntranslatedKeys) {
+		register(fileWatcher, logUntranslatedKeys, NO_PATH_RESERVATION);
+	}
+
+	public synchronized void register(
+		@Nullable FileWatcher fileWatcher,
+		boolean logUntranslatedKeys,
+		Consumer<? super Collection<Path>> pathReservation
+	) {
 		if (registered) {
 			throw new IllegalStateException("Config schema is already registered.");
 		}
 		this.fileWatcher = fileWatcher;
 		this.logUntranslatedKeys = logUntranslatedKeys;
+		this.pathReservation = ErrorUtil.checkNotNull(pathReservation, "pathReservation");
 		this.registered = true;
 		this.registrationInProgress = true;
 		try {
@@ -554,6 +610,12 @@ public class ConfigSchema implements IConfigSchema {
 		} catch (RuntimeException | Error rollbackFailure) {
 			failure.addSuppressed(rollbackFailure);
 		}
+		try {
+			pathReservation.accept(List.of());
+		} catch (RuntimeException | Error rollbackFailure) {
+			failure.addSuppressed(rollbackFailure);
+		}
+		pathReservation = NO_PATH_RESERVATION;
 		activeDefaultPath = null;
 		activePath = null;
 		pendingSavePath = null;

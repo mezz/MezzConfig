@@ -52,6 +52,9 @@ public interface IConfigSchemaBuilder {
 	 * config-screen setup when using automatically generated config screens. MezzConfigGUI's Forge and NeoForge
 	 * config-screen factories include the schemas registered when client setup runs.
 	 *
+	 * @return the registered config schema
+	 * @throws IllegalArgumentException when a backing file path is already reserved
+	 *
 	 * @since 0.1.0
 	 */
 	IConfigSchema build();

@@ -15,6 +15,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -130,6 +131,104 @@ public class ConfigManagerTest {
 		assertTrue(Files.isRegularFile(path));
 	}
 
+	@Test
+	public void duplicateSortingConfigPathsAreRejectedBeforeFileAccess(@TempDir Path tempDir) {
+		ConfigManager manager = createDisabledConfigManager();
+		Path path = tempDir.resolve("sorting.ini");
+		manager.createSortingConfig(path, Comparator.naturalOrder(), true);
+
+		IllegalArgumentException exception = assertThrows(
+			IllegalArgumentException.class,
+			() -> manager.createSortingConfig(path, Comparator.naturalOrder(), false)
+		);
+
+		assertTrue(exception.getMessage().contains(path.toAbsolutePath().toString()));
+		assertFalse(Files.exists(path));
+	}
+
+	@Test
+	public void sortingReservationRejectsSchemaBeforeFileCreation(@TempDir Path tempDir) {
+		ConfigManager manager = createDisabledConfigManager();
+		Path path = tempDir.resolve("shared.ini");
+		manager.createSortingConfig(path, Comparator.naturalOrder(), true);
+		ConfigSchema schema = createInstallationSchema(path);
+
+		assertThrows(IllegalArgumentException.class, () -> manager.registerSchema(schema));
+
+		assertFalse(Files.exists(path));
+		assertFalse(manager.getSchemas().contains(schema));
+	}
+
+	@Test
+	public void schemaReservationRejectsSortingWithoutModifyingFile(@TempDir Path tempDir) throws IOException {
+		ConfigManager manager = createDisabledConfigManager();
+		Path path = tempDir.resolve("shared.ini");
+		ConfigSchema schema = createInstallationSchema(path);
+		manager.registerSchema(schema);
+		String originalContents = Files.readString(path);
+
+		assertThrows(
+			IllegalArgumentException.class,
+			() -> manager.createSortingConfig(path, Comparator.naturalOrder(), true)
+		);
+
+		assertEquals(originalContents, Files.readString(path));
+	}
+
+	@Test
+	public void schemaPathIdentityIsNormalizedAndAbsolute(@TempDir Path tempDir) throws IOException {
+		ConfigManager manager = createDisabledConfigManager();
+		Path path = tempDir.resolve("shared.ini");
+		Path equivalentPath = tempDir.resolve("unused").resolve("..").resolve("shared.ini");
+		ConfigSchema clientSchema = createInstallationSchema(equivalentPath, ConfigOwnership.CLIENT).schema();
+		ConfigSchema serverSchema = createInstallationSchema(path, ConfigOwnership.SERVER).schema();
+		manager.registerSchema(clientSchema);
+		String originalContents = Files.readString(path);
+
+		assertThrows(IllegalArgumentException.class, () -> manager.registerSchema(serverSchema));
+
+		assertEquals(originalContents, Files.readString(path));
+		assertFalse(manager.getSchemas().contains(serverSchema));
+	}
+
+	@Test
+	public void dynamicSchemaPathCollisionIsRejectedBeforeActivation(@TempDir Path tempDir) {
+		ConfigManager manager = createDisabledConfigManager();
+		Path sortingPath = tempDir.resolve("sorting.ini");
+		manager.createSortingConfig(sortingPath, Comparator.naturalOrder(), true);
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.empty());
+		ConfigSchemaPathResolver pathResolver = new ConfigSchemaPathResolver() {
+			@Override
+			public Optional<Path> resolvePath() {
+				return activePath.get();
+			}
+
+			@Override
+			public Optional<Path> resolveDefaultPath() {
+				return Optional.of(tempDir.resolve("world/default.ini"));
+			}
+		};
+		ConfigSchema schema = createClientWorldSchema(pathResolver);
+		manager.registerSchema(schema);
+
+		activePath.set(Optional.of(tempDir.resolve("unused").resolve("..").resolve("sorting.ini")));
+
+		assertThrows(IllegalArgumentException.class, schema::getPath);
+		assertFalse(Files.exists(sortingPath));
+	}
+
+	@Test
+	public void inMemorySortingConfigsDoNotReserveFilePaths(@TempDir Path tempDir) {
+		ConfigManager manager = createDisabledConfigManager();
+		Path path = tempDir.resolve("sorting.ini");
+
+		manager.createInMemorySortingConfig(Comparator.naturalOrder(), true);
+		manager.createInMemorySortingConfig(Comparator.reverseOrder(), false);
+		manager.createSortingConfig(path, Comparator.naturalOrder(), true);
+
+		assertFalse(Files.exists(path));
+	}
+
 	private static ConfigSchema createServerSchema(ServerConfigKey key, ConfigSchemaPathResolver pathResolver) {
 		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		category.addBoolean("enabled", true)
@@ -143,6 +242,22 @@ public class ConfigManagerTest {
 			ConfigOwnership.SERVER,
 			ConfigScope.WORLD,
 			key
+		);
+	}
+
+	private static ConfigSchema createClientWorldSchema(ConfigSchemaPathResolver pathResolver) {
+		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		category.addBoolean("enabled", true)
+			.build();
+		return new ConfigSchema(
+			"client_world_test_mod",
+			pathResolver,
+			List.of(category),
+			List.of(category),
+			(command, delay) -> CompletableFuture.completedFuture(null),
+			ConfigOwnership.CLIENT,
+			ConfigScope.WORLD,
+			null
 		);
 	}
 

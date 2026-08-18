@@ -322,7 +322,11 @@ default comparator, or allow values to be removed.
 
 Sort-order files are installation-scoped under
 `config/<mod-id>/client/<file-name>`. The file is generated the first time the
-complete set of sortable values is available.
+complete set of sortable values is available. Each schema and file-backed
+sorting config must resolve to a unique normalized absolute path. MezzConfig
+rejects duplicate schema paths, duplicate sorting paths, and schema/sorting
+collisions before the conflicting config reads or writes the file. Dedicated
+server sorting configs remain in memory and do not reserve paths.
 
 Sortable values must be effectively immutable with stable equality and hash
 codes. Sorting methods return unmodifiable, duplicate-free snapshots and

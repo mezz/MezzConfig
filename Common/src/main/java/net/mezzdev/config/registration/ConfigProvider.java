@@ -17,7 +17,6 @@ import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
 import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigPathResolver;
-import net.mezzdev.config.sorting.SortingConfig;
 import net.mezzdev.config.util.ErrorUtil;
 
 import java.io.File;
@@ -152,12 +151,12 @@ public final class ConfigProvider implements IConfigProvider {
 		) {
 			Path relativeConfigFile = getRelativeConfigFile(configFileName);
 			if (!CLIENT_CONFIGS_AVAILABLE) {
-				return SortingConfig.inMemory(defaultSortOrder, allowsRemovingValues);
+				return configManager.createInMemorySortingConfig(defaultSortOrder, allowsRemovingValues);
 			}
 			Path configFile = modDirectory.resolve("client")
 				.resolve(relativeConfigFile)
 				.normalize();
-			return new SortingConfig(configFile, defaultSortOrder, allowsRemovingValues);
+			return configManager.createSortingConfig(configFile, defaultSortOrder, allowsRemovingValues);
 		}
 
 	}

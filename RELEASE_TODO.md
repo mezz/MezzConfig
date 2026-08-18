@@ -80,22 +80,22 @@ mistaken for a requirement without supporting evidence.
 
 ### Reserve Every File Path Once
 
-- [ ] Add one path-reservation mechanism shared by schemas and sorting configs.
+- [x] Add one path-reservation mechanism shared by schemas and sorting configs.
 
   **Reason:** Client installation schemas and sorting configs can resolve to the
   same `<root>/<mod-id>/client/<file-name>` path. Schema registration detects
   duplicate schemas, but sorting configs are not registered, so two incompatible
   formats can silently overwrite one another.
 
-  - [ ] Reject duplicate schema paths by normalized absolute identity.
-  - [ ] Reject duplicate sorting-config paths.
-  - [ ] Reject schema and sorting-config collisions before reading or writing
+  - [x] Reject duplicate schema paths by normalized absolute identity.
+  - [x] Reject duplicate sorting-config paths.
+  - [x] Reject schema and sorting-config collisions before reading or writing
         the path.
-  - [ ] Apply the same identity rules when conventional and explicit roots
+  - [x] Apply the same identity rules when conventional and explicit roots
         resolve to the same location.
-  - [ ] Keep dedicated-server in-memory sorting configs out of file-path
+  - [x] Keep dedicated-server in-memory sorting configs out of file-path
         reservation.
-  - [ ] Test every collision combination and verify that rejection happens
+  - [x] Test every collision combination and verify that rejection happens
         before a file is created or modified.
 
 ### Define the Threading Model

@@ -1,6 +1,7 @@
 package net.mezzdev.config.neoforge.gametest;
 
 import net.mezzdev.config.api.Configs;
+import net.mezzdev.config.api.IConfigRegistration;
 import net.mezzdev.config.api.schema.ConfigOwnership;
 import net.mezzdev.config.api.schema.ConfigScope;
 import net.mezzdev.config.api.schema.IConfigSchema;
@@ -21,6 +22,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @ForEachTest(groups = "server_config")
@@ -63,8 +66,11 @@ public final class MezzConfigGameTests {
 		if (hasClientSchema) {
 			throw failure("The dedicated server registered a client-owned config schema.");
 		}
-		IConfigSchemaBuilder builder = Configs.forMod(TEST_MOD_ID)
-			.createClientSchemaBuilder("dedicated-server-client.ini", "mezz_config_test.neoforge.client");
+		IConfigRegistration registration = Configs.forMod(TEST_MOD_ID);
+		IConfigSchemaBuilder builder = registration.createClientSchemaBuilder(
+			"dedicated-server-client.ini",
+			"mezz_config_test.neoforge.client"
+		);
 		builder.addCategory("general")
 			.addBoolean("enabled", true)
 			.build();
@@ -74,6 +80,21 @@ public final class MezzConfigGameTests {
 		}
 		if (schema.isActive() || schema.getPath().isPresent()) {
 			throw failure("The dedicated server activated an inert client config schema.");
+		}
+		var firstSortingConfig = registration.createSortingConfig(
+			"dedicated-server-client.ini",
+			Comparator.naturalOrder(),
+			true
+		);
+		var secondSortingConfig = registration.createSortingConfig(
+			"dedicated-server-client.ini",
+			Comparator.reverseOrder(),
+			false
+		);
+		if (!firstSortingConfig.getSortedValues(List.of("b", "a")).equals(List.of("a", "b")) ||
+			!secondSortingConfig.getSortedValues(List.of("b", "a")).equals(List.of("b", "a"))
+		) {
+			throw failure("The dedicated server sorting configs did not remain independent and in memory.");
 		}
 		helper.succeed();
 	}
