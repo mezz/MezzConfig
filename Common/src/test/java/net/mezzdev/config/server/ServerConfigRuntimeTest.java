@@ -297,7 +297,7 @@ public class ServerConfigRuntimeTest {
 		);
 		testSchema.schema().register(null, false);
 		AtomicInteger notifications = new AtomicInteger();
-		testSchema.schema().addListener(ignored -> notifications.incrementAndGet());
+		testSchema.schema().addBatchListener(ignored -> notifications.incrementAndGet());
 		Files.writeString(
 			oversizedPath,
 			"[general]\nvalue_0 = " + "x".repeat(ServerConfigPayloadCodec.MAX_SERIALIZED_VALUE_BYTES + 1) + "\n"

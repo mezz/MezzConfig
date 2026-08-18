@@ -430,13 +430,17 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
 			.build();
+		ConfigValue<String> unrelated = builder.addString("unrelated", "unchanged")
+			.build();
 		ConfigSchema schema = createSchema(builder);
 		List<String> valueChanges = new ArrayList<>();
 		List<String> valueBatches = new ArrayList<>();
 		List<String> schemaBatches = new ArrayList<>();
+		AtomicInteger unrelatedBatches = new AtomicInteger();
 		enabled.addListener(change -> valueChanges.add("%s -> %s, count = %s".formatted(change.oldValue(), change.newValue(), count.getValue())));
 		enabled.addBatchListener(changes -> valueBatches.add("value batch: %s, count = %s".formatted(changes.size(), count.getValue())));
-		schema.addListener(changes -> schemaBatches.add("schema batch: %s, enabled = %s, count = %s".formatted(
+		unrelated.addBatchListener(ignored -> unrelatedBatches.incrementAndGet());
+		schema.addBatchListener(changes -> schemaBatches.add("schema batch: %s, enabled = %s, count = %s".formatted(
 			changes.size(),
 			enabled.getValue(),
 			count.getValue()
@@ -459,6 +463,7 @@ public class ConfigSchemaTest {
 		assertEquals(3, count.getValue());
 		assertEquals(List.of("true -> false, count = 3"), valueChanges);
 		assertEquals(List.of("value batch: 2, count = 3"), valueBatches);
+		assertEquals(0, unrelatedBatches.get());
 		assertEquals(List.of("schema batch: 2, enabled = false, count = 3"), schemaBatches);
 	}
 
@@ -546,7 +551,7 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createSchema(builder);
 		List<String> schemaBatches = new ArrayList<>();
-		schema.addListener(changes -> {
+		schema.addBatchListener(changes -> {
 			IAppliedConfigValueChange<?> change = changes.getFirst();
 			schemaBatches.add("%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()));
 		});
@@ -561,14 +566,14 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
-	public void addListenerReturnsUnsubscribeCallback() {
+	public void addBatchListenerReturnsUnsubscribeCallback() {
 		// Setup: register a schema-wide batch listener and keep its unsubscribe callback.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
 		ConfigSchema schema = createSchema(builder);
 		AtomicInteger notifications = new AtomicInteger();
-		Runnable unsubscribe = schema.addListener(ignored -> notifications.incrementAndGet());
+		Runnable unsubscribe = schema.addBatchListener(ignored -> notifications.incrementAndGet());
 
 		// Operation: notify once, unsubscribe, then change the value again.
 		assertTrue(enabled.set(false));
@@ -580,6 +585,33 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void reentrantSchemaListenerUpdateDispatchesANestedBatchSynchronously() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> first = builder.addBoolean("first", true)
+			.build();
+		ConfigValue<Boolean> second = builder.addBoolean("second", true)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		List<String> notifications = new ArrayList<>();
+		schema.addBatchListener(changes -> {
+			notifications.add("first listener: " + formatChanges(changes));
+			if (changes.getFirst().configValue() == first) {
+				assertTrue(second.set(false));
+			}
+		});
+		schema.addBatchListener(changes -> notifications.add("second listener: " + formatChanges(changes)));
+
+		assertTrue(first.set(false));
+
+		assertEquals(List.of(
+			"first listener: first: true -> false",
+			"first listener: second: true -> false",
+			"second listener: second: true -> false",
+			"second listener: first: true -> false"
+		), notifications);
+	}
+
+	@Test
 	public void schemaListenerCanUnsubscribeDuringNotification() {
 		// Setup: register a schema-wide listener that removes itself while handling its first batch.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
@@ -588,7 +620,7 @@ public class ConfigSchemaTest {
 		ConfigSchema schema = createSchema(builder);
 		AtomicInteger notifications = new AtomicInteger();
 		AtomicReference<Runnable> unsubscribe = new AtomicReference<>();
-		unsubscribe.set(schema.addListener(ignored -> {
+		unsubscribe.set(schema.addBatchListener(ignored -> {
 			notifications.incrementAndGet();
 			unsubscribe.get().run();
 		}));
@@ -608,7 +640,7 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createSchema(builder);
 		AtomicInteger notifications = new AtomicInteger();
-		Runnable unsubscribe = schema.addListener(ignored -> notifications.incrementAndGet());
+		Runnable unsubscribe = schema.addBatchListener(ignored -> notifications.incrementAndGet());
 
 		try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
 			executor.submit(unsubscribe)
@@ -628,7 +660,7 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createSchema(builder);
 		List<List<String>> notifiedBatches = new java.util.concurrent.CopyOnWriteArrayList<>();
-		schema.addListener(changes -> notifiedBatches.add(changes.stream()
+		schema.addBatchListener(changes -> notifiedBatches.add(changes.stream()
 			.map(change -> change.configValue().getName())
 			.toList()));
 		CountDownLatch start = new CountDownLatch(1);
@@ -674,11 +706,11 @@ public class ConfigSchemaTest {
 			}
 		);
 		AtomicInteger laterNotifications = new AtomicInteger();
-		schema.addListener(ignored -> {
+		schema.addBatchListener(ignored -> {
 			assertEquals(1, scheduledSaves.get());
 			throw new IllegalStateException("expected schema listener test failure");
 		});
-		schema.addListener(ignored -> laterNotifications.incrementAndGet());
+		schema.addBatchListener(ignored -> laterNotifications.incrementAndGet());
 
 		assertDoesNotThrow(() -> assertTrue(enabled.set(false)));
 
@@ -702,7 +734,7 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createSchema(path, builder);
 		List<String> schemaBatches = new ArrayList<>();
-		schema.addListener(changes -> schemaBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
+		schema.addBatchListener(changes -> schemaBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
 
 		// Operation: load the file through the schema.
 		schema.loadIfNeeded();
@@ -766,7 +798,7 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createSchema(builder);
 		List<String> changes = new ArrayList<>();
-		schema.addListener(applied -> changes.add(formatChanges(applied)));
+		schema.addBatchListener(applied -> changes.add(formatChanges(applied)));
 
 		assertTrue(worldValue.getValue());
 		assertTrue(worldValue.set(false));
@@ -793,12 +825,12 @@ public class ConfigSchemaTest {
 		List<String> pendingListenerChanges = new ArrayList<>();
 		List<String> pendingValueBatches = new ArrayList<>();
 		List<String> pendingSchemaBatches = new ArrayList<>();
-		schema.addListener(changes -> listenerChanges.add(formatChanges(changes)));
+		schema.addBatchListener(changes -> listenerChanges.add(formatChanges(changes)));
 		afterRestart.addPendingListener(change -> pendingListenerChanges.add(
 			"%s -> %s".formatted(change.oldValue(), change.newValue())
 		));
 		afterRestart.addPendingBatchListener(changes -> pendingValueBatches.add(formatChanges(changes)));
-		schema.addPendingListener(changes -> pendingSchemaBatches.add(formatChanges(changes)));
+		schema.addPendingBatchListener(changes -> pendingSchemaBatches.add(formatChanges(changes)));
 
 		List<? extends IAppliedConfigValueChange<?>> savedChanges = schema.batchUpdate(updater -> {
 			updater.set(immediate, false);
@@ -834,8 +866,8 @@ public class ConfigSchemaTest {
 		assertFalse(enabled.getValue());
 		List<String> pendingChanges = new ArrayList<>();
 		AtomicInteger effectiveNotifications = new AtomicInteger();
-		schema.addPendingListener(changes -> pendingChanges.add(formatChanges(changes)));
-		schema.addListener(ignored -> effectiveNotifications.incrementAndGet());
+		schema.addPendingBatchListener(changes -> pendingChanges.add(formatChanges(changes)));
+		schema.addBatchListener(ignored -> effectiveNotifications.incrementAndGet());
 
 		resolvedPath.set(Optional.of(secondPath));
 		schema.loadIfNeeded();
@@ -1215,7 +1247,7 @@ public class ConfigSchemaTest {
 		List<String> valueChanges = new ArrayList<>();
 		List<String> schemaBatches = new ArrayList<>();
 		enabled.addListener(change -> valueChanges.add("%s -> %s".formatted(change.oldValue(), change.newValue())));
-		schema.addListener(changes -> schemaBatches.add(formatChanges(changes)));
+		schema.addBatchListener(changes -> schemaBatches.add(formatChanges(changes)));
 
 		// Operation: load the first world-specific config file.
 		assertFalse(enabled.getValue());

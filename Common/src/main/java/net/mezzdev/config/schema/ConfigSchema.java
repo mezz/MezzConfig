@@ -67,8 +67,8 @@ public class ConfigSchema implements IConfigSchema {
 	private @Nullable Path pendingSavePath;
 	private @Nullable Runnable removeDefaultFileWatcherCallback;
 	private @Nullable Runnable removeFileWatcherCallback;
-	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> listeners = new CopyOnWriteArrayList<>();
-	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> pendingListeners = new CopyOnWriteArrayList<>();
+	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> batchListeners = new CopyOnWriteArrayList<>();
+	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> pendingBatchListeners = new CopyOnWriteArrayList<>();
 	private boolean registered;
 	private boolean registrationInProgress;
 	private boolean restartValuesInitialized;
@@ -884,17 +884,17 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public Runnable addListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
+	public Runnable addBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		this.listeners.add(listener);
-		return () -> this.listeners.remove(listener);
+		this.batchListeners.add(listener);
+		return () -> this.batchListeners.remove(listener);
 	}
 
 	@Override
-	public Runnable addPendingListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
+	public Runnable addPendingBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		this.pendingListeners.add(listener);
-		return () -> this.pendingListeners.remove(listener);
+		this.pendingBatchListeners.add(listener);
+		return () -> this.pendingBatchListeners.remove(listener);
 	}
 
 	private void notifyChanges(
@@ -907,11 +907,11 @@ public class ConfigSchema implements IConfigSchema {
 		changeVersion.incrementAndGet();
 		if (!pendingChanges.isEmpty()) {
 			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyPendingChangedValues(pendingChanges);
-			notifyListeners(immutableChanges, pendingListeners, "pending config schema");
+			notifyListeners(immutableChanges, pendingBatchListeners, "pending config schema");
 		}
 		if (!effectiveChanges.isEmpty()) {
 			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(effectiveChanges);
-			notifyListeners(immutableChanges, listeners, "config schema");
+			notifyListeners(immutableChanges, batchListeners, "config schema");
 		}
 	}
 

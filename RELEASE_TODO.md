@@ -201,7 +201,7 @@ mistaken for a requirement without supporting evidence.
 
 ### Keep Both Listener Scopes and Make Them Discoverable
 
-- [ ] Retain schema-level and value-scoped batch listeners, clarify their names,
+- [x] Retain schema-level and value-scoped batch listeners, clarify their names,
       and lock down their notification contracts.
 
   **Reason:** A schema listener observes every atomic schema batch exactly once,
@@ -212,18 +212,18 @@ mistaken for a requirement without supporting evidence.
   repeated filtering in value-specific integrations. Neither scope fully
   replaces the other.
 
-  - [ ] Keep `IConfigValue.addListener` and `addPendingListener` for single-value
+  - [x] Keep `IConfigValue.addListener` and `addPendingListener` for single-value
         changes.
-  - [ ] Keep `IConfigValue.addBatchListener` and `addPendingBatchListener` for
+  - [x] Keep `IConfigValue.addBatchListener` and `addPendingBatchListener` for
         full-batch context scoped to one participating value.
-  - [ ] Keep schema-level effective and pending batch listeners.
-  - [ ] Before release, rename schema `addListener` and `addPendingListener` to
+  - [x] Keep schema-level effective and pending batch listeners.
+  - [x] Before release, rename schema `addListener` and `addPendingListener` to
         `addBatchListener` and `addPendingBatchListener` for symmetry and
         discoverability; do not retain duplicate aliases on the initial API.
-  - [ ] Document exactly-once behavior, which changes trigger each listener,
+  - [x] Document exactly-once behavior, which changes trigger each listener,
         callback ordering, synchronous execution, failure isolation,
         unsubscription, and reentrancy.
-  - [ ] Test that a schema listener runs once per batch and that a value-scoped
+  - [x] Test that a schema listener runs once per batch and that a value-scoped
         batch listener runs only when its value is present.
 
 ### Remove Redundant Deserialization State

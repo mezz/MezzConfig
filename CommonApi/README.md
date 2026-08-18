@@ -332,11 +332,31 @@ List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(update
 ```
 
 The batch is validated before any values are changed. Persistence is scheduled
-for all saved changes. Effective listeners registered with `addListener(...)`
-are notified only for values that became effective immediately. Pending
-listeners registered with `addPendingListener(...)` are notified for every
-saved-value change, including changes waiting for a restart. Value-scoped batch
-listeners use `addBatchListener(...)` and `addPendingBatchListener(...)`.
+for all saved changes. Single-value effective listeners registered with
+`IConfigValue.addListener(...)` are notified only for values that became
+effective immediately. Pending listeners registered with
+`IConfigValue.addPendingListener(...)` are notified for every saved-value
+change, including changes waiting for a restart.
+
+Use `IConfigValue.addBatchListener(...)` or `addPendingBatchListener(...)` when
+one value-specific integration needs the complete batch. These listeners run
+exactly once only when that value participates. Use
+`IConfigSchema.addBatchListener(...)` or `addPendingBatchListener(...)` to
+observe every non-empty schema batch exactly once, regardless of which values
+participated. No listener runs for an unchanged batch.
+
+Notifications are synchronous after the complete state is committed. Local
+updates schedule persistence before notifying; loads and synchronized snapshots
+notify after applying their complete state. Pending notifications run before
+effective notifications from the same operation. Within each kind, participating values
+are visited in batch order: a value's single listener runs before its scoped
+batch listener, and schema batch listeners run after all value listeners.
+Listeners at one scope run in registration order. Failures are logged and
+isolated. The returned removal callbacks are idempotent; registration changes
+during a callback affect later notification snapshots. A listener may make a
+reentrant update, which dispatches a separate nested batch synchronously before
+the outer notification resumes, so callers must prevent update cycles.
+
 `IConfigValue.set(...)` returns `true` for a change and `false` for a valid
 unchanged value. It throws `IllegalArgumentException` for invalid values and
 `IllegalStateException` when a context-specific schema is inactive.
@@ -346,7 +366,7 @@ instead, because it also handles server-authoritative schemas.
 Built schemas, values, and sorting configs are thread-safe; batches are atomic,
 but concurrent operations are unordered. Listeners run on the applying thread,
 update futures have no fixed completion thread, and builders are not thread-safe.
-Retain listener removal callbacks for teardown; listener failures are isolated.
+Retain listener removal callbacks for teardown.
 
 The core API exposes serialization, validation, storage names, localization
 keys, lightweight editor category hints, and edit-mode hints. GUI-specific

@@ -25,6 +25,16 @@ import java.util.function.Consumer;
  * <p>
  * Runtime methods are thread-safe and batches are atomic; concurrent operations are unordered. Listeners run
  * synchronously on the applying thread and are not dispatched to a game thread.
+ * <p>
+ * Listener notifications use immutable change lists and run after the complete applicable state is committed. Local
+ * update batches schedule persistence before notifying; loads and synchronized snapshots notify after applying their
+ * complete state. When one operation has both pending and effective changes, pending notifications run first.
+ * Within either notification kind, each changed value's single-value listeners and then its value-scoped batch listeners
+ * run in batch order; schema batch listeners run last. Listeners at the same scope run in registration order. Listener
+ * failures are logged and do not prevent later listeners. Removal callbacks are idempotent and affect later notification
+ * snapshots; listeners may register or remove listeners during a callback without changing the current snapshot.
+ * Reentrant updates are allowed and synchronously dispatch a separate nested batch before the outer notification resumes;
+ * callers must guard against reentrant update cycles.
  *
  * @since 0.1.0
  */
@@ -152,28 +162,30 @@ public interface IConfigSchema {
 	CompletableFuture<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch);
 
 	/**
-	 * Add a listener that is called with every batch of effective-value changes applied to this schema. Pending changes do
-	 * not invoke this listener.
-	 * Registration and removal are thread-safe. A runtime exception is logged without preventing later callbacks.
+	 * Add a listener called exactly once for every non-empty batch of effective-value changes applied to this schema.
+	 * This includes local updates, file loads and reloads, context changes, remote snapshots, disconnect resets, and restart
+	 * promotions when they change effective values. Pending-only and unchanged batches do not invoke this listener.
+	 * The listener receives the complete immutable effective batch after participating value listeners.
 	 *
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener
 	 *
 	 * @since 0.1.0
 	 */
-	Runnable addListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
+	Runnable addBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
 
 	/**
-	 * Add a listener that is called with every batch of pending saved-value changes applied to this schema.
+	 * Add a listener called exactly once for every non-empty batch of pending saved-value changes applied to this schema.
 	 * <p>
 	 * Values without a restart requirement appear in both effective and pending notifications. Restart-required values
 	 * appear in pending notifications when saved and effective notifications later when the applicable restart promotes
-	 * them. Callbacks have the same synchronous execution and failure isolation as {@link #addListener(Consumer)}.
+	 * them. Pending notifications run before effective notifications from the same operation. Unchanged batches do not
+	 * invoke this listener. The listener receives the complete immutable pending batch after participating value listeners.
 	 *
 	 * @param listener callback accepting the pending changes
 	 * @return a callback that removes this listener
 	 *
 	 * @since 0.3.0
 	 */
-	Runnable addPendingListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
+	Runnable addPendingBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
 }

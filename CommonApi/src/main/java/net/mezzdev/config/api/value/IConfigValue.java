@@ -19,6 +19,8 @@ import java.util.function.Consumer;
  * <p>
  * Add a value to your category with the add methods on {@link IConfigCategoryBuilder}.
  * Get registered values here: {@link IConfigCategory#getConfigValues()}.
+ * Listener registration and removal are thread-safe, and listener callbacks follow the synchronous ordering, failure
+ * isolation, stable-snapshot, and reentrancy contract documented by {@link IConfigSchema}.
  * <p>
  * Runtime methods are thread-safe. Listener behavior follows {@link IConfigSchema}.
  *
@@ -121,7 +123,7 @@ public interface IConfigValue<T> {
 
 	/**
 	 * Add a listener that is called when this config value's effective value changes. Pending changes do not invoke this
-	 * listener.
+	 * listener. It runs once for this value before its value-scoped batch listeners and the schema batch listeners.
 	 * @param listener callback accepting the applied change
 	 * @return a callback that removes this listener
 	 *
@@ -133,7 +135,8 @@ public interface IConfigValue<T> {
 	 * Add a listener that is called when this config value's pending saved value changes.
 	 * <p>
 	 * Values without a restart requirement invoke both effective and pending listeners. Restart-required values invoke
-	 * pending listeners when saved and effective listeners later when the applicable restart promotes the value.
+	 * pending listeners when saved and effective listeners later when the applicable restart promotes the value. It runs
+	 * once for this value before its pending value-scoped and schema batch listeners.
 	 *
 	 * @param listener callback accepting the pending change
 	 * @return a callback that removes this listener
@@ -146,7 +149,9 @@ public interface IConfigValue<T> {
 	 * Add a listener that is called with all effective-value changes from a batch containing this config value. Pending
 	 * changes do not invoke this listener.
 	 * <p>
-	 * Use this when the listener needs to observe other config values updated in the same batch.
+	 * Use this when the listener needs to observe other config values updated in the same batch. It runs exactly once when
+	 * this value participates in a non-empty effective batch, after this value's single-value listeners and before schema
+	 * batch listeners. A batch that changes only other values does not invoke it.
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener
 	 *
@@ -157,7 +162,9 @@ public interface IConfigValue<T> {
 	/**
 	 * Add a listener that is called with all pending-value changes from a batch containing this config value.
 	 * <p>
-	 * Use this when the listener needs to observe other pending values updated in the same batch.
+	 * Use this when the listener needs to observe other pending values updated in the same batch. It runs exactly once when
+	 * this value participates in a non-empty pending batch, after this value's single-value listeners and before schema
+	 * pending batch listeners. A batch that changes only other values does not invoke it.
 	 *
 	 * @param listener callback accepting the pending changes
 	 * @return a callback that removes this listener
