@@ -89,6 +89,8 @@ snapshots without reading or creating the server's world files.
 ## Config schemas
 
 Schemas contain storage categories, and categories contain config values.
+`IConfigCategory.getConfigValues()` returns an immutable list in builder
+insertion order, which config screens can use directly for stable layout.
 Client-owned world schemas use these locations:
 
 ```text

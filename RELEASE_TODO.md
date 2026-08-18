@@ -170,7 +170,7 @@ mistaken for a requirement without supporting evidence.
 
 ### Promise Deterministic Value Ordering
 
-- [ ] Change `IConfigCategory.getConfigValues()` to return an immutable
+- [x] Change `IConfigCategory.getConfigValues()` to return an immutable
       `List<? extends IConfigValue<?>>` in builder insertion order.
 
   **Reason:** The implementation already preserves declaration order and config
@@ -178,9 +178,9 @@ mistaken for a requirement without supporting evidence.
   promise ordering. Changing `Collection` to `List` after release would be
   binary incompatible.
 
-  - [ ] Update the interface return type and Javadoc.
-  - [ ] Update the implementation to return an immutable list snapshot.
-  - [ ] Test declaration order and immutability.
+  - [x] Update the interface return type and Javadoc.
+  - [x] Update the implementation to return an immutable list snapshot.
+  - [x] Test declaration order and immutability.
 
 ### Make Schema Activation Semantics Truthful
 

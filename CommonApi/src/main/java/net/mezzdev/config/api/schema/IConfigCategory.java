@@ -4,7 +4,7 @@ import net.mezzdev.config.api.value.IConfigValue;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.util.Collection;
+import java.util.List;
 
 /**
  * Storage categories organize {@link IConfigValue}s into config file groups.
@@ -18,10 +18,12 @@ import java.util.Collection;
 @ApiStatus.NonExtendable
 public interface IConfigCategory extends IConfigEditorCategory {
 	/**
-	 * The config values in the category.
+	 * Get the config values in builder insertion order.
+	 *
+	 * @return an immutable list snapshot of the category's config values
 	 *
 	 * @since 0.1.0
 	 */
 	@Unmodifiable
-	Collection<? extends IConfigValue<?>> getConfigValues();
+	List<? extends IConfigValue<?>> getConfigValues();
 }

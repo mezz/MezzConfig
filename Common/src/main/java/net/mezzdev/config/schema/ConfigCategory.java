@@ -5,7 +5,6 @@ import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
 
-import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,6 +14,7 @@ import java.util.Set;
 
 public class ConfigCategory extends ConfigEditorCategory implements IConfigCategory {
 	private final Map<String, ConfigValue<?>> valueMap;
+	private final List<ConfigValue<?>> values;
 	private final Map<ConfigValueReference, List<ConfigValueMigration<?>>> movedValueMigrations;
 
 	public ConfigCategory(String localizationPath, String name, List<ConfigValue<?>> values) {
@@ -36,6 +36,7 @@ public class ConfigCategory extends ConfigEditorCategory implements IConfigCateg
 			}
 		}
 		this.valueMap = Collections.unmodifiableMap(map);
+		this.values = List.copyOf(map.values());
 		this.movedValueMigrations = copyMovedValueMigrations(movedValueMigrations);
 	}
 
@@ -53,8 +54,8 @@ public class ConfigCategory extends ConfigEditorCategory implements IConfigCateg
 	}
 
 	@Override
-	public Collection<ConfigValue<?>> getConfigValues() {
-		return this.valueMap.values();
+	public List<ConfigValue<?>> getConfigValues() {
+		return values;
 	}
 
 	public Set<String> getValueNames() {

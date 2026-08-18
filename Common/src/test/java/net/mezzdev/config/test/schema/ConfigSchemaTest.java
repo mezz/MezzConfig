@@ -1,6 +1,7 @@
 package net.mezzdev.config.test.schema;
 
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
+import net.mezzdev.config.api.schema.IConfigCategory;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
 import net.mezzdev.config.api.schema.ConfigSchemaType;
@@ -1249,6 +1250,24 @@ public class ConfigSchemaTest {
 		builder.addBoolean("enabled", true);
 
 		assertThrows(IllegalStateException.class, () -> createSchema(builder));
+	}
+
+	@Test
+	public void categoryValuesAreAnImmutableBuilderOrderedList() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> first = builder.addBoolean("first", true)
+			.build();
+		ConfigValue<String> second = builder.addString("second", "value")
+			.build();
+		ConfigValue<Integer> third = builder.addInteger("third", 3)
+			.build();
+		IConfigCategory category = createSchema(builder).getCategories()
+			.getFirst();
+
+		List<? extends IConfigValue<?>> values = category.getConfigValues();
+
+		assertEquals(List.of(first, second, third), values);
+		assertThrows(UnsupportedOperationException.class, values::clear);
 	}
 
 	@Test
