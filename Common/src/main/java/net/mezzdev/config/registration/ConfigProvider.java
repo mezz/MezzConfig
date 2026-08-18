@@ -4,6 +4,7 @@ import net.mezzdev.config.api.IConfigRegistration;
 import net.mezzdev.config.api.internal.IConfigProvider;
 import net.mezzdev.config.api.schema.ConfigOwnership;
 import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
 import net.mezzdev.config.file.ConfigManager;
@@ -21,18 +22,29 @@ import net.mezzdev.config.util.ErrorUtil;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.Optional;
 import java.util.ServiceLoader;
 
 public final class ConfigProvider implements IConfigProvider {
-	private static final boolean CLIENT_CONFIGS_AVAILABLE = loadClientConfigsAvailable();
+	private static final ConfigPhysicalSideProvider PHYSICAL_SIDE_PROVIDER = loadPhysicalSideProvider();
+	private static final boolean CLIENT_CONFIGS_AVAILABLE = PHYSICAL_SIDE_PROVIDER.isPhysicalClient();
 	private static final ConfigManager CONFIG_MANAGER = createConfigManager();
 
-	@Override
-	public ConfigManager getConfigManager() {
+	public static ConfigManager getConfigManager() {
 		return CONFIG_MANAGER;
+	}
+
+	@Override
+	public Collection<? extends IConfigSchema> getSchemas() {
+		return CONFIG_MANAGER.getSchemas();
+	}
+
+	@Override
+	public IConfigRegistration createRegistration(String modId) {
+		return createRegistration(PHYSICAL_SIDE_PROVIDER.getConfigRoot(), modId);
 	}
 
 	@Override
@@ -156,7 +168,7 @@ public final class ConfigProvider implements IConfigProvider {
 		return configManager;
 	}
 
-	private static boolean loadClientConfigsAvailable() {
+	private static ConfigPhysicalSideProvider loadPhysicalSideProvider() {
 		Iterator<ConfigPhysicalSideProvider> providers = ServiceLoader.load(
 				ConfigPhysicalSideProvider.class,
 				ConfigProvider.class.getClassLoader()
@@ -169,7 +181,7 @@ public final class ConfigProvider implements IConfigProvider {
 		if (providers.hasNext()) {
 			throw new IllegalStateException("More than one MezzConfig physical-side provider is present.");
 		}
-		return provider.isPhysicalClient();
+		return provider;
 	}
 
 	private static Path getRelativeConfigFile(String configFileName) {

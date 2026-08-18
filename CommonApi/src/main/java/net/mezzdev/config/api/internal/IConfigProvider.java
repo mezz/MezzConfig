@@ -1,10 +1,11 @@
 package net.mezzdev.config.api.internal;
 
 import net.mezzdev.config.api.Configs;
-import net.mezzdev.config.api.IConfigManager;
 import net.mezzdev.config.api.IConfigRegistration;
+import net.mezzdev.config.api.schema.IConfigSchema;
 
 import java.nio.file.Path;
+import java.util.Collection;
 
 /**
  * Runtime provider behind {@link Configs}.
@@ -12,7 +13,9 @@ import java.nio.file.Path;
  * @since 0.3.0
  */
 public interface IConfigProvider {
+	IConfigRegistration createRegistration(String modId);
+
 	IConfigRegistration createRegistration(Path configRootDir, String modId);
 
-	IConfigManager getConfigManager();
+	Collection<? extends IConfigSchema> getSchemas();
 }

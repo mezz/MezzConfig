@@ -57,8 +57,7 @@ public final class MezzConfigGameTests {
 	@EmptyTemplate
 	@TestHolder(description = "A dedicated server keeps common client config declarations inert.")
 	public static void dedicatedServerKeepsClientConfigsInert(GameTestHelper helper) {
-		boolean hasClientSchema = Configs.getConfigManager()
-			.getSchemas()
+		boolean hasClientSchema = Configs.getSchemas()
 			.stream()
 			.anyMatch(candidate -> candidate.getOwnership() == ConfigOwnership.CLIENT);
 		if (hasClientSchema) {
@@ -70,7 +69,7 @@ public final class MezzConfigGameTests {
 			.addBoolean("enabled", true)
 			.build();
 		IConfigSchema schema = builder.build();
-		if (Configs.getConfigManager().getSchemas().contains(schema)) {
+		if (Configs.getSchemas().contains(schema)) {
 			throw failure("The dedicated server published an inert client config schema.");
 		}
 		if (schema.isActive() || schema.getPath().isPresent()) {
@@ -161,8 +160,7 @@ public final class MezzConfigGameTests {
 	}
 
 	private static IConfigSchema getServerSchema() {
-		return Configs.getConfigManager()
-			.getSchemas()
+		return Configs.getSchemas()
 			.stream()
 			.filter(candidate -> candidate.getOwnership() == ConfigOwnership.SERVER)
 			.filter(candidate -> candidate.getScope() == ConfigScope.WORLD)

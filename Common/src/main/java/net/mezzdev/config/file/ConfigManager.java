@@ -1,6 +1,5 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.api.IConfigManager;
 import net.mezzdev.config.api.schema.ConfigOwnership;
 import net.mezzdev.config.api.schema.ConfigScope;
 import net.mezzdev.config.api.schema.IConfigSchema;
@@ -28,7 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-public class ConfigManager implements IConfigManager {
+public class ConfigManager {
 	private static final Logger LOGGER = LogManager.getLogger();
 	private static final Duration SAVE_SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
 	private static final String SAVE_SCHEDULER_THREAD_NAME = "MezzConfig Save Scheduler";
@@ -171,7 +170,6 @@ public class ConfigManager implements IConfigManager {
 		getConfigSchemaSnapshot().forEach(ConfigSchema::promotePendingValuesAfterWorldRestart);
 	}
 
-	@Override
 	public Collection<? extends IConfigSchema> getSchemas() {
 		return getConfigSchemaSnapshot();
 	}

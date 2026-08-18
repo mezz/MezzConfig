@@ -121,7 +121,7 @@ public class ConfigsTest {
 			IllegalArgumentException.class,
 			() -> createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true)
 		);
-		assertTrue(Configs.getConfigManager().getSchemas().contains(original.schema()));
+		assertTrue(Configs.getSchemas().contains(original.schema()));
 	}
 
 	@Test
@@ -177,14 +177,14 @@ public class ConfigsTest {
 		Path path = getClientPath(configRoot);
 		Files.createDirectories(path);
 		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
-		int schemaCount = Configs.getConfigManager().getSchemas().size();
+		int schemaCount = Configs.getSchemas().size();
 
 		assertThrows(
 			UncheckedIOException.class,
 			() -> createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true)
 		);
 
-		assertEquals(schemaCount, Configs.getConfigManager().getSchemas().size());
+		assertEquals(schemaCount, Configs.getSchemas().size());
 		assertTrue(Files.isDirectory(path));
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
 	}
@@ -194,7 +194,7 @@ public class ConfigsTest {
 	}
 
 	private static ConfigManager getConfigManager() {
-		return (ConfigManager) Configs.getConfigManager();
+		return ConfigProvider.getConfigManager();
 	}
 
 	private static TestSchema createSchema(

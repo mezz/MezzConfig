@@ -1,8 +1,11 @@
 package net.mezzdev.config.api;
 
 import net.mezzdev.config.api.internal.IConfigProvider;
+import net.mezzdev.config.api.schema.IConfigSchema;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.ServiceLoader;
 
@@ -12,8 +15,6 @@ import java.util.ServiceLoader;
  * @since 0.3.0
  */
 public final class Configs {
-	private static final Path DEFAULT_CONFIG_ROOT = Path.of("config");
-
 	private Configs() {}
 
 	/**
@@ -25,7 +26,7 @@ public final class Configs {
 	 * @since 0.3.0
 	 */
 	public static IConfigRegistration forMod(String modId) {
-		return forMod(DEFAULT_CONFIG_ROOT, modId);
+		return ProviderHolder.PROVIDER.createRegistration(modId);
 	}
 
 	/**
@@ -42,14 +43,15 @@ public final class Configs {
 	}
 
 	/**
-	 * Get the config manager containing all registered schemas.
+	 * Get all registered config schemas.
 	 *
-	 * @return config manager
+	 * @return an unmodifiable snapshot of registered schemas
 	 *
 	 * @since 0.3.0
 	 */
-	public static IConfigManager getConfigManager() {
-		return ProviderHolder.PROVIDER.getConfigManager();
+	@Unmodifiable
+	public static Collection<? extends IConfigSchema> getSchemas() {
+		return ProviderHolder.PROVIDER.getSchemas();
 	}
 
 	private static final class ProviderHolder {

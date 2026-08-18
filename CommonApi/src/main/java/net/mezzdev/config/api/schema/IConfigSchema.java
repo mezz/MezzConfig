@@ -1,6 +1,6 @@
 package net.mezzdev.config.api.schema;
 
-import net.mezzdev.config.api.IConfigManager;
+import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IConfigValue;
@@ -20,7 +20,7 @@ import java.util.function.Consumer;
  * and each category has one or more {@link IConfigValue}.
  * <p>
  * Create and register your schema here: {@link IConfigSchemaBuilder#build()}.
- * Get registered schemas here: {@link IConfigManager#getSchemas()}.
+ * Get registered schemas here: {@link Configs#getSchemas()}.
  *
  * @since 0.1.0
  */

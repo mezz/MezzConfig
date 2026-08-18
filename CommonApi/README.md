@@ -21,8 +21,9 @@ IConfigValue<Boolean> enableIntegration = builder
 IConfigSchema schema = builder.build();
 ```
 
-`Configs.forMod(...)` uses the conventional `config` directory. Its overload
-accepting a `Path` supports tests or applications with a different config root.
+`Configs.forMod(...)` uses the active mod loader's conventional config
+directory. Its overload accepting a `Path` lets a mod deliberately store its
+configuration under another root and supports tests or embedded applications.
 `build()` loads an installation-scoped schema before it returns, so its values
 can be consumed immediately.
 
@@ -243,8 +244,8 @@ Schemas expose the owning mod id through `IConfigSchema.getModId()`, so
 integrations can group schemas by mod and create default config screens without
 adding GUI-specific API to MezzConfig.
 
-Generated config screens can get the active config manager from
-`Configs.getConfigManager()`.
+Generated config screens can enumerate registered schemas with
+`Configs.getSchemas()`.
 
 Use value legacy names when storage names change. If a value moved from another
 storage category, declare the old category and value name on that value. If

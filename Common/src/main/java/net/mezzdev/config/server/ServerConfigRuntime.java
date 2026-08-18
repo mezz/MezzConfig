@@ -1,7 +1,7 @@
 package net.mezzdev.config.server;
 
-import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.file.ConfigManager;
+import net.mezzdev.config.registration.ConfigProvider;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.util.ErrorUtil;
 import net.mezzdev.config.value.ConfigValueUpdate;
@@ -514,7 +514,7 @@ public final class ServerConfigRuntime {
 	}
 
 	private static ConfigManager getConfigManager() {
-		return (ConfigManager) Configs.getConfigManager();
+		return ConfigProvider.getConfigManager();
 	}
 
 	private record PendingRequest(
