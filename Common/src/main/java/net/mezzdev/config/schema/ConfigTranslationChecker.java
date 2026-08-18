@@ -5,7 +5,6 @@ import net.mezzdev.config.api.schema.IConfigEditorCategory;
 import net.minecraft.locale.Language;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.ApiStatus;
 
 import java.nio.file.Path;
 import java.util.Collection;
@@ -13,7 +12,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-@ApiStatus.Internal
 public final class ConfigTranslationChecker {
 	private static final Logger LOGGER = LogManager.getLogger();
 
