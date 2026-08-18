@@ -920,9 +920,12 @@ public class ConfigSchemaTest {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
-		ConfigSchema schema = createSchema(createPathResolver(resolvedPath), builder);
+		ConfigSchema schema = createClientPerWorldSchema(createPathResolver(resolvedPath), builder);
 
 		// Assertions: inactive schemas keep their defaults and cannot be updated because there is nowhere to save them.
+		assertEquals(ConfigSchemaType.CLIENT_PER_WORLD, schema.getType());
+		assertFalse(schema.isActive());
+		assertFalse(schema.canEdit());
 		assertEquals(Optional.empty(), schema.getPath());
 		assertTrue(enabled.getValue());
 		assertThrows(IllegalStateException.class, () -> enabled.set(false));
@@ -931,6 +934,8 @@ public class ConfigSchemaTest {
 		resolvedPath.set(Optional.of(activePath));
 
 		// Assertions: the schema is now editable and reports the active backing file.
+		assertTrue(schema.isActive());
+		assertTrue(schema.canEdit());
 		assertEquals(Optional.of(activePath), schema.getPath());
 		assertTrue(enabled.set(false));
 	}
@@ -956,17 +961,18 @@ public class ConfigSchemaTest {
 		assertFalse(schema.isActive());
 		assertFalse(schema.canEdit());
 
-		// Operation: the server supplies the complete effective state and reports that this player is an operator.
-		schema.applyRemoteSnapshot(List.of(
+		// Operation: the server supplies the complete effective state without edit permission for this player.
+		List<ServerConfigValueData> snapshot = List.of(
 			new ServerConfigValueData("category", "enabled", "false"),
 			new ServerConfigValueData("category", "count", "3"),
 			new ServerConfigValueData("category", "afterRestart", "true", "false"),
 			new ServerConfigValueData("newerServerCategory", "newerServerValue", "ignored")
-		), true);
+		);
+		schema.applyRemoteSnapshot(snapshot, false);
 
-		// Assertions: reads use the synchronized snapshot, but synchronous setters cannot bypass server authority.
+		// Assertions: synchronized values are active and pathless, and permission controls only editability.
 		assertTrue(schema.isActive());
-		assertTrue(schema.canEdit());
+		assertFalse(schema.canEdit());
 		assertEquals(Optional.empty(), schema.getPath());
 		assertFalse(enabled.getValue());
 		assertEquals(3, count.getValue());
@@ -975,6 +981,13 @@ public class ConfigSchemaTest {
 		assertEquals(List.of("true -> false"), pendingRestartChanges);
 		assertThrows(IllegalStateException.class, () -> enabled.set(true));
 		assertFalse(enabled.getValue());
+
+		// Operation: a later snapshot reports that this player has permission to request edits.
+		schema.applyRemoteSnapshot(snapshot, true);
+
+		assertTrue(schema.isActive());
+		assertTrue(schema.canEdit());
+		assertEquals(Optional.empty(), schema.getPath());
 
 		// Operation: a malformed later snapshot is rejected as one batch.
 		assertThrows(IllegalArgumentException.class, () -> schema.applyRemoteSnapshot(List.of(
@@ -1163,9 +1176,14 @@ public class ConfigSchemaTest {
 			new ServerConfigKey("test_mod", "server.ini")
 		);
 		schema.register(null, false);
+		assertFalse(schema.isActive());
+		assertFalse(schema.canEdit());
+		assertEquals(Optional.empty(), schema.getPath());
 
 		// Operation: starting a world activates its serverconfig path.
 		activePath.set(Optional.of(worldPath));
+		assertTrue(schema.isActive());
+		assertTrue(schema.canEdit());
 		assertEquals(Optional.of(worldPath), schema.getPath());
 		runScheduledTasks(scheduledTasks);
 
@@ -1396,6 +1414,21 @@ public class ConfigSchemaTest {
 			List.of(builders),
 			List.of(builders),
 			(command, delay) -> CompletableFuture.completedFuture(null)
+		);
+	}
+
+	private static ConfigSchema createClientPerWorldSchema(
+		ConfigSchemaPathResolver pathResolver,
+		ConfigCategoryBuilder... builders
+	) {
+		return new ConfigSchema(
+			"mezz_config",
+			pathResolver,
+			List.of(builders),
+			List.of(builders),
+			(command, delay) -> CompletableFuture.completedFuture(null),
+			ConfigSchemaType.CLIENT_PER_WORLD,
+			null
 		);
 	}
 

@@ -13,7 +13,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 /**
- * Represents one registered config schema and its backing file.
+ * Represents one declared config schema.
+ * A schema may be inactive or may hold synchronized server values without a local backing file; use {@link #isActive()},
+ * {@link #canEdit()}, and {@link #getPath()} to inspect its current runtime state.
  * <p>
  * Config schemas contain one or more {@link IConfigCategory},
  * and each category has one or more {@link IConfigValue}.
@@ -38,7 +40,7 @@ public interface IConfigSchema {
 	String getModId();
 
 	/**
-	 * Get this schema's ownership and location behavior.
+	 * Get this schema's activation, authority, and location behavior.
 	 *
 	 * @since 0.3.0
 	 */
@@ -47,9 +49,11 @@ public interface IConfigSchema {
 	/**
 	 * Return whether this schema currently has effective values for the current context.
 	 * <p>
-	 * Client schemas are active whenever client configs are available. Client-world schemas are active while a world or
-	 * server connection is available. A server schema is active on the server while a world is available and on a client
-	 * after it receives the server's authoritative snapshot.
+	 * {@link ConfigSchemaType#CLIENT} schemas are active on a physical client and inert on a dedicated server.
+	 * {@link ConfigSchemaType#CLIENT_PER_WORLD} schemas are active on a physical client only while a singleplayer world or
+	 * multiplayer connection is available, and are inert on a dedicated server. {@link ConfigSchemaType#SERVER} schemas
+	 * are active while locally authoritative for a loaded world or after a client receives an authoritative server
+	 * snapshot.
 	 *
 	 * @since 0.2.0
 	 */
@@ -58,9 +62,10 @@ public interface IConfigSchema {
 	/**
 	 * Return whether the local user can currently request edits to this schema.
 	 * <p>
-	 * Active client-owned and locally hosted server schemas are editable. A synchronized server schema is editable only
-	 * when the server reported that the local player has its operator permission level. The server checks permission again
-	 * for every request, so this is a presentation hint rather than an authorization boundary.
+	 * Active client and client-per-world schemas, plus locally authoritative server schemas, are editable. A synchronized
+	 * remote server schema is editable only when the server reported that the local player has its operator permission
+	 * level. Inactive schemas are never editable. The server checks permission again for every request, so this is a
+	 * presentation hint rather than an authorization boundary.
 	 *
 	 * @since 0.2.0
 	 */
@@ -69,10 +74,11 @@ public interface IConfigSchema {
 	/**
 	 * Get the current path of this config schema.
 	 * <p>
-	 * Client schemas have a path whenever client configs are available. Client-world and locally authoritative server
-	 * schemas return an empty optional when no world is available. A synchronized remote server schema also returns an
-	 * empty optional because its backing file belongs to the server; use {@link #isActive()} to distinguish that from an
-	 * inactive schema.
+	 * Client schemas have a path on a physical client. Client-per-world and locally authoritative server schemas have a
+	 * path while their world or connection context is active. Inert client declarations on a dedicated server and schemas
+	 * without an active context return an empty optional. An active synchronized remote server schema also returns an empty
+	 * optional because its backing file belongs to the server; use {@link #isActive()} to distinguish it from an inactive
+	 * schema.
 	 * <p>
 	 * Note that config values will read from this file automatically,
 	 * and updating config values will save the file automatically,

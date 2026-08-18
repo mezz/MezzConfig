@@ -184,20 +184,20 @@ mistaken for a requirement without supporting evidence.
 
 ### Make Schema Activation Semantics Truthful
 
-- [ ] Define `isActive`, `canEdit`, and `getPath` for every ownership, scope,
-      and physical-side combination.
+- [x] Define `isActive`, `canEdit`, and `getPath` for every supported schema
+      type, runtime context, and physical side.
 
   **Reason:** Registration correctly says client schemas are inert and pathless
   on a dedicated server, while `IConfigSchema` currently says every
   installation-scoped schema is active and path-backed. Both statements cannot
   be true without qualification.
 
-  - [ ] Correct the `IConfigSchema` Javadocs for inert client declarations on a
+  - [x] Correct the `IConfigSchema` Javadocs for inert client declarations on a
         dedicated server.
-  - [ ] Add a compact behavior table to the API guide.
+  - [x] Add a compact behavior table to the API guide.
   - [x] Replace the invalid ownership/scope cross-product with concrete schema
         types.
-  - [ ] Test active, editable, and path state for each supported schema type.
+  - [x] Test active, editable, and path state for each supported schema type.
 
 ### Keep Both Listener Scopes and Make Them Discoverable
 

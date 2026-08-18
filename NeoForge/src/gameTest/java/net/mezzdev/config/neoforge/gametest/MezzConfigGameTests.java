@@ -44,6 +44,9 @@ public final class MezzConfigGameTests {
 		if (!schema.isActive()) {
 			throw failure("The authoritative server schema is not active.");
 		}
+		if (!schema.canEdit()) {
+			throw failure("The locally authoritative server schema is not editable.");
+		}
 		Path path = schema.getPath()
 			.orElseThrow(() -> failure("The authoritative server schema has no world file."));
 		if (!Files.isRegularFile(path)) {
@@ -67,19 +70,27 @@ public final class MezzConfigGameTests {
 			throw failure("The dedicated server registered a client-owned config schema.");
 		}
 		IConfigRegistration registration = Configs.forMod(TEST_MOD_ID);
-		IConfigSchemaBuilder builder = registration.createClientSchemaBuilder(
-			"dedicated-server-client.ini",
-			"mezz_config_test.neoforge.client"
+		List<IConfigSchemaBuilder> clientBuilders = List.of(
+			registration.createClientSchemaBuilder(
+				"dedicated-server-client.ini",
+				"mezz_config_test.neoforge.client"
+			),
+			registration.createClientPerWorldSchemaBuilder(
+				"dedicated-server-client-world.ini",
+				"mezz_config_test.neoforge.client_world"
+			)
 		);
-		builder.addCategory("general")
-			.addBoolean("enabled", true)
-			.build();
-		IConfigSchema schema = builder.build();
-		if (Configs.getSchemas().contains(schema)) {
-			throw failure("The dedicated server published an inert client config schema.");
-		}
-		if (schema.isActive() || schema.getPath().isPresent()) {
-			throw failure("The dedicated server activated an inert client config schema.");
+		for (IConfigSchemaBuilder builder : clientBuilders) {
+			builder.addCategory("general")
+				.addBoolean("enabled", true)
+				.build();
+			IConfigSchema schema = builder.build();
+			if (Configs.getSchemas().contains(schema)) {
+				throw failure("The dedicated server published an inert client config schema.");
+			}
+			if (schema.isActive() || schema.canEdit() || schema.getPath().isPresent()) {
+				throw failure("The dedicated server activated an inert client config schema.");
+			}
 		}
 		var firstSortingConfig = registration.createSortingConfig(
 			"dedicated-server-client.ini",

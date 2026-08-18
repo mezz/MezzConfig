@@ -102,6 +102,24 @@ config/<mod-id>/client/world/server/<server>/<file-name> # multiplayer server
 MezzConfig generates a missing default file. Declared code defaults are loaded
 first, followed by the distributable default and then the active world's file.
 
+The supported runtime states are:
+
+| Schema type and context | Active | Editable | Local path |
+| --- | --- | --- | --- |
+| `CLIENT` on a physical client | yes | yes | installation or explicit file |
+| `CLIENT` on a dedicated server | no | no | none |
+| `CLIENT_PER_WORLD` while disconnected | no | no | none |
+| `CLIENT_PER_WORLD` in a world or server connection | yes | yes | context-specific client file |
+| `CLIENT_PER_WORLD` on a dedicated server | no | no | none |
+| `SERVER` before a local world or remote snapshot | no | no | none |
+| `SERVER` authoritative for a local world | yes | yes | world `serverconfig` file |
+| `SERVER` synchronized from a remote server | yes | server-reported permission | none |
+
+An inert client declaration on a dedicated server remains safe to build from
+common initialization code but is not returned by `Configs.getSchemas()`.
+For a remote server schema, `canEdit()` is a UI hint; the server authorizes each
+request again.
+
 ### Malformed-file recovery
 
 Config files are read as bounded UTF-8 text (at most 4 MiB and 100,000 lines).

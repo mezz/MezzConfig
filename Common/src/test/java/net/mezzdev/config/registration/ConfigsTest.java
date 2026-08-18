@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -82,11 +83,17 @@ public class ConfigsTest {
 		assertEquals(ConfigSchemaType.CLIENT, client.schema().getType());
 		assertEquals(ConfigSchemaType.CLIENT, explicit.schema().getType());
 		assertEquals(ConfigSchemaType.SERVER, server.schema().getType());
+		assertTrue(client.schema().isActive());
+		assertTrue(client.schema().canEdit());
 		assertFalse(client.enabled().getValue());
+		assertTrue(explicit.schema().isActive());
+		assertTrue(explicit.schema().canEdit());
 		assertTrue(explicit.enabled().getValue());
 		assertEquals(clientPath, client.schema().getPath().orElseThrow());
 		assertEquals(explicitPath, explicit.schema().getPath().orElseThrow());
 		assertFalse(server.schema().isActive());
+		assertFalse(server.schema().canEdit());
+		assertEquals(Optional.empty(), server.schema().getPath());
 		assertTrue(getConfigManager().getServerSchemas().contains(server.schema()));
 	}
 
