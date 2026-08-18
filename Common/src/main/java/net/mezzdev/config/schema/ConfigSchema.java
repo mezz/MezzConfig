@@ -39,6 +39,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -773,12 +774,12 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public synchronized CompletableFuture<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
+	public synchronized CompletionStage<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
 		ConfigBatchUpdater updater = createBatchUpdater(updateBatch);
 		List<ConfigValueUpdate<?>> updates = updater.getUpdates();
 		if (!isSynchronizedServerSchema()) {
 			applyBatchUpdates(updates);
-			return CompletableFuture.completedFuture(null);
+			return CompletableFuture.completedStage(null);
 		}
 		loadIfNeeded();
 		if (!isActive()) {
@@ -787,12 +788,12 @@ public class ConfigSchema implements IConfigSchema {
 		validateUpdates(updates);
 		validateProspectiveServerSnapshot(updates);
 		if (updates.isEmpty()) {
-			return CompletableFuture.completedFuture(null);
+			return CompletableFuture.completedStage(null);
 		}
 		if (activePath != null) {
-			return ServerConfigRuntime.requestLocalUpdate(this, updates);
+			return ServerConfigRuntime.requestLocalUpdate(this, updates).minimalCompletionStage();
 		}
-		return ServerConfigRuntime.requestUpdate(this, updates);
+		return ServerConfigRuntime.requestUpdate(this, updates).minimalCompletionStage();
 	}
 
 	private static ConfigBatchUpdater createBatchUpdater(Consumer<IConfigBatchUpdater> updateBatch) {

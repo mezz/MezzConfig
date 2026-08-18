@@ -185,20 +185,23 @@ and validates every requested value.
 Use `requestBatchUpdate(...)` in config editors:
 
 ```java
-CompletableFuture<Void> result = schema.requestBatchUpdate(updater -> {
+CompletionStage<Void> result = schema.requestBatchUpdate(updater -> {
 	updater.set(enableCheatModeForOp, true);
 	updater.set(enableCheatModeForCreative, false);
 });
 ```
 
-For client schemas, the future is already complete after the normal local
+For client schemas, the stage is already complete after the normal local
 update. For remote server schemas, current values remain unchanged until an accepted
-request returns in an authoritative snapshot. The future completes
+request returns in an authoritative snapshot. The stage completes
 exceptionally when the player lacks permission, a value is rejected, the
 connection closes, a send fails, the server does not support the request, or no
 response arrives within 15 seconds. At most 128 remote update requests may be
 pending at once. Every synchronized batch is fully decoded and validated before
 any value changes; if any known value is invalid, none of that batch is applied.
+Cancellation is unsupported because it cannot reliably retract an update once
+queued or sent. Cancelling a future obtained from `toCompletableFuture()` only
+stops observation through that derived future; the update and stage continue.
 Direct `IConfigValue.set(...)` and `IConfigSchema.batchUpdate(...)` calls are rejected
 for server schemas so an integrated client cannot bypass server authority.
 
@@ -366,7 +369,7 @@ instead, because it also handles server-authoritative schemas.
 
 Built schemas, values, and sorting configs are thread-safe; batches are atomic,
 but concurrent operations are unordered. Listeners run on the applying thread,
-update futures have no fixed completion thread, and builders are not thread-safe.
+update stages have no fixed completion thread, and builders are not thread-safe.
 Retain listener removal callbacks for teardown.
 
 The core API exposes serialization, validation, storage names, localization

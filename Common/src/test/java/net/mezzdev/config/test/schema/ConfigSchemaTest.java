@@ -43,6 +43,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -1176,12 +1177,36 @@ public class ConfigSchemaTest {
 			return true;
 		});
 
-		CompletableFuture<Void> result = schema.requestBatchUpdate(updater -> updater.set(enabled, false));
+		CompletionStage<Void> result = schema.requestBatchUpdate(updater -> updater.set(enabled, false));
 
-		assertFalse(result.isDone());
+		assertFalse(result.toCompletableFuture().isDone());
 		assertFalse(sentChunks.isEmpty());
 		ServerConfigRuntime.onClientDisconnect();
-		assertTrue(result.isCompletedExceptionally());
+		assertTrue(result.toCompletableFuture().isCompletedExceptionally());
+		ServerConfigNetworking.setClientSender(payload -> false);
+	}
+
+	@Test
+	public void cancellingDerivedFutureDoesNotCancelSentServerRequest() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createRemoteServerSchema(builder);
+		schema.applyRemoteSnapshot(List.of(
+			new ServerConfigValueData("category", "enabled", "true")
+		), true);
+		ServerConfigNetworking.setClientSender(payload -> true);
+
+		CompletionStage<Void> result = schema.requestBatchUpdate(updater -> updater.set(enabled, false));
+		CompletableFuture<Void> requestObserver = result.toCompletableFuture();
+		CompletableFuture<Void> cancelledObserver = result.toCompletableFuture();
+
+		assertTrue(cancelledObserver.cancel(false));
+		assertTrue(cancelledObserver.isCancelled());
+		assertFalse(requestObserver.isDone());
+		ServerConfigRuntime.onClientDisconnect();
+		assertTrue(requestObserver.isCompletedExceptionally());
+		assertFalse(requestObserver.isCancelled());
 		ServerConfigNetworking.setClientSender(payload -> false);
 	}
 

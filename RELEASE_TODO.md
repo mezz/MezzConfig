@@ -241,7 +241,7 @@ mistaken for a requirement without supporting evidence.
 
 ### Expose Only the Needed Asynchronous Contract
 
-- [ ] Resolve cancellation semantics for `requestBatchUpdate` and return
+- [x] Resolve cancellation semantics for `requestBatchUpdate` and return
       `CompletionStage<Void>` unless caller cancellation is intentionally
       supported.
 
@@ -250,12 +250,14 @@ mistaken for a requirement without supporting evidence.
   completion or failure. Local cancellation can stop observation without
   necessarily stopping a queued or already-sent authoritative update.
 
-  - [ ] Decide whether cancellation must prevent an update, merely stop waiting,
-        or is unsupported.
-  - [ ] If cancellation is unsupported, return `CompletionStage<Void>` and keep
+  - [x] Make cancellation unsupported because it cannot reliably retract a
+        queued or already-sent authoritative update.
+  - [x] Return `CompletionStage<Void>` and keep
         the implementation's future private.
-  - [ ] If cancellation remains public, document and test local, integrated,
-        remote, timeout, disconnect, and already-sent behavior.
+  - [x] Document that cancelling a future derived from the stage only stops
+        that observer and does not cancel the update.
+  - [x] Test that cancelling a derived observer does not cancel an already-sent
+        remote update request.
   - [x] Document completion-thread behavior as part of the threading contract.
 
 ## P1 — Packaging and Release Gates

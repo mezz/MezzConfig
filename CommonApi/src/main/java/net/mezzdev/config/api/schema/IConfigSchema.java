@@ -9,7 +9,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
 /**
@@ -142,13 +142,15 @@ public interface IConfigSchema {
 	 * Request several config value updates together.
 	 * <p>
 	 * For client-owned schemas, this has the same validation, persistence, and listener behavior as
-	 * {@link #batchUpdate(Consumer)} and returns an already-completed future. For a server schema, the values are sent to
-	 * the server without changing the local snapshot. The future completes after the server applies the accepted request
+	 * {@link #batchUpdate(Consumer)} and returns an already-completed stage. For a server schema, the values are sent to
+	 * the server without changing the local snapshot. The stage completes after the server applies the accepted request
 	 * and sends its authoritative result. It completes exceptionally if the request cannot be sent, permission is denied,
 	 * the server rejects a value, or the server does not respond before the implementation's bounded request timeout.
 	 * <p>
 	 * Config editors should prefer this method so the same editing flow works for every schema.
 	 * Queued values are snapshotted and locally validated before the request is sent.
+	 * Cancellation is not supported because a queued or sent authoritative update cannot reliably be retracted. Cancelling
+	 * a {@link CompletionStage#toCompletableFuture() derived future} only stops observation through that derived future.
 	 * No completion thread is guaranteed; use an explicit executor for dependent work that has thread affinity.
 	 *
 	 * @param updateBatch callback that queues updates
@@ -159,7 +161,7 @@ public interface IConfigSchema {
 	 *
 	 * @since 0.2.0
 	 */
-	CompletableFuture<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch);
+	CompletionStage<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch);
 
 	/**
 	 * Add a listener called exactly once for every non-empty batch of effective-value changes applied to this schema.
