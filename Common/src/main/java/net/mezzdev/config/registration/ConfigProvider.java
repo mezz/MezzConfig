@@ -6,6 +6,7 @@ import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.client.ClientWorldConfigPathUtil;
 import net.mezzdev.config.schema.ClientWorldConfigSchemaPathResolver;
@@ -16,6 +17,7 @@ import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
 import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigPathResolver;
+import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.util.ErrorUtil;
 
 import java.io.File;
@@ -170,14 +172,29 @@ public final class ConfigProvider implements IConfigProvider {
 			Comparator<String> defaultSortOrder,
 			boolean allowsRemovingValues
 		) {
+			return createSortingConfig(
+				configFileName,
+				StringSerializer.INSTANCE,
+				defaultSortOrder,
+				allowsRemovingValues
+			);
+		}
+
+		@Override
+		public <T> ISortingConfig<T> createSortingConfig(
+			String configFileName,
+			IConfigValueSerializer<T> serializer,
+			Comparator<T> defaultSortOrder,
+			boolean allowsRemovingValues
+		) {
 			Path relativeConfigFile = getRelativeConfigFile(configFileName);
 			if (!CLIENT_CONFIGS_AVAILABLE) {
-				return configManager.createInMemorySortingConfig(defaultSortOrder, allowsRemovingValues);
+				return configManager.createInMemorySortingConfig(serializer, defaultSortOrder, allowsRemovingValues);
 			}
 			Path configFile = modDirectory.resolve("client")
 				.resolve(relativeConfigFile)
 				.normalize();
-			return configManager.createSortingConfig(configFile, defaultSortOrder, allowsRemovingValues);
+			return configManager.createSortingConfig(configFile, serializer, defaultSortOrder, allowsRemovingValues);
 		}
 
 	}

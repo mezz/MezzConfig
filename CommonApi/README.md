@@ -66,7 +66,20 @@ IConfigSchemaBuilder builder = configs.createClientSchemaBuilderAtLocation(
 MezzConfig does not append a mod id or file name to this path. Relative paths
 are captured as normalized absolute paths when the factory is called. Explicit
 locations are an alternative to automatic placement and cannot be combined
-with per-world behavior.
+with per-world behavior. The location must be readable and writable when the
+schema is built: the initial load or file creation is synchronous and throws
+`UncheckedIOException` on failure.
+
+After a successful build, edits update the in-memory values immediately and
+schedule persistence after a two-second quiet period. If the path later becomes
+read-only, disconnected, or otherwise unavailable, a failed delayed save does
+not roll back the accepted edit and cannot report failure to the original
+editing call; it is not retried until another change schedules a save. Automatic
+reload also depends on the platform file watcher. Unwatchable or missing parent
+directories are diagnosed and retried periodically, so external changes may go
+unnoticed while the location is unavailable. A reload that reaches an
+unreadable file fails with `UncheckedIOException`; MezzConfig does not back up,
+replace, or delete a file for an ordinary filesystem access failure.
 
 Register server schemas on both physical sides from common setup.
 The dedicated or integrated server uses its file-backed authoritative instance;
@@ -322,11 +335,23 @@ integration layer.
 
 ## Sorting configs
 
-Use `IConfigRegistration.createSortingConfig(...)` for string-backed sort-order
-files. `ISortingConfig` instances are created and owned by the MezzConfig
-runtime; integrations consume them but do not implement the interface. Saved
-sort orders can either preserve missing values by appending them from the
-default comparator, or allow values to be removed.
+Use the three-argument `IConfigRegistration.createSortingConfig(...)`
+convenience overload for string sort orders. For any other effectively immutable
+value type, use the generic overload with an `IConfigValueSerializer<T>`:
+
+```java
+ISortingConfig<ResourceLocation> order = configs.createSortingConfig(
+	"ingredient-order.txt",
+	resourceLocationSerializer,
+	Comparator.naturalOrder(),
+	true
+);
+```
+
+`ISortingConfig` instances are created and owned by the MezzConfig runtime;
+integrations consume them but do not implement the interface. Saved sort orders
+can either preserve missing values by appending them from the default comparator,
+or allow values to be removed.
 
 Sort-order files are installation-scoped under
 `config/<mod-id>/client/<file-name>`. The file is generated the first time the
@@ -337,12 +362,19 @@ collisions before the conflicting config reads or writes the file. Dedicated
 server sorting configs remain in memory and do not reserve paths.
 
 Sortable values must be effectively immutable with stable equality and hash
-codes. Sorting methods return unmodifiable, duplicate-free snapshots and
-reconcile the saved preference against the runtime values supplied to each
-call. `ISortingConfig.setSortedValues(...)` returns `true` only for a change,
-returns `false` for an unchanged order, and rejects duplicate values. Change
-listeners run synchronously after persistence is attempted; a failing listener
-is logged without preventing later listeners from running.
+codes. A generic sorting serializer has the same validation, determinism, and
+round-trip requirements as a config-value serializer. Its stored text is also
+the value's persistent identity: equal values must serialize identically, and
+unequal values must not share serialized text. MezzConfig validates runtime and
+loaded values at this boundary. Invalid persisted entries are diagnosed,
+skipped, backed up, and corrected while valid neighboring entries remain usable.
+
+Sorting methods return unmodifiable, duplicate-free snapshots and reconcile the
+saved preference against the runtime values supplied to each call.
+`ISortingConfig.setSortedValues(...)` returns `true` only for a change, returns
+`false` for an unchanged order, and rejects duplicate values. Change listeners
+run synchronously after persistence is attempted; a failing listener is logged
+without preventing later listeners from running.
 
 When removal is enabled, sorting configs persist explicitly hidden known values
 separately from the visible order. A value omitted from an update is hidden only

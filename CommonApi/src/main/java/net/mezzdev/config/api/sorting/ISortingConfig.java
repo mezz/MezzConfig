@@ -1,6 +1,7 @@
 package net.mezzdev.config.api.sorting;
 
 import net.mezzdev.config.api.IConfigRegistration;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -11,12 +12,15 @@ import java.util.List;
 /**
  * Stores and applies a user-configurable sort order for values discovered at runtime.
  * <p>
- * Create and register a string sort order here:
- * {@link IConfigRegistration#createSortingConfig(String, Comparator, boolean)}.
+ * Create and register a string sort order with
+ * {@link IConfigRegistration#createSortingConfig(String, Comparator, boolean)}, or a generic sort order with
+ * {@link IConfigRegistration#createSortingConfig(String, IConfigValueSerializer, Comparator, boolean)}.
  * <p>
  * Values must be non-null and effectively immutable while held by the sorting config. Their
  * {@link Object#equals(Object)} and {@link Object#hashCode()} results must remain stable, because equality identifies
  * the same sortable value across saved preferences and runtime value collections.
+ * Generic sort orders also use the serializer's deterministic text as persistent identity. Equal values must serialize
+ * identically, unequal values must not share serialized text, and every value must round-trip without diagnostics.
  * <p>
  * Methods are thread-safe, but concurrent operations have no defined order. Listeners run synchronously after an update
  * is committed.

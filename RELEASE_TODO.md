@@ -139,12 +139,12 @@ mistaken for a requirement without supporting evidence.
         ids and config file names while allowing explicit locations anywhere.
   - [x] Test absolute and relative explicit locations, malformed and bounded
         file recovery, unavailable files, and path collisions.
-  - [ ] Document later watcher/save failures for read-only, disconnected, or
+  - [x] Document later watcher/save failures for read-only, disconnected, or
         otherwise temporarily unavailable explicit locations.
 
 ### Complete Generic Sorting Without Burdening String Callers
 
-- [ ] Add a supported generic sorting factory that accepts an
+- [x] Add a supported generic sorting factory that accepts an
       `IConfigValueSerializer<T>`, while retaining a string convenience
       overload.
 
@@ -153,18 +153,18 @@ mistaken for a requirement without supporting evidence.
   obtain the generic feature the interface promises, and cannot implement the
   non-extendable interface themselves.
 
-  - [ ] Keep `createSortingConfig` for strings without requiring callers to
+  - [x] Keep `createSortingConfig` for strings without requiring callers to
         supply a serializer.
-  - [ ] Add one generic factory taking a serializer, default comparator, and
+  - [x] Add one generic factory taking a serializer, default comparator, and
         removal policy.
-  - [ ] Refactor the runtime implementation to use the supplied serializer for
+  - [x] Refactor the runtime implementation to use the supplied serializer for
         persistence and validation.
-  - [ ] Require serialized identities to round-trip and unambiguously identify
+  - [x] Require serialized identities to round-trip and unambiguously identify
         sortable values.
-  - [ ] Preserve reconciliation of new, removed, visible, and hidden runtime
+  - [x] Preserve reconciliation of new, removed, visible, and hidden runtime
         values for generic types.
-  - [ ] Keep implementations runtime-owned and non-extendable.
-  - [ ] Test strings through the convenience path and at least one non-string
+  - [x] Keep implementations runtime-owned and non-extendable.
+  - [x] Test strings through the convenience path and at least one non-string
         type through the generic path, including malformed files and hidden
         values.
 

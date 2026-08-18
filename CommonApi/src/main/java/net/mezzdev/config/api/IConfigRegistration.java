@@ -2,6 +2,7 @@ package net.mezzdev.config.api;
 
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.nio.file.Path;
@@ -51,10 +52,14 @@ public interface IConfigRegistration {
 	 * name. Relative paths are captured as normalized absolute paths when this method is called.
 	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
 	 * inactive, default-backed, and does not access the supplied location.
+	 * Building the schema reads or creates the file synchronously and fails if the location is unavailable. Later edits
+	 * update the in-memory values before a delayed save; a later filesystem failure does not roll back the edit or reach
+	 * the original editing call.
 	 *
 	 * @param configFile complete path to the config file
 	 * @param localizationPath translation key prefix for the config file
 	 * @return client-owned schema builder
+	 * @throws java.io.UncheckedIOException when the schema cannot initially read or create the config file
 	 *
 	 * @since 0.3.0
 	 */
@@ -88,6 +93,30 @@ public interface IConfigRegistration {
 	ISortingConfig<String> createSortingConfig(
 		String configFileName,
 		Comparator<String> defaultSortOrder,
+		boolean allowsRemovingValues
+	);
+
+	/**
+	 * Create an installation-scoped, serializer-backed client sort order.
+	 * On a dedicated server, the sort order remains in memory and does not access a file.
+	 * Every sortable value must be valid for the serializer and round-trip to an equal value without diagnostics. The
+	 * serialized text is its persistent identity, so equal values must serialize identically and unequal values must not
+	 * share serialized text.
+	 *
+	 * @param configFileName relative file name inside the mod's client config directory
+	 * @param serializer serializer defining validation and persistent identities for sortable values
+	 * @param defaultSortOrder default order for values that are not in the file yet
+	 * @param allowsRemovingValues whether values may be removed from this sort order
+	 * @param <T> effectively immutable sortable value type
+	 * @return the created sort order
+	 * @throws IllegalArgumentException when the sort order's file path is already reserved
+	 *
+	 * @since 0.3.0
+	 */
+	<T> ISortingConfig<T> createSortingConfig(
+		String configFileName,
+		IConfigValueSerializer<T> serializer,
+		Comparator<T> defaultSortOrder,
 		boolean allowsRemovingValues
 	);
 }

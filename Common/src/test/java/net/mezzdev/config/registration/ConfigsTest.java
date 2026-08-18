@@ -5,8 +5,11 @@ import net.mezzdev.config.api.IConfigRegistration;
 import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.sorting.ISortingConfig;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.file.ConfigFileUtil;
 import net.mezzdev.config.file.ConfigManager;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Comparator;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -28,6 +32,31 @@ public class ConfigsTest {
 	private static final String MOD_ID = "registration_test";
 	private static final String FILE_NAME = "shared.ini";
 	private static final int MAX_CONFIG_FILE_BYTES = 4 * 1024 * 1024;
+	private static final IConfigValueSerializer<Integer> INTEGER_SERIALIZER = new IConfigValueSerializer<>() {
+		@Override
+		public String serialize(Integer value) {
+			return value.toString();
+		}
+
+		@Override
+		public IDeserializeResult<Integer> deserialize(String string) {
+			try {
+				return IDeserializeResult.success(Integer.parseInt(string));
+			} catch (NumberFormatException e) {
+				return IDeserializeResult.failure("Expected an integer.");
+			}
+		}
+
+		@Override
+		public boolean isValid(Integer value) {
+			return value != null;
+		}
+
+		@Override
+		public String getValidValuesDescription() {
+			return "Any integer";
+		}
+	};
 
 	@Test
 	public void factoriesCreateCompleteClientAndServerSchemaTypes(@TempDir Path configRoot) throws IOException {
@@ -160,6 +189,28 @@ public class ConfigsTest {
 		);
 
 		assertFalse(Files.exists(path));
+	}
+
+	@Test
+	public void sortingFactoriesSupportStringAndGenericValues(@TempDir Path configRoot) {
+		IConfigRegistration registration = createRegistration(configRoot);
+		ISortingConfig<String> strings = registration.createSortingConfig(
+			"strings.txt",
+			Comparator.reverseOrder(),
+			false
+		);
+		ISortingConfig<Integer> integers = registration.createSortingConfig(
+			"integers.txt",
+			INTEGER_SERIALIZER,
+			Comparator.naturalOrder(),
+			true
+		);
+
+		assertEquals(List.of("second", "first"), strings.getSortedValues(List.of("first", "second")));
+		assertEquals(List.of(1, 2, 3), integers.getSortedValues(List.of(3, 1, 2)));
+		assertTrue(integers.setSortedValues(List.of(3, 1)));
+		assertEquals(List.of(3, 1, 4), integers.getSortedValues(List.of(1, 2, 3, 4)));
+		assertFalse(integers.isVisible(List.of(1, 2, 3, 4), 2));
 	}
 
 	@Test

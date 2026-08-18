@@ -2,9 +2,11 @@ package net.mezzdev.config.file;
 
 import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchema;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigRuntime;
+import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.sorting.SortingConfig;
 import net.mezzdev.config.util.ErrorUtil;
 import net.mezzdev.deduplicatingrunner.DelayedExecutor;
@@ -119,21 +121,38 @@ public class ConfigManager {
 		}
 	}
 
-	public SortingConfig createSortingConfig(
+	public <T> SortingConfig<T> createSortingConfig(
 		Path path,
-		Comparator<String> defaultSortOrder,
+		IConfigValueSerializer<T> serializer,
+		Comparator<T> defaultSortOrder,
 		boolean allowsRemovingValues
 	) {
-		SortingConfig sortingConfig = new SortingConfig(path, defaultSortOrder, allowsRemovingValues);
+		SortingConfig<T> sortingConfig = new SortingConfig<>(path, serializer, defaultSortOrder, allowsRemovingValues);
 		pathReservations.replace(sortingConfig, "a sorting config", List.of(path));
 		return sortingConfig;
 	}
 
-	public SortingConfig createInMemorySortingConfig(
+	public SortingConfig<String> createSortingConfig(
+		Path path,
 		Comparator<String> defaultSortOrder,
 		boolean allowsRemovingValues
 	) {
-		return SortingConfig.inMemory(defaultSortOrder, allowsRemovingValues);
+		return createSortingConfig(path, StringSerializer.INSTANCE, defaultSortOrder, allowsRemovingValues);
+	}
+
+	public <T> SortingConfig<T> createInMemorySortingConfig(
+		IConfigValueSerializer<T> serializer,
+		Comparator<T> defaultSortOrder,
+		boolean allowsRemovingValues
+	) {
+		return SortingConfig.inMemory(serializer, defaultSortOrder, allowsRemovingValues);
+	}
+
+	public SortingConfig<String> createInMemorySortingConfig(
+		Comparator<String> defaultSortOrder,
+		boolean allowsRemovingValues
+	) {
+		return createInMemorySortingConfig(StringSerializer.INSTANCE, defaultSortOrder, allowsRemovingValues);
 	}
 
 	private static String getSchemaDescription(ConfigSchema schema) {

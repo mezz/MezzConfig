@@ -1,10 +1,14 @@
 package net.mezzdev.config.sorting;
 
+import com.google.gson.JsonElement;
 import net.mezzdev.config.api.sorting.ISortingConfig;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.file.ConfigFileReader;
 import net.mezzdev.config.file.ConfigFileUtil;
+import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.file.ConfigFileValueCodec;
+import net.mezzdev.config.serializers.StringSerializer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -15,14 +19,16 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-public final class SortingConfig implements ISortingConfig<String> {
+public final class SortingConfig<T> implements ISortingConfig<T> {
 	private static final Logger LOGGER = LogManager.getLogger();
 	private static final String VISIBLE_SECTION = "[visible]";
 	private static final String HIDDEN_SECTION = "[hidden]";
@@ -31,59 +37,75 @@ public final class SortingConfig implements ISortingConfig<String> {
 
 	private final @Nullable Path defaultPath;
 	private final @Nullable Path path;
-	private final Comparator<String> defaultSortOrder;
+	private final IConfigValueSerializer<T> serializer;
+	private final Comparator<T> defaultSortOrder;
+	private final boolean supportsLegacyStringValues;
 	private final boolean allowsRemovingValues;
 	private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
-	private List<String> lastAllValues = List.of();
+	private List<T> lastAllValues = List.of();
 	@Nullable
-	private SavedValues savedValues;
+	private SavedValues<T> savedValues;
 	private boolean savedValuesNeedWrite;
 	private boolean writesBlockedByReadFailure;
 	private @Nullable Path correctionPath;
 
 	public SortingConfig(
 		Path path,
-		Comparator<String> defaultSortOrder,
+		IConfigValueSerializer<T> serializer,
+		Comparator<T> defaultSortOrder,
 		boolean allowsRemovingValues
 	) {
-		this(null, path, defaultSortOrder, allowsRemovingValues);
+		this(null, path, serializer, defaultSortOrder, allowsRemovingValues);
 	}
 
 	public SortingConfig(
 		@Nullable Path defaultPath,
 		Path path,
-		Comparator<String> defaultSortOrder,
+		IConfigValueSerializer<T> serializer,
+		Comparator<T> defaultSortOrder,
 		boolean allowsRemovingValues
 	) {
-		this.defaultPath = defaultPath;
-		this.path = Objects.requireNonNull(path, "path");
-		this.defaultSortOrder = Objects.requireNonNull(defaultSortOrder, "defaultSortOrder");
-		this.allowsRemovingValues = allowsRemovingValues;
-	}
-
-	public static SortingConfig inMemory(
-		Comparator<String> defaultSortOrder,
-		boolean allowsRemovingValues
-	) {
-		return new SortingConfig(defaultSortOrder, allowsRemovingValues);
+		this(defaultPath, path, serializer, defaultSortOrder, allowsRemovingValues, serializer == StringSerializer.INSTANCE);
 	}
 
 	private SortingConfig(
-		Comparator<String> defaultSortOrder,
-		boolean allowsRemovingValues
+		@Nullable Path defaultPath,
+		@Nullable Path path,
+		IConfigValueSerializer<T> serializer,
+		Comparator<T> defaultSortOrder,
+		boolean allowsRemovingValues,
+		boolean supportsLegacyStringValues
 	) {
-		this.defaultPath = null;
-		this.path = null;
+		this.defaultPath = defaultPath;
+		this.path = path;
+		this.serializer = Objects.requireNonNull(serializer, "serializer");
 		this.defaultSortOrder = Objects.requireNonNull(defaultSortOrder, "defaultSortOrder");
 		this.allowsRemovingValues = allowsRemovingValues;
+		this.supportsLegacyStringValues = supportsLegacyStringValues;
+	}
+
+	public static <T> SortingConfig<T> inMemory(
+		IConfigValueSerializer<T> serializer,
+		Comparator<T> defaultSortOrder,
+		boolean allowsRemovingValues
+	) {
+		return new SortingConfig<>(
+			null,
+			null,
+			serializer,
+			defaultSortOrder,
+			allowsRemovingValues,
+			serializer == StringSerializer.INSTANCE
+		);
 	}
 
 	@Override
-	public synchronized List<String> getSortedValues(Collection<String> allValues) {
-		List<String> allValuesSnapshot = getDistinctValues(allValues, "allValues");
+	public synchronized List<T> getSortedValues(Collection<T> allValues) {
+		List<T> allValuesSnapshot = getDistinctValues(allValues, "allValues");
 		writeDefaultIfMissing(allValuesSnapshot);
-		SavedValues previousSavedValues = getSavedValues();
-		SavedValues reconciledSavedValues = addDiscoveredValues(previousSavedValues, allValuesSnapshot);
+		SavedValues<T> previousSavedValues = getSavedValues();
+		validateSerializedIdentities(previousSavedValues, allValuesSnapshot);
+		SavedValues<T> reconciledSavedValues = addDiscoveredValues(previousSavedValues, allValuesSnapshot);
 		this.lastAllValues = allValuesSnapshot;
 		if (savedValuesNeedWrite || !previousSavedValues.equals(reconciledSavedValues)) {
 			this.savedValues = reconciledSavedValues;
@@ -93,18 +115,20 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	@Override
-	public synchronized List<String> getDefaultSortedValues(Collection<String> allValues) {
-		return getDistinctValues(allValues, "allValues").stream()
+	public synchronized List<T> getDefaultSortedValues(Collection<T> allValues) {
+		List<T> allValuesSnapshot = getDistinctValues(allValues, "allValues");
+		return allValuesSnapshot.stream()
 			.sorted(defaultSortOrder)
 			.toList();
 	}
 
 	@Override
-	public synchronized boolean setSortedValues(List<String> sortedValues) {
+	public synchronized boolean setSortedValues(List<T> sortedValues) {
 		Objects.requireNonNull(sortedValues, "sortedValues");
-		List<String> sortedValuesCopy = copySortedValues(sortedValues);
-		SavedValues previousSavedValues = getSavedValues();
-		SavedValues updatedSavedValues = updateSavedValues(previousSavedValues, sortedValuesCopy);
+		List<T> sortedValuesCopy = copySortedValues(sortedValues);
+		SavedValues<T> previousSavedValues = getSavedValues();
+		validateSerializedIdentities(previousSavedValues, sortedValuesCopy, lastAllValues);
+		SavedValues<T> updatedSavedValues = updateSavedValues(previousSavedValues, sortedValuesCopy);
 		boolean changed = !previousSavedValues.equals(updatedSavedValues);
 		if (savedValuesNeedWrite || changed) {
 			this.savedValues = updatedSavedValues;
@@ -117,72 +141,72 @@ public final class SortingConfig implements ISortingConfig<String> {
 		return true;
 	}
 
-	private SavedValues addDiscoveredValues(SavedValues savedValues, List<String> allValues) {
-		Set<String> knownValues = getKnownValues(savedValues);
-		List<String> discoveredValues = allValues.stream()
+	private SavedValues<T> addDiscoveredValues(SavedValues<T> savedValues, List<T> allValues) {
+		Set<T> knownValues = getKnownValues(savedValues);
+		List<T> discoveredValues = allValues.stream()
 			.filter(knownValues::add)
 			.sorted(defaultSortOrder)
 			.toList();
 		if (discoveredValues.isEmpty()) {
 			return savedValues;
 		}
-		List<String> visibleValues = new ArrayList<>(savedValues.visibleValues());
+		List<T> visibleValues = new ArrayList<>(savedValues.visibleValues());
 		visibleValues.addAll(discoveredValues);
-		return new SavedValues(visibleValues, savedValues.hiddenValues());
+		return new SavedValues<>(visibleValues, savedValues.hiddenValues());
 	}
 
-	private SavedValues updateSavedValues(SavedValues savedValues, List<String> sortedValues) {
-		Set<String> sortedValuesSet = new HashSet<>(sortedValues);
-		Set<String> currentValues = new HashSet<>(lastAllValues);
-		List<String> visibleValues = new ArrayList<>(sortedValues);
-		for (String previouslyVisible : savedValues.visibleValues()) {
+	private SavedValues<T> updateSavedValues(SavedValues<T> savedValues, List<T> sortedValues) {
+		Set<T> sortedValuesSet = new HashSet<>(sortedValues);
+		Set<T> currentValues = new HashSet<>(lastAllValues);
+		List<T> visibleValues = new ArrayList<>(sortedValues);
+		for (T previouslyVisible : savedValues.visibleValues()) {
 			if (!sortedValuesSet.contains(previouslyVisible) && !currentValues.contains(previouslyVisible)) {
 				visibleValues.add(previouslyVisible);
 			}
 		}
 
 		if (!allowsRemovingValues) {
-			Set<String> visibleValuesSet = new HashSet<>(visibleValues);
-			List<String> requiredVisibleValues = new ArrayList<>();
-			for (String value : lastAllValues) {
+			Set<T> visibleValuesSet = new HashSet<>(visibleValues);
+			List<T> requiredVisibleValues = new ArrayList<>();
+			for (T value : lastAllValues) {
 				if (visibleValuesSet.add(value)) {
 					requiredVisibleValues.add(value);
 				}
 			}
-			for (String value : savedValues.hiddenValues()) {
+			for (T value : savedValues.hiddenValues()) {
 				if (visibleValuesSet.add(value)) {
 					requiredVisibleValues.add(value);
 				}
 			}
 			requiredVisibleValues.sort(defaultSortOrder);
 			visibleValues.addAll(requiredVisibleValues);
-			return new SavedValues(visibleValues, List.of());
+			return new SavedValues<>(visibleValues, List.of());
 		}
 
-		Set<String> hiddenValues = new LinkedHashSet<>(savedValues.hiddenValues());
+		Set<T> hiddenValues = new LinkedHashSet<>(savedValues.hiddenValues());
 		hiddenValues.removeAll(sortedValuesSet);
 		lastAllValues.stream()
 			.filter(value -> !sortedValuesSet.contains(value))
 			.sorted(defaultSortOrder)
 			.forEach(hiddenValues::add);
-		return new SavedValues(visibleValues, List.copyOf(hiddenValues));
+		return new SavedValues<>(visibleValues, List.copyOf(hiddenValues));
 	}
 
-	private static List<String> getCurrentVisibleValues(SavedValues savedValues, List<String> allValues) {
-		Set<String> currentValues = new HashSet<>(allValues);
+	private static <T> List<T> getCurrentVisibleValues(SavedValues<T> savedValues, List<T> allValues) {
+		Set<T> currentValues = new HashSet<>(allValues);
 		return savedValues.visibleValues().stream()
 			.filter(currentValues::contains)
 			.toList();
 	}
 
-	private static Set<String> getKnownValues(SavedValues savedValues) {
-		Set<String> knownValues = new HashSet<>(savedValues.visibleValues());
+	private static <T> Set<T> getKnownValues(SavedValues<T> savedValues) {
+		Set<T> knownValues = new HashSet<>(savedValues.visibleValues());
 		knownValues.addAll(savedValues.hiddenValues());
 		return knownValues;
 	}
 
-	private static List<String> copySortedValues(List<String> sortedValues) {
-		final List<String> copy;
+	private static <T> List<T> copySortedValues(List<T> sortedValues) {
+		final List<T> copy;
 		try {
 			copy = List.copyOf(sortedValues);
 		} catch (NullPointerException e) {
@@ -194,19 +218,20 @@ public final class SortingConfig implements ISortingConfig<String> {
 		return copy;
 	}
 
-	private static List<String> getDistinctValues(Collection<String> values, String parameterName) {
+	private List<T> getDistinctValues(Collection<T> values, String parameterName) {
 		Objects.requireNonNull(values, parameterName);
-		Set<String> distinctValues = new LinkedHashSet<>();
-		for (String value : values) {
+		List<T> valuesSnapshot = new ArrayList<>(values.size());
+		for (T value : values) {
 			if (value == null) {
 				throw new IllegalArgumentException(parameterName + " must not contain null values.");
 			}
-			distinctValues.add(value);
+			valuesSnapshot.add(value);
 		}
-		return List.copyOf(distinctValues);
+		validateSerializedIdentities(List.of(valuesSnapshot));
+		return List.copyOf(new LinkedHashSet<>(valuesSnapshot));
 	}
 
-	private boolean save(SavedValues savedValues) {
+	private boolean save(SavedValues<T> savedValues) {
 		Path path = this.path;
 		if (path == null) {
 			return true;
@@ -231,25 +256,25 @@ public final class SortingConfig implements ISortingConfig<String> {
 		}
 	}
 
-	private static void write(Path path, SavedValues savedValues) throws IOException {
+	private void write(Path path, SavedValues<T> savedValues) throws IOException {
 		List<String> serialized = new ArrayList<>();
 		serialized.add(VISIBLE_SECTION);
 		savedValues.visibleValues().stream()
-			.map(SortingConfig::encodeValue)
+			.map(this::encodeValue)
 			.forEach(serialized::add);
 		serialized.add(HIDDEN_SECTION);
 		savedValues.hiddenValues().stream()
-			.map(SortingConfig::encodeValue)
+			.map(this::encodeValue)
 			.forEach(serialized::add);
 		ConfigFileUtil.writeUsingTempFile(path, serialized);
 	}
 
-	private void writeDefaultIfMissing(List<String> allValues) {
+	private void writeDefaultIfMissing(List<T> allValues) {
 		Path defaultPath = this.defaultPath;
 		if (defaultPath == null || Files.exists(defaultPath)) {
 			return;
 		}
-		SavedValues defaultValues = new SavedValues(
+		SavedValues<T> defaultValues = new SavedValues<>(
 			allValues.stream()
 				.sorted(defaultSortOrder)
 				.toList(),
@@ -262,11 +287,11 @@ public final class SortingConfig implements ISortingConfig<String> {
 		}
 	}
 
-	private SavedValues getSavedValues() {
-		SavedValues savedValues = this.savedValues;
+	private SavedValues<T> getSavedValues() {
+		SavedValues<T> savedValues = this.savedValues;
 		if (savedValues == null) {
-			LoadedSavedValues loaded = loadSavedValuesFromFile();
-			SavedValues loadedSavedValues = loaded.savedValues();
+			LoadedSavedValues<T> loaded = loadSavedValuesFromFile();
+			SavedValues<T> loadedSavedValues = loaded.savedValues();
 			savedValues = normalizeSavedValues(loadedSavedValues);
 			boolean normalized = !loadedSavedValues.equals(savedValues);
 			this.savedValues = savedValues;
@@ -280,19 +305,19 @@ public final class SortingConfig implements ISortingConfig<String> {
 		return savedValues;
 	}
 
-	private LoadedSavedValues loadSavedValuesFromFile() {
+	private LoadedSavedValues<T> loadSavedValuesFromFile() {
 		Path loadPath = path;
 		if (loadPath == null) {
-			return new LoadedSavedValues(SavedValues.EMPTY, null, false, false);
+			return new LoadedSavedValues<>(SavedValues.empty(), null, false, false);
 		}
 		if (!Files.exists(loadPath)) {
 			loadPath = defaultPath;
 		}
 		if (loadPath == null || !Files.exists(loadPath)) {
-			return new LoadedSavedValues(SavedValues.EMPTY, null, false, false);
+			return new LoadedSavedValues<>(SavedValues.empty(), null, false, false);
 		}
 		try {
-			ParsedSavedValues parsed = parseSavedValues(ConfigFileReader.read(loadPath).lines());
+			ParsedSavedValues<T> parsed = parseSavedValues(ConfigFileReader.read(loadPath).lines());
 			if (parsed.needsCorrection()) {
 				LOGGER.error(
 					"Malformed sort order config file '{}' will be backed up and corrected: {}",
@@ -300,22 +325,22 @@ public final class SortingConfig implements ISortingConfig<String> {
 					summarizeDiagnostics(parsed.diagnostics())
 				);
 			}
-			return new LoadedSavedValues(parsed.savedValues(), loadPath, parsed.needsCorrection(), false);
+			return new LoadedSavedValues<>(parsed.savedValues(), loadPath, parsed.needsCorrection(), false);
 		} catch (ConfigFileReader.MalformedFileException e) {
 			LOGGER.error("Malformed sort order config file '{}': {}", loadPath, e.getMessage());
-			return new LoadedSavedValues(SavedValues.EMPTY, loadPath, true, false);
+			return new LoadedSavedValues<>(SavedValues.empty(), loadPath, true, false);
 		} catch (IOException e) {
 			LOGGER.error("Failed to load sort order config from file: {}", loadPath, e);
-			return new LoadedSavedValues(SavedValues.EMPTY, loadPath, false, true);
+			return new LoadedSavedValues<>(SavedValues.empty(), loadPath, false, true);
 		}
 	}
 
-	private static ParsedSavedValues parseSavedValues(List<String> lines) {
-		List<String> visibleValues = new ArrayList<>();
-		List<String> hiddenValues = new ArrayList<>();
+	private ParsedSavedValues<T> parseSavedValues(List<String> lines) {
+		List<T> visibleValues = new ArrayList<>();
+		List<T> hiddenValues = new ArrayList<>();
 		List<String> diagnostics = new ArrayList<>();
 		Set<String> encounteredSections = new HashSet<>();
-		List<String> currentSection = null;
+		List<T> currentSection = null;
 		for (int index = 0; index < lines.size(); index++) {
 			String line = lines.get(index);
 			if (VISIBLE_SECTION.equals(line)) {
@@ -329,16 +354,28 @@ public final class SortingConfig implements ISortingConfig<String> {
 				continue;
 			} else {
 				if (line.startsWith(ENCODED_VALUE_PREFIX)) {
-					IDeserializeResult<String> result = ConfigFileValueCodec.deserializeScalar(
+					IDeserializeResult<T> result = deserializeValue(
 						line.substring(ENCODED_VALUE_PREFIX.length())
 					);
-					String value = result.getResult().orElse(null);
+					T value = result.getResult().orElse(null);
 					if (value != null) {
-						currentSection.add(value);
-					} else {
+						try {
+							String canonicalLine = encodeValue(value);
+							currentSection.add(value);
+							if (!canonicalLine.equals(line)) {
+								addDiagnostic(diagnostics, "Line %s uses a non-canonical value encoding.".formatted(index + 1));
+							}
+						} catch (IllegalArgumentException e) {
+							addDiagnostic(
+								diagnostics,
+								"Line %s violates the sorting serializer contract: %s".formatted(index + 1, e.getMessage())
+							);
+						}
+					}
+					if (!result.getDiagnostics().isEmpty()) {
 						addDiagnostic(
 							diagnostics,
-							"Line %s has an invalid encoded value: %s".formatted(
+							"Line %s has an invalid serialized value: %s".formatted(
 								index + 1,
 								String.join("; ", result.getDiagnostics())
 							)
@@ -346,11 +383,21 @@ public final class SortingConfig implements ISortingConfig<String> {
 					}
 					continue;
 				}
-				if (line.startsWith("\\")) {
-					currentSection.add(line.substring(1));
+				if (!supportsLegacyStringValues) {
+					addDiagnostic(
+						diagnostics,
+						"Line %s must use an encoded serializer value beginning with %s."
+							.formatted(index + 1, ENCODED_VALUE_PREFIX)
+					);
 					continue;
 				}
-				currentSection.add(line);
+				String stringValue = line;
+				if (line.startsWith("\\")) {
+					stringValue = line.substring(1);
+				}
+				@SuppressWarnings("unchecked")
+				T value = (T) stringValue;
+				currentSection.add(value);
 				continue;
 			}
 			if (!encounteredSections.add(line)) {
@@ -363,32 +410,93 @@ public final class SortingConfig implements ISortingConfig<String> {
 		if (!encounteredSections.contains(HIDDEN_SECTION)) {
 			addDiagnostic(diagnostics, "Missing required section: " + HIDDEN_SECTION);
 		}
-		return new ParsedSavedValues(
-			new SavedValues(visibleValues, hiddenValues),
+		return new ParsedSavedValues<>(
+			new SavedValues<>(visibleValues, hiddenValues),
 			!diagnostics.isEmpty(),
 			diagnostics
 		);
 	}
 
-	private SavedValues normalizeSavedValues(SavedValues savedValues) {
-		Set<String> visibleValues = new LinkedHashSet<>(savedValues.visibleValues());
-		Set<String> hiddenValues = new LinkedHashSet<>(savedValues.hiddenValues());
+	private IDeserializeResult<T> deserializeValue(String serializedValue) {
+		IDeserializeResult<JsonElement> decoded = ConfigFileValueCodec.deserialize(serializedValue);
+		if (decoded.getResult().isEmpty()) {
+			return IDeserializeResult.failure(decoded.getDiagnostics());
+		}
+		IDeserializeResult<T> deserialized = ConfigFileValueAdapter.deserialize(
+			serializer,
+			decoded.getResult().orElseThrow()
+		);
+		List<String> diagnostics = new ArrayList<>(decoded.getDiagnostics());
+		diagnostics.addAll(deserialized.getDiagnostics());
+		T value = deserialized.getResult().orElse(null);
+		if (value == null) {
+			return IDeserializeResult.failure(diagnostics);
+		}
+		if (diagnostics.isEmpty()) {
+			return IDeserializeResult.success(value);
+		}
+		return IDeserializeResult.partialSuccess(value, diagnostics);
+	}
+
+	private SavedValues<T> normalizeSavedValues(SavedValues<T> savedValues) {
+		Set<T> visibleValues = new LinkedHashSet<>(savedValues.visibleValues());
+		Set<T> hiddenValues = new LinkedHashSet<>(savedValues.hiddenValues());
 		hiddenValues.removeAll(visibleValues);
 		if (!allowsRemovingValues && !hiddenValues.isEmpty()) {
-			List<String> previouslyHiddenValues = new ArrayList<>(hiddenValues);
+			List<T> previouslyHiddenValues = new ArrayList<>(hiddenValues);
 			previouslyHiddenValues.sort(defaultSortOrder);
 			visibleValues.addAll(previouslyHiddenValues);
 			hiddenValues.clear();
 		}
-		return new SavedValues(List.copyOf(visibleValues), List.copyOf(hiddenValues));
+		return new SavedValues<>(List.copyOf(visibleValues), List.copyOf(hiddenValues));
 	}
 
-	private static String encodeValue(String value) {
-		String encoded = ConfigFileValueCodec.serializeScalar(value);
-		if (encoded.equals(value)) {
-			return value;
+	private String encodeValue(T value) {
+		String encoded = getSerializedIdentity(value);
+		if (supportsLegacyStringValues && value instanceof String stringValue && encoded.equals(stringValue)) {
+			return stringValue;
 		}
 		return ENCODED_VALUE_PREFIX + encoded;
+	}
+
+	private String getSerializedIdentity(T value) {
+		ConfigFileValueAdapter.validateRoundTrip(serializer, value);
+		return ConfigFileValueAdapter.serialize(serializer, value);
+	}
+
+	private void validateSerializedIdentities(SavedValues<T> savedValues, Collection<T> values) {
+		validateSerializedIdentities(List.of(savedValues.visibleValues(), savedValues.hiddenValues(), values));
+	}
+
+	private void validateSerializedIdentities(
+		SavedValues<T> savedValues,
+		Collection<T> firstValues,
+		Collection<T> secondValues
+	) {
+		validateSerializedIdentities(List.of(
+			savedValues.visibleValues(),
+			savedValues.hiddenValues(),
+			firstValues,
+			secondValues
+		));
+	}
+
+	private void validateSerializedIdentities(List<? extends Collection<T>> valueGroups) {
+		Map<T, String> identitiesByValue = new HashMap<>();
+		Map<String, T> valuesByIdentity = new HashMap<>();
+		for (Collection<T> values : valueGroups) {
+			for (T value : values) {
+				String identity = getSerializedIdentity(value);
+				String previousIdentity = identitiesByValue.putIfAbsent(value, identity);
+				if (previousIdentity != null && !previousIdentity.equals(identity)) {
+					throw new IllegalArgumentException("Equal sorting values must have the same serialized identity.");
+				}
+				T previousValue = valuesByIdentity.putIfAbsent(identity, value);
+				if (previousValue != null && !previousValue.equals(value)) {
+					throw new IllegalArgumentException("Unequal sorting values must not share a serialized identity.");
+				}
+			}
+		}
 	}
 
 	private static void addDiagnostic(List<String> diagnostics, String diagnostic) {
@@ -418,15 +526,16 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	@Override
-	public synchronized Comparator<String> getComparator(Collection<String> allValues) {
-		List<String> sortedValues = getSortedValues(allValues);
-		Comparator<String> savedOrder = Comparator.comparingInt(value -> indexOfSort(sortedValues.indexOf(value)));
+	public synchronized Comparator<T> getComparator(Collection<T> allValues) {
+		List<T> sortedValues = getSortedValues(allValues);
+		Comparator<T> savedOrder = Comparator.comparingInt(value -> indexOfSort(sortedValues.indexOf(value)));
 		return savedOrder.thenComparing(defaultSortOrder);
 	}
 
 	@Override
-	public synchronized boolean isVisible(Collection<String> allValues, String value) {
+	public synchronized boolean isVisible(Collection<T> allValues, T value) {
 		Objects.requireNonNull(value, "value");
+		validateSerializedIdentities(List.of(List.of(value)));
 		return getSortedValues(allValues).contains(value);
 	}
 
@@ -452,15 +561,15 @@ public final class SortingConfig implements ISortingConfig<String> {
 		}
 	}
 
-	private record LoadedSavedValues(
-		SavedValues savedValues,
+	private record LoadedSavedValues<T>(
+		SavedValues<T> savedValues,
 		@Nullable Path loadPath,
 		boolean needsCorrection,
 		boolean readFailed
 	) {}
 
-	private record ParsedSavedValues(
-		SavedValues savedValues,
+	private record ParsedSavedValues<T>(
+		SavedValues<T> savedValues,
 		boolean needsCorrection,
 		List<String> diagnostics
 	) {
@@ -469,11 +578,13 @@ public final class SortingConfig implements ISortingConfig<String> {
 		}
 	}
 
-	private record SavedValues(
-		List<String> visibleValues,
-		List<String> hiddenValues
+	private record SavedValues<T>(
+		List<T> visibleValues,
+		List<T> hiddenValues
 	) {
-		private static final SavedValues EMPTY = new SavedValues(List.of(), List.of());
+		private static <T> SavedValues<T> empty() {
+			return new SavedValues<>(List.of(), List.of());
+		}
 
 		private SavedValues {
 			visibleValues = List.copyOf(visibleValues);
