@@ -1,5 +1,6 @@
 package net.mezzdev.config.schema;
 
+import com.google.gson.JsonElement;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
 import net.mezzdev.config.api.schema.ConfigOwnership;
@@ -8,6 +9,8 @@ import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.mezzdev.config.file.ConfigFileValueAdapter;
+import net.mezzdev.config.file.ConfigFileValueCodec;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigRuntime;
@@ -894,15 +897,19 @@ public class ConfigSchema implements IConfigSchema {
 		return new ServerConfigValueData(
 			categoryName,
 			value.getName(),
-			value.getSerializer().serialize(value.getEffectiveValueWithoutLoading()),
-			value.getSerializer().serialize(value.getPendingValueWithoutLoading())
+			ConfigFileValueAdapter.serialize(value.getSerializer(), value.getEffectiveValueWithoutLoading()),
+			ConfigFileValueAdapter.serialize(value.getSerializer(), value.getPendingValueWithoutLoading())
 		);
 	}
 
 	private static <T> ServerConfigValueData serializeUpdate(String categoryName, ConfigValue<T> value, Object rawValue) {
 		@SuppressWarnings("unchecked")
 		T typedValue = (T) rawValue;
-		return new ServerConfigValueData(categoryName, value.getName(), value.getSerializer().serialize(typedValue));
+		return new ServerConfigValueData(
+			categoryName,
+			value.getName(),
+			ConfigFileValueAdapter.serialize(value.getSerializer(), typedValue)
+		);
 	}
 
 	public List<ConfigValueUpdate<?>> deserializeUpdates(List<ServerConfigValueData> values, boolean allowSchemaDifferences) {
@@ -948,7 +955,15 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private static <T> ConfigValueUpdate<T> deserializeUpdate(ConfigValue<T> configValue, String serializedValue) {
-		IDeserializeResult<T> result = configValue.getSerializer().deserialize(serializedValue);
+		IDeserializeResult<JsonElement> decodedValue = ConfigFileValueCodec.deserialize(serializedValue);
+		if (!decodedValue.getDiagnostics().isEmpty() || decodedValue.getResult().isEmpty()) {
+			String diagnostics = String.join("; ", decodedValue.getDiagnostics());
+			throw new IllegalArgumentException("Invalid value for '%s': %s".formatted(configValue.getName(), diagnostics));
+		}
+		IDeserializeResult<T> result = ConfigFileValueAdapter.deserialize(
+			configValue.getSerializer(),
+			decodedValue.getResult().orElseThrow()
+		);
 		if (!result.getDiagnostics().isEmpty() || result.getResult().isEmpty()) {
 			String diagnostics = String.join("; ", result.getDiagnostics());
 			throw new IllegalArgumentException("Invalid value for '%s': %s".formatted(configValue.getName(), diagnostics));

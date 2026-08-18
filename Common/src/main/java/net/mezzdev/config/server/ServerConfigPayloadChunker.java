@@ -13,7 +13,7 @@ final class ServerConfigPayloadChunker {
 	static final int MAX_FRAGMENT_COUNT = 64;
 	static final int MAX_CHUNK_DATA_LENGTH = 30 * 1024;
 	private static final int MAGIC = ByteBuffer.wrap("MZCF".getBytes(StandardCharsets.US_ASCII)).getInt();
-	private static final byte VERSION = 2;
+	private static final byte VERSION = 3;
 	private static final int HEADER_LENGTH = Integer.BYTES + Byte.BYTES + Long.BYTES +
 		(Integer.BYTES * 3);
 	static final int MAX_NETWORK_PAYLOAD_LENGTH = HEADER_LENGTH + MAX_CHUNK_DATA_LENGTH;

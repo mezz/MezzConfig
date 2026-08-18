@@ -14,7 +14,7 @@ import net.minecraftforge.network.ChannelBuilder;
 import net.minecraftforge.network.NetworkDirection;
 
 public final class ConfigForgeNetwork {
-	private static final int PROTOCOL_VERSION = 2;
+	private static final int PROTOCOL_VERSION = 3;
 	private final Channel<CustomPacketPayload> channel;
 
 	public ConfigForgeNetwork() {

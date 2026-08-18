@@ -1,6 +1,6 @@
 # Initial Release TODO
 
-- [ ] Use the structured config-value codec for server synchronization so strings with commas, empty strings, whitespace, and nested lists round-trip without corruption.
+- [x] Use the structured config-value codec for server synchronization so strings with commas, empty strings, whitespace, and nested lists round-trip without corruption.
 - [ ] Make structured list persistence enforce the complete `IConfigListValueSerializer` contract, including whole-list validation, and document the canonical storage behavior.
 - [ ] Mark every implementation package `@ApiStatus.Internal`, including the server package, and remove `@ApiStatus.Internal` from individual types so the annotation is package-only.
 - [ ] Minimize the registration and discovery API: expose schemas directly from `Configs`, keep the explicit custom-root overload, and resolve the conventional config root inside the runtime provider.

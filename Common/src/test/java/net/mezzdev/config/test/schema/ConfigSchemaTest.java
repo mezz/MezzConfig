@@ -23,12 +23,14 @@ import net.mezzdev.config.schema.ConfigSchemaPathResolver;
 import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
 import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.serializers.BooleanSerializer;
+import net.mezzdev.config.serializers.ListSerializer;
 import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigNetworking;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigValueData;
 import net.mezzdev.config.value.ConfigValue;
+import net.mezzdev.config.value.ConfigValueUpdate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -883,6 +885,59 @@ public class ConfigSchemaTest {
 		// Assertions: known synchronized values apply and missing values safely use their declared defaults.
 		assertTrue(enabled.getValue());
 		assertEquals(1, count.getValue());
+	}
+
+	@Test
+	public void serverSynchronizationPreservesStructuredListValues(@TempDir Path tempDir) {
+		List<String> effectiveStrings = List.of("a,b", "", " surrounding ", "[brackets]", "\"quoted\"");
+		List<String> pendingStrings = List.of("next,value", "", " pending whitespace ");
+		List<List<String>> effectiveNested = List.of(List.of("first,entry", ""), List.of(" nested "));
+		List<List<String>> pendingNested = List.of(List.of("next,entry"), List.of("", " next nested "));
+		ListSerializer<String> stringListSerializer = new ListSerializer<>(StringSerializer.INSTANCE);
+
+		ConfigCategoryBuilder sourceBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<List<String>> sourceStrings = sourceBuilder.addStringList("strings", effectiveStrings)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigValue<List<List<String>>> sourceNested = sourceBuilder.addList("nested", effectiveNested, stringListSerializer)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigSchema sourceSchema = createSchema(tempDir.resolve("source.ini"), sourceBuilder);
+		sourceSchema.batchUpdate(updater -> {
+			updater.set(sourceStrings, pendingStrings);
+			updater.set(sourceNested, pendingNested);
+		});
+
+		ConfigCategoryBuilder targetBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<List<String>> targetStrings = targetBuilder.addStringList("strings", List.of("default"))
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigValue<List<List<String>>> targetNested = targetBuilder.addList(
+				"nested",
+				List.of(List.of("default")),
+				stringListSerializer
+			)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigSchema targetSchema = createRemoteServerSchema(targetBuilder);
+
+		targetSchema.applyRemoteSnapshot(sourceSchema.serializeValues(), true);
+
+		assertEquals(effectiveStrings, targetStrings.getValue());
+		assertEquals(pendingStrings, targetStrings.getPendingValue());
+		assertEquals(effectiveNested, targetNested.getValue());
+		assertEquals(pendingNested, targetNested.getPendingValue());
+
+		List<ConfigValueUpdate<?>> updates = targetSchema.deserializeUpdates(
+			targetSchema.serializeUpdates(List.of(
+				new ConfigValueUpdate<>(targetStrings, effectiveStrings),
+				new ConfigValueUpdate<>(targetNested, effectiveNested)
+			)),
+			false
+		);
+
+		assertEquals(effectiveStrings, updates.get(0).newValue());
+		assertEquals(effectiveNested, updates.get(1).newValue());
 	}
 
 	@Test
