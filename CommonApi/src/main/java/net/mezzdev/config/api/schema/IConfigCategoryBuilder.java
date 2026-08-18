@@ -24,8 +24,7 @@ import java.util.List;
 public interface IConfigCategoryBuilder extends IConfigEditorCategoryBuilder {
 	/**
 	 * Create a builder for a config value with a custom serializer.
-	 * Use this method with an {@link IConfigListValueSerializer} for custom list storage formats that expose their
-	 * element serializer.
+	 * Use this method with an {@link IConfigListValueSerializer} for custom list validation and editor metadata.
 	 * The value type must be effectively immutable with stable equality.
 	 *
 	 * @param name stable storage name for the value

@@ -11,10 +11,16 @@ import java.util.List;
  * validate newly-added elements, or reorder values while preserving the list's storage format.
  * <p>
  * Pass your serializer to {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)} for custom
- * list storage formats. Values created with {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)}
- * use a list serializer that exposes the element serializer this way.
+ * list validation and editor metadata. Values created with
+ * {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)} use a list serializer that exposes the
+ * element serializer this way.
  * Element serializers may implement {@link IConfigKeyValueSerializer} to expose map-style rows without changing the
  * list to a map.
+ * <p>
+ * MezzConfig persists and synchronizes lists as structured arrays by applying {@link #getElementSerializer()} to each
+ * element recursively. It calls {@link IConfigValueSerializer#isValid(Object)} on the reconstructed complete list. The
+ * container-level {@link IConfigValueSerializer#serialize(Object)} representation is not used for structured storage,
+ * while {@link #deserialize(String)} is accepted for legacy scalar values.
  * <p>
  * MezzConfig stores list containers as unmodifiable snapshots. Each element type must still satisfy the effectively
  * immutable value contract from {@link IConfigValueSerializer}.

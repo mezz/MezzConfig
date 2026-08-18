@@ -190,7 +190,11 @@ factory; invalid state combinations are rejected.
 
 List helpers expose their element serializer through `IConfigListValueSerializer`,
 so integrations can edit list elements individually without GUI-specific API in
-MezzConfig.
+MezzConfig. Files and server synchronization use canonical structured arrays,
+recursively applying each element serializer. After loading an array, MezzConfig
+validates the reconstructed list with the list serializer's `isValid` method.
+Container-level `serialize` output is not used for structured storage;
+container-level `deserialize` remains supported for legacy scalar values.
 
 Custom key-value entry types can implement
 `IConfigKeyValueSerializer`. It exposes serializers for both components and

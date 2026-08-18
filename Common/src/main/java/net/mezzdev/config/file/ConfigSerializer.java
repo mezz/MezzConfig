@@ -511,8 +511,9 @@ public final class ConfigSerializer {
 
 	private static String getConfigFileValidValuesDescription(IConfigValueSerializer<?> serializer) {
 		if (serializer instanceof IConfigListValueSerializer<?> listSerializer) {
-			return "A bracketed list containing values of:\n%s".formatted(
-				getConfigFileValidValuesDescription(listSerializer.getElementSerializer())
+			return "A bracketed list containing values of:\n%s\nList requirements:\n%s".formatted(
+				getConfigFileValidValuesDescription(listSerializer.getElementSerializer()),
+				serializer.getValidValuesDescription()
 			);
 		}
 		return serializer.getValidValuesDescription();

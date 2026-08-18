@@ -97,7 +97,7 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 
 	@Override
 	public String getValidValuesDescription() {
-		return "A comma-separated list containing values of:\n%s".formatted(elementSerializer.getValidValuesDescription());
+		return "A list containing values of:\n%s".formatted(elementSerializer.getValidValuesDescription());
 	}
 
 	@Override

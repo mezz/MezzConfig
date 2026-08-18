@@ -293,7 +293,7 @@ public class ConfigValueSerializerTest {
 
 		assertEquals(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE), deserializeValue(serializer, "[FIRST_VALUE, SECOND_VALUE]"));
 		assertEquals("FIRST_VALUE, SECOND_VALUE", serializer.serialize(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE)));
-		assertEquals("A comma-separated list containing values of:\n[FIRST_VALUE, SECOND_VALUE]", serializer.getValidValuesDescription());
+		assertEquals("A list containing values of:\n[FIRST_VALUE, SECOND_VALUE]", serializer.getValidValuesDescription());
 	}
 
 	@Test

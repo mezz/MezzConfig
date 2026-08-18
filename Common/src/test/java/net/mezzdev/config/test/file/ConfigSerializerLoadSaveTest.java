@@ -3,11 +3,15 @@ package net.mezzdev.config.test.file;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
+import net.mezzdev.config.api.value.IConfigListValueSerializer;
+import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.IntegerSerializer;
 import net.mezzdev.config.serializers.ListSerializer;
+import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -16,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -97,6 +102,27 @@ public class ConfigSerializerLoadSaveTest {
 
 		assertEquals(List.of(3, 4), values.getValue());
 		assertEquals(List.of(1, 2), values.getDefaultValue());
+	}
+
+	@Test
+	public void loadRejectsStructuredListsThatViolateWholeListValidation(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[current]",
+			"values = [\"duplicate\",\"duplicate\"]"
+		));
+		ConfigValue<List<String>> values = new ConfigValue<>(
+			LOCALIZATION_PATH,
+			"values",
+			List.of("default"),
+			new UniqueNonEmptyStringListSerializer()
+		);
+		values.set(List.of("current"));
+		ConfigCategory category = createCategory(values);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertEquals(List.of("current"), values.getValue());
 	}
 
 	@Test
@@ -258,6 +284,33 @@ public class ConfigSerializerLoadSaveTest {
 			"current",
 			List.of(values)
 		);
+	}
+
+	private static final class UniqueNonEmptyStringListSerializer implements IConfigListValueSerializer<String> {
+		@Override
+		public IConfigValueSerializer<String> getElementSerializer() {
+			return StringSerializer.INSTANCE;
+		}
+
+		@Override
+		public String serialize(List<String> value) {
+			return String.join(",", value);
+		}
+
+		@Override
+		public IDeserializeResult<List<String>> deserialize(String string) {
+			return IDeserializeResult.success(List.of(string.split(",")));
+		}
+
+		@Override
+		public boolean isValid(List<String> value) {
+			return !value.isEmpty() && value.size() == new HashSet<>(value).size();
+		}
+
+		@Override
+		public String getValidValuesDescription() {
+			return "A non-empty list without duplicate values.";
+		}
 	}
 
 	private static String formatBatch(

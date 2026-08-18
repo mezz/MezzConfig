@@ -21,6 +21,9 @@ public final class ConfigFileValueAdapter {
 
 	private static JsonElement serializeUnknown(IConfigValueSerializer<?> serializer, Object value) {
 		if (serializer instanceof IConfigListValueSerializer<?> listSerializer && value instanceof List<?> list) {
+			if (!isValidUnknown(serializer, value)) {
+				throw new IllegalArgumentException("Invalid list config value: " + serializer.getValidValuesDescription());
+			}
 			JsonArray array = new JsonArray(list.size());
 			list.stream()
 				.map(element -> serializeUnknown(listSerializer.getElementSerializer(), element))
@@ -62,13 +65,21 @@ public final class ConfigFileValueAdapter {
 				addDiagnostic(diagnostics, "Array element %s: %s".formatted(index, diagnostic));
 			}
 		}
+		List<Object> immutableResults = List.copyOf(results);
+		@SuppressWarnings("unchecked")
+		T typedResults = (T) immutableResults;
+		if (!serializer.isValid(typedResults)) {
+			addDiagnostic(diagnostics, "Invalid list value: " + serializer.getValidValuesDescription());
+			return IDeserializeResult.failure(diagnostics);
+		}
+
 		IDeserializeResult<List<Object>> listResult;
 		if (diagnostics.isEmpty()) {
-			listResult = IDeserializeResult.success(List.copyOf(results));
+			listResult = IDeserializeResult.success(immutableResults);
 		} else if (results.isEmpty() && !array.isEmpty()) {
 			listResult = IDeserializeResult.failure(diagnostics);
 		} else {
-			listResult = IDeserializeResult.partialSuccess(List.copyOf(results), diagnostics);
+			listResult = IDeserializeResult.partialSuccess(immutableResults, diagnostics);
 		}
 		@SuppressWarnings("unchecked")
 		IDeserializeResult<T> typedResult = (IDeserializeResult<T>) listResult;
@@ -87,6 +98,12 @@ public final class ConfigFileValueAdapter {
 		@SuppressWarnings("unchecked")
 		IConfigValueSerializer<Object> typedSerializer = (IConfigValueSerializer<Object>) serializer;
 		return deserialize(typedSerializer, value);
+	}
+
+	private static boolean isValidUnknown(IConfigValueSerializer<?> serializer, Object value) {
+		@SuppressWarnings("unchecked")
+		IConfigValueSerializer<Object> typedSerializer = (IConfigValueSerializer<Object>) serializer;
+		return typedSerializer.isValid(value);
 	}
 
 	public static String toPublicSerializerRepresentation(JsonElement value) {
