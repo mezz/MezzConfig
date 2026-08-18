@@ -37,8 +37,8 @@ val configModGroup: String by extra
 val modJavaVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
 val apiBaselineVersion: String by extra
-val apiBaselineRequired: String by extra
-val requireApiBaseline = apiBaselineRequired.toBooleanStrict()
+val specificationVersion: String by extra
+val isInitialApiRelease = apiBaselineVersion == specificationVersion
 
 group = configModGroup
 
@@ -55,6 +55,12 @@ repositories {
     maven {
         name = "publicationValidation"
         url = rootProject.layout.buildDirectory.dir("publication-validation").get().asFile.toURI()
+        content {
+            includeGroup(configModGroup)
+        }
+    }
+    maven("https://maven.blamejared.com") {
+        name = "mezzReleases"
         content {
             includeGroup(configModGroup)
         }
@@ -88,7 +94,7 @@ dependencies {
 }
 
 val apiBaselineArchives = apiBaseline.incoming.artifactView {
-    isLenient = !requireApiBaseline
+    isLenient = isInitialApiRelease
 }.files
 val missingApiBaselineArchive = layout.buildDirectory.file("api-baseline/missing-$apiBaselineVersion.jar")
 val apiBaselineArchive = layout.file(apiBaselineArchives.elements.map { archives ->
@@ -114,11 +120,11 @@ tasks.withType<JavaCompile> {
 
 val checkJarCompatibility = tasks.named<CompatibilityTask>("checkJarCompatibility") {
     group = "verification"
-    description = "Checks CommonApi API compatibility with the first released baseline."
+    description = "Checks CommonApi API compatibility with the latest released baseline."
 
     baseJar.set(apiBaselineArchive)
     doLast(FailOnJccErrors())
-    onlyIf("CommonApi $apiBaselineVersion has been published") {
+    onlyIf("the initial CommonApi $apiBaselineVersion baseline has been published") {
         baseJar.get().asFile.exists()
     }
 }
