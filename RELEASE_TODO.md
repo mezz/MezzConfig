@@ -26,7 +26,7 @@ mistaken for a requirement without supporting evidence.
 
 ### Keep Server Schemas Synchronizable
 
-- [ ] Prevent every public operation from creating an authoritative server
+- [x] Prevent every public operation from creating an authoritative server
       snapshot that the protocol cannot encode.
 
   **Reason:** The protocol rejects more than 4,096 values, serialized values
@@ -37,20 +37,20 @@ mistaken for a requirement without supporting evidence.
   stale, and a local update future can report success even though broadcasting
   failed.
 
-  - [ ] Centralize validation of a complete prospective snapshot using the
+  - [x] Centralize validation of a complete prospective snapshot using the
         existing internal protocol limits.
-  - [ ] Validate a server-owned world schema before registration commits.
-  - [ ] Validate prospective state before an initial file load or watcher
+  - [x] Validate a server-owned world schema before registration commits.
+  - [x] Validate prospective state before an initial file load or watcher
         reload commits it.
-  - [ ] Validate prospective state before local, integrated-server, or remote
+  - [x] Validate prospective state before local, integrated-server, or remote
         batch updates commit it.
-  - [ ] Reject the entire operation and retain the previous authoritative state
+  - [x] Reject the entire operation and retain the previous authoritative state
         when validation fails.
-  - [ ] Complete the requesting future exceptionally when a local or integrated
-        update cannot produce and broadcast a valid snapshot.
-  - [ ] Keep the numeric limits internal while returning actionable failure
+  - [x] Reject an unsynchronizable request before sending; an integrated-server
+        race completes its already-created future exceptionally.
+  - [x] Keep the numeric limits internal while returning actionable failure
         messages.
-  - [ ] Test excessive value count, excessive individual values, excessive
+  - [x] Test excessive value count, excessive individual values, excessive
         total size, fragment boundaries, registration, reloads, local edits,
         remote edits, and successful boundary-sized snapshots through schema
         APIs rather than only through codec tests.

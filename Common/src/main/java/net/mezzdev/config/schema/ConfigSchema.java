@@ -71,6 +71,7 @@ public class ConfigSchema implements IConfigSchema {
 	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> listeners = new CopyOnWriteArrayList<>();
 	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> pendingListeners = new CopyOnWriteArrayList<>();
 	private boolean registered;
+	private boolean registrationInProgress;
 	private boolean restartValuesInitialized;
 	private boolean logUntranslatedKeys;
 	private boolean translationKeysChecked;
@@ -225,6 +226,9 @@ public class ConfigSchema implements IConfigSchema {
 	private synchronized LoadResult loadIfNeededWithoutNotifying() {
 		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
 		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
+		boolean previousRestartValuesInitialized = restartValuesInitialized;
+		boolean previousRemotelyActive = remotelyActive;
+		boolean previousRemoteCanEdit = remoteCanEdit;
 		Path previousDefaultPath = activeDefaultPath;
 		Path previousPath = activePath;
 		Path defaultPath = pathResolver.resolveDefaultPath()
@@ -257,7 +261,24 @@ public class ConfigSchema implements IConfigSchema {
 			}
 			if (previousPath != null) {
 				resetValuesToDefaults();
-				return createLoadResult(previousEffectiveValues, previousPendingValues, initialSave);
+				return completeServerLoad(
+					previousEffectiveValues,
+					previousPendingValues,
+					previousRestartValuesInitialized,
+					previousRemotelyActive,
+					previousRemoteCanEdit,
+					initialSave
+				);
+			}
+			if (shouldInitializeDefault) {
+				return completeServerLoad(
+					previousEffectiveValues,
+					previousPendingValues,
+					previousRestartValuesInitialized,
+					previousRemotelyActive,
+					previousRemoteCanEdit,
+					initialSave
+				);
 			}
 			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSave);
 		}
@@ -276,11 +297,45 @@ public class ConfigSchema implements IConfigSchema {
 			promotePendingValuesWithoutNotifying(ConfigValueRestartRequirement.GAME_RESTART);
 			restartValuesInitialized = true;
 		}
-		return createLoadResult(
+		return completeServerLoad(
 			previousEffectiveValues,
 			previousPendingValues,
+			previousRestartValuesInitialized,
+			previousRemotelyActive,
+			previousRemoteCanEdit,
 			getInitialSave(defaultPath, path, activePathChanged, isSynchronizedServerSchema())
 		);
+	}
+
+	private LoadResult completeServerLoad(
+		Map<ConfigValue<?>, Object> previousEffectiveValues,
+		Map<ConfigValue<?>, Object> previousPendingValues,
+		boolean previousRestartValuesInitialized,
+		boolean previousRemotelyActive,
+		boolean previousRemoteCanEdit,
+		@Nullable InitialSave initialSave
+	) {
+		if (!isSynchronizedServerSchema()) {
+			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSave);
+		}
+		try {
+			validateCurrentServerSnapshot();
+			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSave);
+		} catch (RuntimeException e) {
+			restoreValues(previousEffectiveValues, previousPendingValues);
+			restartValuesInitialized = previousRestartValuesInitialized;
+			remotelyActive = previousRemotelyActive;
+			remoteCanEdit = previousRemoteCanEdit;
+			if (!registered || registrationInProgress) {
+				throw e;
+			}
+			LOGGER.error(
+				"Rejected unsynchronizable server config file state for '{}'; keeping the previous authoritative values.",
+				activePath,
+				e
+			);
+			return createLoadResult(previousEffectiveValues, previousPendingValues, null);
+		}
 	}
 
 	private LoadResult createLoadResult(
@@ -390,6 +445,23 @@ public class ConfigSchema implements IConfigSchema {
 		getConfigValues().forEach(ConfigValue::resetAllToDefaultWithoutNotifying);
 	}
 
+	private void restoreValues(
+		Map<ConfigValue<?>, Object> effectiveValues,
+		Map<ConfigValue<?>, Object> pendingValues
+	) {
+		for (ConfigValue<?> configValue : getConfigValues()) {
+			restoreValue(configValue, effectiveValues.get(configValue), pendingValues.get(configValue));
+		}
+	}
+
+	private static <T> void restoreValue(ConfigValue<T> configValue, Object effectiveValue, Object pendingValue) {
+		@SuppressWarnings("unchecked")
+		T typedEffectiveValue = (T) effectiveValue;
+		@SuppressWarnings("unchecked")
+		T typedPendingValue = (T) pendingValue;
+		configValue.setSynchronizedValuesWithoutNotifying(typedEffectiveValue, typedPendingValue);
+	}
+
 	public synchronized void promotePendingValuesAfterWorldRestart() {
 		loadIfNeeded();
 		if (activePath == null) {
@@ -461,16 +533,20 @@ public class ConfigSchema implements IConfigSchema {
 		this.fileWatcher = fileWatcher;
 		this.logUntranslatedKeys = logUntranslatedKeys;
 		this.registered = true;
+		this.registrationInProgress = true;
 		try {
 			loadIfNeeded();
 		} catch (RuntimeException | Error e) {
 			rollbackRegistration(e);
 			throw e;
+		} finally {
+			registrationInProgress = false;
 		}
 	}
 
 	public synchronized void rollbackRegistration(Throwable failure) {
 		registered = false;
+		registrationInProgress = false;
 		fileWatcher = null;
 		logUntranslatedKeys = false;
 		try {
@@ -648,6 +724,7 @@ public class ConfigSchema implements IConfigSchema {
 			throw new IllegalStateException("Server config schema is not active.");
 		}
 		validateUpdates(updates);
+		validateProspectiveServerSnapshot(updates);
 		if (updates.isEmpty()) {
 			return CompletableFuture.completedFuture(null);
 		}
@@ -679,6 +756,7 @@ public class ConfigSchema implements IConfigSchema {
 			throw new IllegalStateException("Config schema has no active backing file.");
 		}
 		validateUpdates(updates);
+		validateProspectiveServerSnapshot(updates);
 
 		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
 		List<AppliedConfigValueChange<?>> pendingChanges = applyUpdatesAtomically(updates);
@@ -878,6 +956,10 @@ public class ConfigSchema implements IConfigSchema {
 
 	public synchronized List<ServerConfigValueData> serializeValues() {
 		loadIfNeeded();
+		return serializeCurrentValues();
+	}
+
+	private List<ServerConfigValueData> serializeCurrentValues() {
 		List<ServerConfigValueData> values = new ArrayList<>();
 		for (ConfigCategory category : categories) {
 			for (ConfigValue<?> value : category.getConfigValues()) {
@@ -885,6 +967,82 @@ public class ConfigSchema implements IConfigSchema {
 			}
 		}
 		return List.copyOf(values);
+	}
+
+	private void validateCurrentServerSnapshot() {
+		validateServerSnapshots(Map.of());
+	}
+
+	private void validateProspectiveServerSnapshot(List<? extends ConfigValueUpdate<?>> updates) {
+		if (!isSynchronizedServerSchema()) {
+			return;
+		}
+		Map<ConfigValue<?>, Object> updatedValues = new IdentityHashMap<>();
+		updates.forEach(update -> updatedValues.put(update.configValue(), update.newValue()));
+		validateServerSnapshots(updatedValues);
+	}
+
+	private void validateServerSnapshots(Map<ConfigValue<?>, Object> updatedValues) {
+		ServerConfigRuntime.validateSnapshot(
+			getServerKey(),
+			serializeProspectiveValues(updatedValues, ServerSnapshotState.CURRENT)
+		);
+		boolean hasWorldRestartValue = getConfigValues().stream()
+			.anyMatch(value -> value.getRestartRequirement() == ConfigValueRestartRequirement.WORLD_RESTART);
+		boolean hasGameRestartValue = getConfigValues().stream()
+			.anyMatch(value -> value.getRestartRequirement() == ConfigValueRestartRequirement.GAME_RESTART);
+		if (hasWorldRestartValue) {
+			ServerConfigRuntime.validateSnapshot(
+				getServerKey(),
+				serializeProspectiveValues(updatedValues, ServerSnapshotState.AFTER_WORLD_RESTART)
+			);
+		}
+		if (hasGameRestartValue) {
+			ServerConfigRuntime.validateSnapshot(
+				getServerKey(),
+				serializeProspectiveValues(updatedValues, ServerSnapshotState.AFTER_GAME_RESTART)
+			);
+		}
+	}
+
+	private List<ServerConfigValueData> serializeProspectiveValues(
+		Map<ConfigValue<?>, Object> updatedValues,
+		ServerSnapshotState state
+	) {
+		List<ServerConfigValueData> values = new ArrayList<>();
+		for (ConfigCategory category : categories) {
+			for (ConfigValue<?> value : category.getConfigValues()) {
+				values.add(serializeProspectiveValue(category.getName(), value, updatedValues, state));
+			}
+		}
+		return List.copyOf(values);
+	}
+
+	private static <T> ServerConfigValueData serializeProspectiveValue(
+		String categoryName,
+		ConfigValue<T> value,
+		Map<ConfigValue<?>, Object> updatedValues,
+		ServerSnapshotState state
+	) {
+		Object rawPendingValue = updatedValues.getOrDefault(value, value.getPendingValueWithoutLoading());
+		@SuppressWarnings("unchecked")
+		T pendingValue = (T) rawPendingValue;
+		T effectiveValue = value.getEffectiveValueWithoutLoading();
+		ConfigValueRestartRequirement restartRequirement = value.getRestartRequirement();
+		boolean updatedImmediately = updatedValues.containsKey(value) && restartRequirement == ConfigValueRestartRequirement.NONE;
+		boolean promotedAfterWorldRestart = state != ServerSnapshotState.CURRENT &&
+			restartRequirement == ConfigValueRestartRequirement.WORLD_RESTART;
+		boolean promotedAfterGameRestart = state == ServerSnapshotState.AFTER_GAME_RESTART &&
+			restartRequirement == ConfigValueRestartRequirement.GAME_RESTART;
+		if (updatedImmediately || promotedAfterWorldRestart || promotedAfterGameRestart) {
+			effectiveValue = pendingValue;
+		}
+		return new ServerConfigValueData(
+			categoryName,
+			value.getName(),
+			ConfigFileValueAdapter.serialize(value.getSerializer(), effectiveValue),
+			ConfigFileValueAdapter.serialize(value.getSerializer(), pendingValue)
+		);
 	}
 
 	public synchronized List<ServerConfigValueData> serializeUpdates(List<? extends ConfigValueUpdate<?>> updates) {
@@ -1071,4 +1229,10 @@ public class ConfigSchema implements IConfigSchema {
 		Path path,
 		boolean defaults
 	) {}
+
+	private enum ServerSnapshotState {
+		CURRENT,
+		AFTER_WORLD_RESTART,
+		AFTER_GAME_RESTART
+	}
 }

@@ -51,6 +51,19 @@ public final class ServerConfigRuntime {
 		return Optional.ofNullable(worldConfigRoot);
 	}
 
+	public static void validateSnapshot(ServerConfigKey key, List<ServerConfigValueData> values) {
+		try {
+			ServerConfigSyncPayload payload = new ServerConfigSyncPayload(key, 0, true, true, "", values);
+			byte[] encoded = ServerConfigPayloadCodec.encodeSync(payload);
+			ServerConfigPayloadChunker.split(encoded, 1);
+		} catch (RuntimeException e) {
+			throw new IllegalArgumentException(
+				"Server config schema '%s' cannot be synchronized: %s".formatted(key, getExceptionMessage(e)),
+				e
+			);
+		}
+	}
+
 	public static void onServerStarted(MinecraftServer server) {
 		synchronized (LOCAL_REQUEST_LOCK) {
 			activeServer = ErrorUtil.checkNotNull(server, "server");
