@@ -2,8 +2,7 @@ package net.mezzdev.config.registration;
 
 import net.mezzdev.config.api.IConfigRegistration;
 import net.mezzdev.config.api.internal.IConfigProvider;
-import net.mezzdev.config.api.schema.ConfigOwnership;
-import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
@@ -46,9 +45,10 @@ public final class ConfigProvider implements IConfigProvider {
 		return createRegistration(PHYSICAL_SIDE_PROVIDER.getConfigRoot(), modId);
 	}
 
-	@Override
-	public IConfigRegistration createRegistration(Path configRootDir, String modId) {
-		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir").normalize();
+	static IConfigRegistration createRegistration(Path configRootDir, String modId) {
+		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir")
+			.toAbsolutePath()
+			.normalize();
 		modId = validateModDirectory(modId);
 		Path modDirectory = configRootDir.resolve(modId).normalize();
 		return new Registration(modId, modDirectory, getConfigManager());
@@ -72,75 +72,96 @@ public final class ConfigProvider implements IConfigProvider {
 			IConfigRegistration {
 		@Override
 		public IConfigSchemaBuilder createClientSchemaBuilder(String configFileName, String localizationPath) {
-			return createSchemaBuilder(configFileName, localizationPath, ConfigOwnership.CLIENT);
+			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
+			Path relativeConfigFile = getRelativeConfigFile(configFileName);
+			ConfigSchemaPathResolver pathResolver = new StaticConfigSchemaPathResolver(
+				modDirectory.resolve("client").resolve(relativeConfigFile).normalize()
+			);
+			return createClientSchemaBuilder(pathResolver, localizationPath, ConfigSchemaType.CLIENT);
 		}
 
 		@Override
-		public IConfigSchemaBuilder createServerSchemaBuilder(String configFileName, String localizationPath) {
-			return createSchemaBuilder(configFileName, localizationPath, ConfigOwnership.SERVER);
-		}
-
-		private IConfigSchemaBuilder createSchemaBuilder(
-			String configFileName,
-			String localizationPath,
-			ConfigOwnership ownership
-		) {
+		public IConfigSchemaBuilder createClientPerWorldSchemaBuilder(String configFileName, String localizationPath) {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path relativeConfigFile = getRelativeConfigFile(configFileName);
-			String normalizedFileName = relativeConfigFile.toString().replace(File.separatorChar, '/');
-			if (ownership == ConfigOwnership.CLIENT && !CLIENT_CONFIGS_AVAILABLE) {
+			Path ownershipDirectory = modDirectory.resolve("client");
+			Path defaultConfigFile = ClientWorldConfigPathUtil.getDefaultWorldPath(ownershipDirectory)
+				.resolve(relativeConfigFile)
+				.normalize();
+			ClientWorldConfigSchemaPathResolver activePathResolver = new ClientWorldConfigSchemaPathResolver(
+				relativeConfigFile,
+				() -> ClientWorldConfigPathUtil.getWorldPath(ownershipDirectory)
+			);
+			ConfigSchemaPathResolver pathResolver = new LayeredConfigSchemaPathResolver(
+				defaultConfigFile,
+				activePathResolver
+			);
+			return createClientSchemaBuilder(pathResolver, localizationPath, ConfigSchemaType.CLIENT_PER_WORLD);
+		}
+
+		@Override
+		public IConfigSchemaBuilder createClientSchemaBuilderAtLocation(Path configFile, String localizationPath) {
+			configFile = ErrorUtil.checkNotNull(configFile, "configFile")
+				.toAbsolutePath()
+				.normalize();
+			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
+			return createClientSchemaBuilder(
+				new StaticConfigSchemaPathResolver(configFile),
+				localizationPath,
+				ConfigSchemaType.CLIENT
+			);
+		}
+
+		private IConfigSchemaBuilder createClientSchemaBuilder(
+			ConfigSchemaPathResolver pathResolver,
+			String localizationPath,
+			ConfigSchemaType type
+		) {
+			if (!CLIENT_CONFIGS_AVAILABLE) {
 				return new ConfigSchemaBuilder(
 					modId,
-					ignored -> Optional::empty,
+					Optional::empty,
 					localizationPath,
 					configManager,
-					ownership,
-					normalizedFileName,
+					type,
+					null,
 					false
 				);
 			}
 			return new ConfigSchemaBuilder(
 				modId,
-				scope -> createPathResolver(ownership, scope, relativeConfigFile, normalizedFileName),
+				pathResolver,
 				localizationPath,
 				configManager,
-				ownership,
-				normalizedFileName
+				type,
+				null
 			);
 		}
 
-		private ConfigSchemaPathResolver createPathResolver(
-			ConfigOwnership ownership,
-			ConfigScope scope,
-			Path relativeConfigFile,
-			String normalizedFileName
-		) {
-			String ownershipDirectoryName;
-			if (ownership == ConfigOwnership.CLIENT) {
-				ownershipDirectoryName = "client";
-			} else {
-				ownershipDirectoryName = "server";
-			}
-			Path ownershipDirectory = modDirectory.resolve(ownershipDirectoryName);
-			if (scope == ConfigScope.INSTALLATION) {
-				return new StaticConfigSchemaPathResolver(ownershipDirectory.resolve(relativeConfigFile).normalize());
-			}
-			if (ownership == ConfigOwnership.CLIENT) {
-				Path defaultConfigFile = ClientWorldConfigPathUtil.getDefaultWorldPath(ownershipDirectory)
-					.resolve(relativeConfigFile)
-					.normalize();
-				ClientWorldConfigSchemaPathResolver activePathResolver = new ClientWorldConfigSchemaPathResolver(
-					relativeConfigFile,
-					() -> ClientWorldConfigPathUtil.getWorldPath(ownershipDirectory)
-				);
-				return new LayeredConfigSchemaPathResolver(defaultConfigFile, activePathResolver);
-			}
+		@Override
+		public IConfigSchemaBuilder createServerSchemaBuilder(String configFileName, String localizationPath) {
+			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
+			Path relativeConfigFile = getRelativeConfigFile(configFileName);
+			String normalizedFileName = relativeConfigFile.toString().replace(File.separatorChar, '/');
+			Path ownershipDirectory = modDirectory.resolve("server");
 			ServerConfigKey key = new ServerConfigKey(modId, normalizedFileName);
 			Path defaultConfigFile = ownershipDirectory.resolve("world")
 				.resolve("default")
 				.resolve(relativeConfigFile)
 				.normalize();
-			return new ServerConfigPathResolver(key, relativeConfigFile, defaultConfigFile);
+			ConfigSchemaPathResolver pathResolver = new ServerConfigPathResolver(
+				key,
+				relativeConfigFile,
+				defaultConfigFile
+			);
+			return new ConfigSchemaBuilder(
+				modId,
+				pathResolver,
+				localizationPath,
+				configManager,
+				ConfigSchemaType.SERVER,
+				key
+			);
 		}
 
 		@Override

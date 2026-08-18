@@ -1,7 +1,6 @@
 package net.mezzdev.config.schema;
 
-import net.mezzdev.config.api.schema.ConfigOwnership;
-import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.server.ServerConfigKey;
@@ -14,20 +13,18 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Function;
 
 public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private final Set<String> categoryNames = new HashSet<>();
 	private final List<ConfigCategoryBuilder> categoryBuilders = new ArrayList<>();
 	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders = new ArrayList<>();
 	private final String modId;
-	private final Function<ConfigScope, ConfigSchemaPathResolver> pathResolverFactory;
+	private final ConfigSchemaPathResolver pathResolver;
 	private final String localizationPath;
 	private final ConfigManager configManager;
-	private final ConfigOwnership ownership;
-	private final String configFileName;
+	private final ConfigSchemaType type;
+	private final @Nullable ServerConfigKey serverKey;
 	private final boolean registrationEnabled;
-	private ConfigScope scope = ConfigScope.INSTALLATION;
 	private boolean built;
 
 	public ConfigSchemaBuilder(Path configFile, String localizationPath, ConfigManager configManager) {
@@ -43,43 +40,37 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	}
 
 	public ConfigSchemaBuilder(String modId, ConfigSchemaPathResolver pathResolver, String localizationPath, ConfigManager configManager) {
-		this(modId, ignored -> pathResolver, localizationPath, configManager, ConfigOwnership.CLIENT, "config.ini");
+		this(modId, pathResolver, localizationPath, configManager, ConfigSchemaType.CLIENT, null);
 	}
 
 	public ConfigSchemaBuilder(
 		String modId,
-		Function<ConfigScope, ConfigSchemaPathResolver> pathResolverFactory,
+		ConfigSchemaPathResolver pathResolver,
 		String localizationPath,
 		ConfigManager configManager,
-		ConfigOwnership ownership,
-		String configFileName
+		ConfigSchemaType type,
+		@Nullable ServerConfigKey serverKey
 	) {
-		this(modId, pathResolverFactory, localizationPath, configManager, ownership, configFileName, true);
+		this(modId, pathResolver, localizationPath, configManager, type, serverKey, true);
 	}
 
 	public ConfigSchemaBuilder(
 		String modId,
-		Function<ConfigScope, ConfigSchemaPathResolver> pathResolverFactory,
+		ConfigSchemaPathResolver pathResolver,
 		String localizationPath,
 		ConfigManager configManager,
-		ConfigOwnership ownership,
-		String configFileName,
+		ConfigSchemaType type,
+		@Nullable ServerConfigKey serverKey,
 		boolean registrationEnabled
 	) {
 		this.modId = ConfigSchema.validateModId(modId);
-		this.pathResolverFactory = ErrorUtil.checkNotNull(pathResolverFactory, "pathResolverFactory");
+		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
 		this.localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 		this.configManager = ErrorUtil.checkNotNull(configManager, "configManager");
-		this.ownership = ErrorUtil.checkNotNull(ownership, "ownership");
-		this.configFileName = ErrorUtil.checkNotNull(configFileName, "configFileName");
+		this.type = ErrorUtil.checkNotNull(type, "type");
+		this.serverKey = serverKey;
+		ConfigSchema.validateServerKey(type, serverKey);
 		this.registrationEnabled = registrationEnabled;
-	}
-
-	@Override
-	public ConfigSchemaBuilder setScope(ConfigScope scope) {
-		checkNotBuilt();
-		this.scope = ErrorUtil.checkNotNull(scope, "scope");
-		return this;
 	}
 
 	@Override
@@ -111,23 +102,13 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	public ConfigSchema build() {
 		checkNotBuilt();
 		built = true;
-		ConfigSchemaPathResolver pathResolver = ErrorUtil.checkNotNull(
-			pathResolverFactory.apply(scope),
-			"pathResolver"
-		);
-		@Nullable
-		ServerConfigKey serverKey = null;
-		if (ownership == ConfigOwnership.SERVER && scope == ConfigScope.WORLD) {
-			serverKey = new ServerConfigKey(modId, configFileName);
-		}
 		ConfigSchema schema = new ConfigSchema(
 			modId,
 			pathResolver,
 			categoryBuilders,
 			editorCategoryBuilders,
 			configManager.getSaveScheduler(),
-			ownership,
-			scope,
+			type,
 			serverKey
 		);
 		if (registrationEnabled) {

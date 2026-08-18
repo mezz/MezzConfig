@@ -4,7 +4,6 @@ import net.mezzdev.config.api.internal.IConfigProvider;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.ServiceLoader;
@@ -27,19 +26,6 @@ public final class Configs {
 	 */
 	public static IConfigRegistration forMod(String modId) {
 		return ProviderHolder.PROVIDER.createRegistration(modId);
-	}
-
-	/**
-	 * Create config registration for a mod under an explicit config root.
-	 *
-	 * @param configRootDir root directory used for game configuration
-	 * @param modId mod id that owns the registered configs
-	 * @return config registration bound to this mod
-	 *
-	 * @since 0.3.0
-	 */
-	public static IConfigRegistration forMod(Path configRootDir, String modId) {
-		return ProviderHolder.PROVIDER.createRegistration(configRootDir, modId);
 	}
 
 	/**

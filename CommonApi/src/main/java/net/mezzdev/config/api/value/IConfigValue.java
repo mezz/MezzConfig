@@ -112,7 +112,7 @@ public interface IConfigValue<T> {
 	 *
 	 * @throws IllegalArgumentException if the value is invalid or cannot be safely serialized
 	 * @throws IllegalStateException if this value's context-specific schema is currently inactive
-	 * @throws IllegalStateException if this value belongs to a server-owned world schema; use
+	 * @throws IllegalStateException if this value belongs to a server schema; use
 	 * {@link IConfigSchema#requestBatchUpdate(Consumer)} instead
 	 *
 	 * @since 0.1.0

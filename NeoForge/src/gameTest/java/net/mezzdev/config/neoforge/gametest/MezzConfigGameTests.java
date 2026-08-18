@@ -2,8 +2,7 @@ package net.mezzdev.config.neoforge.gametest;
 
 import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.IConfigRegistration;
-import net.mezzdev.config.api.schema.ConfigOwnership;
-import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.value.IConfigValue;
@@ -11,6 +10,7 @@ import net.mezzdev.config.file.ConfigFileWatcherSettings;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
 import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
+import net.mezzdev.config.server.ServerConfigKey;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -62,7 +62,7 @@ public final class MezzConfigGameTests {
 	public static void dedicatedServerKeepsClientConfigsInert(GameTestHelper helper) {
 		boolean hasClientSchema = Configs.getSchemas()
 			.stream()
-			.anyMatch(candidate -> candidate.getOwnership() == ConfigOwnership.CLIENT);
+			.anyMatch(candidate -> candidate.getType() != ConfigSchemaType.SERVER);
 		if (hasClientSchema) {
 			throw failure("The dedicated server registered a client-owned config schema.");
 		}
@@ -165,13 +165,12 @@ public final class MezzConfigGameTests {
 		);
 		ConfigSchemaBuilder schemaBuilder = new ConfigSchemaBuilder(
 			TEST_MOD_ID,
-			ignored -> new StaticConfigSchemaPathResolver(path),
+			new StaticConfigSchemaPathResolver(path),
 			"mezz_config_test.neoforge.server",
 			manager,
-			ConfigOwnership.SERVER,
-			"file-watcher-gametest.ini"
+			ConfigSchemaType.SERVER,
+			new ServerConfigKey(TEST_MOD_ID, "file-watcher-gametest.ini")
 		);
-		schemaBuilder.setScope(ConfigScope.WORLD);
 		IConfigValue<Boolean> enabled = schemaBuilder.addCategory("general")
 			.addBoolean("enabled", true)
 			.build();
@@ -183,8 +182,7 @@ public final class MezzConfigGameTests {
 	private static IConfigSchema getServerSchema() {
 		return Configs.getSchemas()
 			.stream()
-			.filter(candidate -> candidate.getOwnership() == ConfigOwnership.SERVER)
-			.filter(candidate -> candidate.getScope() == ConfigScope.WORLD)
+			.filter(candidate -> candidate.getType() == ConfigSchemaType.SERVER)
 			.filter(candidate -> candidate.getModId().equals(TEST_MOD_ID))
 			.findFirst()
 			.orElseThrow(() -> failure("The NeoForge test server schema was not registered."));

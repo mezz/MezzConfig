@@ -4,6 +4,7 @@ import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
 import org.jetbrains.annotations.ApiStatus;
 
+import java.nio.file.Path;
 import java.util.Comparator;
 
 /**
@@ -17,11 +18,10 @@ import java.util.Comparator;
 @ApiStatus.NonExtendable
 public interface IConfigRegistration {
 	/**
-	 * Create a client-owned config schema builder with installation scope.
+	 * Create an always-active client config schema builder at the conventional location.
 	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
 	 * inactive, default-backed, and is not registered or connected to a file.
-	 * The schema loads synchronously when built. Use
-	 * {@link IConfigSchemaBuilder#setScope(net.mezzdev.config.api.schema.ConfigScope)} for world-specific values.
+	 * The schema loads synchronously when built.
 	 *
 	 * @param configFileName relative file name inside the mod's client config directory
 	 * @param localizationPath translation key prefix for the config file
@@ -32,11 +32,40 @@ public interface IConfigRegistration {
 	IConfigSchemaBuilder createClientSchemaBuilder(String configFileName, String localizationPath);
 
 	/**
-	 * Create a server-owned config schema builder with installation scope.
-	 * The schema loads synchronously when built. World-scoped server schemas are authoritative for the active world and
-	 * synchronized to connected clients.
+	 * Create a context-specific client config schema builder with separate values for each singleplayer world or
+	 * multiplayer server.
+	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
+	 * inactive, default-backed, and is not registered or connected to a file.
 	 *
-	 * @param configFileName relative file name inside the mod's server config directory
+	 * @param configFileName relative file name inside the mod's client-world config directories
+	 * @param localizationPath translation key prefix for the config file
+	 * @return client-owned world schema builder
+	 *
+	 * @since 0.3.0
+	 */
+	IConfigSchemaBuilder createClientPerWorldSchemaBuilder(String configFileName, String localizationPath);
+
+	/**
+	 * Create an always-active client config schema builder backed by one explicit file.
+	 * The supplied path is the complete config file location; MezzConfig does not append the mod id, ownership, or file
+	 * name. Relative paths are captured as normalized absolute paths when this method is called.
+	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
+	 * inactive, default-backed, and does not access the supplied location.
+	 *
+	 * @param configFile complete path to the config file
+	 * @param localizationPath translation key prefix for the config file
+	 * @return client-owned schema builder
+	 *
+	 * @since 0.3.0
+	 */
+	IConfigSchemaBuilder createClientSchemaBuilderAtLocation(Path configFile, String localizationPath);
+
+	/**
+	 * Create a server-authoritative config schema builder for the active world.
+	 * The server loads the distributable default from the conventional config directory and the authoritative values from
+	 * the active world's server config directory. Connected clients receive the server's effective values in memory.
+	 *
+	 * @param configFileName relative file name inside the mod's server config directories
 	 * @param localizationPath translation key prefix for the config file
 	 * @return server-owned schema builder
 	 *

@@ -2,8 +2,7 @@ package net.mezzdev.config.registration;
 
 import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.IConfigRegistration;
-import net.mezzdev.config.api.schema.ConfigOwnership;
-import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
@@ -31,37 +30,42 @@ public class ConfigsTest {
 	private static final int MAX_CONFIG_FILE_BYTES = 4 * 1024 * 1024;
 
 	@Test
-	public void clientAndServerSchemasLoadSynchronouslyFromIndependentPaths(@TempDir Path configRoot) throws IOException {
-		Path clientPath = getClientPath(configRoot);
-		Path serverPath = getServerPath(configRoot);
+	public void factoriesCreateCompleteClientAndServerSchemaTypes(@TempDir Path configRoot) throws IOException {
+		IConfigRegistration registration = createRegistration(configRoot);
+		Path clientPath = getClientPath(configRoot, "client.ini");
+		Path explicitPath = configRoot.resolve("outside-owned-layout/explicit.ini");
 		writeEnabled(clientPath, false);
-		writeEnabled(serverPath, true);
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+		writeEnabled(explicitPath, true);
 
-		TestSchema client = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
-		TestSchema server = createSchema(registration.createServerSchemaBuilder(FILE_NAME, "registration_test.server"), false);
-
-		assertFalse(client.enabled().getValue());
-		assertTrue(server.enabled().getValue());
-		assertEquals(ConfigOwnership.CLIENT, client.schema().getOwnership());
-		assertEquals(ConfigOwnership.SERVER, server.schema().getOwnership());
-		assertEquals(ConfigScope.INSTALLATION, client.schema().getScope());
-		assertEquals(ConfigScope.INSTALLATION, server.schema().getScope());
-		assertEquals(clientPath, client.schema().getPath().orElseThrow());
-		assertEquals(serverPath, server.schema().getPath().orElseThrow());
-		assertFalse(clientPath.equals(serverPath));
-		assertTrue(
-			getConfigManager().getServerSchemas().stream()
-				.noneMatch(schema -> schema == server.schema()),
-			"Installation schemas must not enter server synchronization."
+		TestSchema client = createSchema(
+			registration.createClientSchemaBuilder("client.ini", "registration_test.client"),
+			true
 		);
+		TestSchema explicit = createSchema(
+			registration.createClientSchemaBuilderAtLocation(explicitPath, "registration_test.explicit"),
+			false
+		);
+		TestSchema server = createSchema(
+			registration.createServerSchemaBuilder("server.ini", "registration_test.server"),
+			true
+		);
+
+		assertEquals(ConfigSchemaType.CLIENT, client.schema().getType());
+		assertEquals(ConfigSchemaType.CLIENT, explicit.schema().getType());
+		assertEquals(ConfigSchemaType.SERVER, server.schema().getType());
+		assertFalse(client.enabled().getValue());
+		assertTrue(explicit.enabled().getValue());
+		assertEquals(clientPath, client.schema().getPath().orElseThrow());
+		assertEquals(explicitPath, explicit.schema().getPath().orElseThrow());
+		assertFalse(server.schema().isActive());
+		assertTrue(getConfigManager().getServerSchemas().contains(server.schema()));
 	}
 
 	@Test
 	public void gameRestartRequirementKeepsSavedValuePending(@TempDir Path configRoot) throws IOException {
-		Path path = getClientPath(configRoot);
+		Path path = getClientPath(configRoot, FILE_NAME);
 		writeEnabled(path, false);
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+		IConfigRegistration registration = createRegistration(configRoot);
 		TestSchema config = createSchema(
 			registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"),
 			true,
@@ -76,11 +80,11 @@ public class ConfigsTest {
 	}
 
 	@Test
-	public void externalChangesReloadInstallationValues(@TempDir Path configRoot) throws IOException {
-		Path path = getServerPath(configRoot);
+	public void externalChangesReloadClientValues(@TempDir Path configRoot) throws IOException {
+		Path path = getClientPath(configRoot, FILE_NAME);
 		writeEnabled(path, true);
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
-		TestSchema config = createSchema(registration.createServerSchemaBuilder(FILE_NAME, "registration_test.server"), false);
+		IConfigRegistration registration = createRegistration(configRoot);
+		TestSchema config = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), false);
 
 		writeEnabled(path, false);
 
@@ -89,33 +93,31 @@ public class ConfigsTest {
 	}
 
 	@Test
-	public void restartRequirementsStayPerValueAndMissingFilesAreCreatedSynchronously(@TempDir Path configRoot) {
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+	public void missingClientFilesAreCreatedSynchronously(@TempDir Path configRoot) {
+		IConfigRegistration registration = createRegistration(configRoot);
 		TestSchema config = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
 
 		assertEquals(ConfigValueRestartRequirement.NONE, config.enabled().getRestartRequirement());
-		assertTrue(Files.exists(getClientPath(configRoot)));
+		assertTrue(Files.exists(getClientPath(configRoot, FILE_NAME)));
 	}
 
 	@Test
-	public void worldScopeMakesServerSchemaContextualAndSynchronized(@TempDir Path configRoot) {
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+	public void serverFactoryCreatesContextualSynchronizedSchema(@TempDir Path configRoot) {
+		IConfigRegistration registration = createRegistration(configRoot);
 		TestSchema config = createSchema(
-			registration.createServerSchemaBuilder(FILE_NAME, "registration_test.server")
-				.setScope(ConfigScope.WORLD),
+			registration.createServerSchemaBuilder(FILE_NAME, "registration_test.server"),
 			true
 		);
 
-		assertEquals(ConfigOwnership.SERVER, config.schema().getOwnership());
-		assertEquals(ConfigScope.WORLD, config.schema().getScope());
+		assertEquals(ConfigSchemaType.SERVER, config.schema().getType());
 		assertFalse(config.schema().isActive());
 		assertTrue(getConfigManager().getServerSchemas().contains(config.schema()));
-		assertFalse(Files.exists(getServerWorldDefaultPath(configRoot)));
+		assertFalse(Files.exists(getServerWorldDefaultPath(configRoot, FILE_NAME)));
 	}
 
 	@Test
-	public void duplicateInstallationIdentityIsRejected(@TempDir Path configRoot) {
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+	public void duplicateClientIdentityIsRejected(@TempDir Path configRoot) {
+		IConfigRegistration registration = createRegistration(configRoot);
 		TestSchema original = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
 
 		assertThrows(
@@ -126,11 +128,9 @@ public class ConfigsTest {
 	}
 
 	@Test
-	public void clientInstallationAndWorldSchemasCannotShareDefaultPath(@TempDir Path configRoot) throws IOException {
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
-		Path path = getClientPath(configRoot).getParent()
-			.resolve("world/default")
-			.resolve(FILE_NAME);
+	public void clientAndClientWorldSchemasCannotShareDefaultPath(@TempDir Path configRoot) throws IOException {
+		IConfigRegistration registration = createRegistration(configRoot);
+		Path path = getClientPath(configRoot, "world/default/" + FILE_NAME);
 		createSchema(
 			registration.createClientSchemaBuilder("world/default/" + FILE_NAME, "registration_test.client"),
 			true
@@ -140,30 +140,7 @@ public class ConfigsTest {
 		assertThrows(
 			IllegalArgumentException.class,
 			() -> createSchema(
-				registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client_world")
-					.setScope(ConfigScope.WORLD),
-				false
-			)
-		);
-
-		assertEquals(originalContents, Files.readString(path));
-	}
-
-	@Test
-	public void serverInstallationAndWorldSchemasCannotShareDefaultPath(@TempDir Path configRoot) throws IOException {
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
-		Path path = getServerWorldDefaultPath(configRoot);
-		createSchema(
-			registration.createServerSchemaBuilder("world/default/" + FILE_NAME, "registration_test.server"),
-			true
-		);
-		String originalContents = Files.readString(path);
-
-		assertThrows(
-			IllegalArgumentException.class,
-			() -> createSchema(
-				registration.createServerSchemaBuilder(FILE_NAME, "registration_test.server_world")
-					.setScope(ConfigScope.WORLD),
+				registration.createClientPerWorldSchemaBuilder(FILE_NAME, "registration_test.client_world"),
 				false
 			)
 		);
@@ -173,8 +150,8 @@ public class ConfigsTest {
 
 	@Test
 	public void sortingConfigRejectsSchemaCollisionBeforeCreatingFile(@TempDir Path configRoot) {
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
-		Path path = getClientPath(configRoot);
+		IConfigRegistration registration = createRegistration(configRoot);
+		Path path = getClientPath(configRoot, FILE_NAME);
 		registration.createSortingConfig(FILE_NAME, Comparator.naturalOrder(), true);
 
 		assertThrows(
@@ -187,8 +164,8 @@ public class ConfigsTest {
 
 	@Test
 	public void schemaRejectsSortingCollisionWithoutModifyingFile(@TempDir Path configRoot) throws IOException {
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
-		Path path = getClientPath(configRoot);
+		IConfigRegistration registration = createRegistration(configRoot);
+		Path path = getClientPath(configRoot, FILE_NAME);
 		createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
 		String originalContents = Files.readString(path);
 
@@ -201,38 +178,63 @@ public class ConfigsTest {
 	}
 
 	@Test
-	public void conventionalAndExplicitRootsUseTheSamePathIdentity(@TempDir Path tempDir) {
+	public void automaticAndExplicitLocationsUseTheSamePathIdentity(@TempDir Path tempDir) {
 		String fileName = "path-identity/" + tempDir.getFileName() + ".ini";
-		Path conventionalRoot = Path.of("build", "test-config");
-		IConfigRegistration conventional = Configs.forMod(MOD_ID);
-		IConfigRegistration explicit = Configs.forMod(conventionalRoot.toAbsolutePath(), MOD_ID);
-		conventional.createSortingConfig(fileName, Comparator.naturalOrder(), true);
+		Path conventionalRoot = Path.of("build", "test-config").toAbsolutePath().normalize();
+		Path conventionalPath = getClientPath(conventionalRoot, fileName);
+		IConfigRegistration registration = Configs.forMod(MOD_ID);
+		registration.createSortingConfig(fileName, Comparator.naturalOrder(), true);
 
 		assertThrows(
 			IllegalArgumentException.class,
-			() -> explicit.createSortingConfig(fileName, Comparator.naturalOrder(), true)
+			() -> createSchema(
+				registration.createClientSchemaBuilderAtLocation(conventionalPath, "registration_test.client"),
+				true
+			)
 		);
 
-		assertFalse(Files.exists(conventionalRoot.resolve(MOD_ID).resolve("client").resolve(fileName)));
+		assertFalse(Files.exists(conventionalPath));
 	}
 
 	@Test
-	public void modAndFilePathsCannotEscapeTheirOwnedDirectories(@TempDir Path configRoot) {
-		assertThrows(IllegalArgumentException.class, () -> Configs.forMod(configRoot, "../outside"));
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+	public void automaticNamesCannotEscapeButExplicitLocationsMayBeAnywhere(@TempDir Path configRoot) {
+		assertThrows(IllegalArgumentException.class, () -> Configs.forMod("../outside"));
+		IConfigRegistration registration = createRegistration(configRoot);
 		assertThrows(
 			IllegalArgumentException.class,
 			() -> registration.createClientSchemaBuilder("../outside.ini", "registration_test.client")
 		);
+
+		Path explicitPath = configRoot.resolve("outside-owned-layout/settings.ini");
+		TestSchema explicit = createSchema(
+			registration.createClientSchemaBuilderAtLocation(explicitPath, "registration_test.explicit"),
+			true
+		);
+		assertEquals(explicitPath, explicit.schema().getPath().orElseThrow());
 	}
 
 	@Test
-	public void malformedInstallationFileUsesNormalRecovery(@TempDir Path configRoot) throws IOException {
-		Path path = getServerPath(configRoot);
-		writeFile(path, "[general]\nenabled = true\nbounded = not-an-integer\nunknown = true\n");
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+	public void relativeExplicitLocationIsCapturedAsNormalizedAbsolutePath(@TempDir Path tempDir) {
+		Path absolutePath = tempDir.resolve("nested/settings.ini").toAbsolutePath().normalize();
+		Path relativePath = Path.of("").toAbsolutePath().normalize().relativize(absolutePath);
+		IConfigRegistration registration = createRegistration(tempDir.resolve("automatic-root"));
 
-		TestSchema config = createSchema(registration.createServerSchemaBuilder(FILE_NAME, "registration_test.server"), false);
+		TestSchema config = createSchema(
+			registration.createClientSchemaBuilderAtLocation(relativePath, "registration_test.explicit"),
+			true
+		);
+
+		assertEquals(absolutePath, config.schema().getPath().orElseThrow());
+		assertTrue(Files.isRegularFile(absolutePath));
+	}
+
+	@Test
+	public void malformedClientFileUsesNormalRecovery(@TempDir Path configRoot) throws IOException {
+		Path path = getClientPath(configRoot, FILE_NAME);
+		writeFile(path, "[general]\nenabled = true\nbounded = not-an-integer\nunknown = true\n");
+		IConfigRegistration registration = createRegistration(configRoot);
+
+		TestSchema config = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), false);
 
 		assertTrue(config.enabled().getValue());
 		assertEquals(0, config.bounded().getValue());
@@ -245,40 +247,46 @@ public class ConfigsTest {
 	}
 
 	@Test
-	public void invalidUtf8AndOversizedFilesUseNormalBoundedRecovery(@TempDir Path configRoot) throws IOException {
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
-		Path clientPath = getClientPath(configRoot);
-		Files.createDirectories(clientPath.getParent());
+	public void invalidUtf8AndOversizedExplicitFilesUseNormalBoundedRecovery(@TempDir Path configRoot) throws IOException {
+		IConfigRegistration registration = createRegistration(configRoot);
+		Path invalidPath = configRoot.resolve("explicit/invalid.ini");
+		Files.createDirectories(invalidPath.getParent());
 		byte[] invalidUtf8 = {(byte) 0xC3, 0x28};
-		Files.write(clientPath, invalidUtf8);
-		Path serverPath = getServerPath(configRoot);
-		Files.createDirectories(serverPath.getParent());
-		Files.write(serverPath, new byte[MAX_CONFIG_FILE_BYTES + 1]);
+		Files.write(invalidPath, invalidUtf8);
+		Path oversizedPath = configRoot.resolve("explicit/oversized.ini");
+		Files.write(oversizedPath, new byte[MAX_CONFIG_FILE_BYTES + 1]);
 
-		createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
-		createSchema(registration.createServerSchemaBuilder(FILE_NAME, "registration_test.server"), false);
+		createSchema(registration.createClientSchemaBuilderAtLocation(invalidPath, "registration_test.invalid"), true);
+		createSchema(registration.createClientSchemaBuilderAtLocation(oversizedPath, "registration_test.oversized"), false);
 
-		assertEquals(invalidUtf8.length, Files.size(ConfigFileUtil.getBackupPath(clientPath, 1)));
-		assertTrue(Files.readString(clientPath).contains("enabled = true"));
-		assertEquals(MAX_CONFIG_FILE_BYTES + 1, Files.size(ConfigFileUtil.getBackupPath(serverPath, 1)));
-		assertTrue(Files.size(serverPath) < MAX_CONFIG_FILE_BYTES);
+		assertEquals(invalidUtf8.length, Files.size(ConfigFileUtil.getBackupPath(invalidPath, 1)));
+		assertTrue(Files.readString(invalidPath).contains("enabled = true"));
+		assertEquals(MAX_CONFIG_FILE_BYTES + 1, Files.size(ConfigFileUtil.getBackupPath(oversizedPath, 1)));
+		assertTrue(Files.size(oversizedPath) < MAX_CONFIG_FILE_BYTES);
 	}
 
 	@Test
 	public void synchronousReadFailureDoesNotPublishSchema(@TempDir Path configRoot) throws IOException {
-		Path path = getClientPath(configRoot);
+		Path path = configRoot.resolve("explicit/client.ini");
 		Files.createDirectories(path);
-		IConfigRegistration registration = Configs.forMod(configRoot, MOD_ID);
+		IConfigRegistration registration = createRegistration(configRoot);
 		int schemaCount = Configs.getSchemas().size();
 
 		assertThrows(
 			UncheckedIOException.class,
-			() -> createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true)
+			() -> createSchema(
+				registration.createClientSchemaBuilderAtLocation(path, "registration_test.client"),
+				true
+			)
 		);
 
 		assertEquals(schemaCount, Configs.getSchemas().size());
 		assertTrue(Files.isDirectory(path));
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
+	}
+
+	private static IConfigRegistration createRegistration(Path configRoot) {
+		return ConfigProvider.createRegistration(configRoot, MOD_ID);
 	}
 
 	private static TestSchema createSchema(IConfigSchemaBuilder builder, boolean defaultEnabled) {
@@ -304,16 +312,12 @@ public class ConfigsTest {
 		return new TestSchema(schema, enabled, bounded);
 	}
 
-	private static Path getClientPath(Path configRoot) {
-		return configRoot.resolve(MOD_ID).resolve("client").resolve(FILE_NAME);
+	private static Path getClientPath(Path configRoot, String fileName) {
+		return configRoot.resolve(MOD_ID).resolve("client").resolve(fileName).normalize();
 	}
 
-	private static Path getServerPath(Path configRoot) {
-		return configRoot.resolve(MOD_ID).resolve("server").resolve(FILE_NAME);
-	}
-
-	private static Path getServerWorldDefaultPath(Path configRoot) {
-		return configRoot.resolve(MOD_ID).resolve("server/world/default").resolve(FILE_NAME);
+	private static Path getServerWorldDefaultPath(Path configRoot, String fileName) {
+		return configRoot.resolve(MOD_ID).resolve("server/world/default").resolve(fileName).normalize();
 	}
 
 	private static void writeEnabled(Path path, boolean enabled) throws IOException {

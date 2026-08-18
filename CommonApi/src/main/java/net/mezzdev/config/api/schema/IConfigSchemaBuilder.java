@@ -6,24 +6,13 @@ import org.jetbrains.annotations.ApiStatus;
 /**
  * Builds one config schema.
  * <p>
- * Create a builder with {@link IConfigRegistration#createClientSchemaBuilder(String, String)} or
- * {@link IConfigRegistration#createServerSchemaBuilder(String, String)}.
+ * Create a builder with one of the schema factory methods on {@link IConfigRegistration}. Each factory selects a
+ * complete supported schema type and storage location before returning the builder.
  *
  * @since 0.1.0
  */
 @ApiStatus.NonExtendable
 public interface IConfigSchemaBuilder {
-	/**
-	 * Set the context that selects this schema's backing file.
-	 * Builders use {@link ConfigScope#INSTALLATION} by default.
-	 *
-	 * @param scope config scope
-	 * @return this builder
-	 *
-	 * @since 0.3.0
-	 */
-	IConfigSchemaBuilder setScope(ConfigScope scope);
-
 	/**
 	 * Add a storage category to this config schema.
 	 * Categories are returned from {@link IConfigSchema#getCategories()} in the order they are added here.

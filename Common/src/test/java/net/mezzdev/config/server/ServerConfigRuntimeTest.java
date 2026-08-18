@@ -1,7 +1,6 @@
 package net.mezzdev.config.server;
 
-import net.mezzdev.config.api.schema.ConfigOwnership;
-import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.file.ConfigFileWatcherSettings;
 import net.mezzdev.config.file.ConfigManager;
@@ -267,8 +266,7 @@ public class ServerConfigRuntimeTest {
 			List.of(builder),
 			List.of(builder),
 			(command, delay) -> CompletableFuture.completedFuture(null),
-			ConfigOwnership.SERVER,
-			ConfigScope.WORLD,
+			ConfigSchemaType.SERVER,
 			new ServerConfigKey("restart_test", "server.ini")
 		);
 		schema.register(null, false);
@@ -346,8 +344,7 @@ public class ServerConfigRuntimeTest {
 			List.of(builder),
 			List.of(builder),
 			(command, delay) -> CompletableFuture.completedFuture(null),
-			ConfigOwnership.SERVER,
-			ConfigScope.WORLD,
+			ConfigSchemaType.SERVER,
 			new ServerConfigKey("test_mod", "server.ini")
 		);
 		return new TestSchema(schema, enabled);
@@ -371,8 +368,7 @@ public class ServerConfigRuntimeTest {
 			List.of(builder),
 			List.of(builder),
 			(command, delay) -> CompletableFuture.completedFuture(null),
-			ConfigOwnership.SERVER,
-			ConfigScope.WORLD,
+			ConfigSchemaType.SERVER,
 			key
 		);
 		return new TestStringSchema(schema, List.copyOf(values));

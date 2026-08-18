@@ -1,7 +1,6 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.api.schema.ConfigOwnership;
-import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaPathResolver;
@@ -56,14 +55,8 @@ public class ConfigManagerTest {
 		);
 		Path clientPath = tempDir.resolve("client.ini");
 		Path serverPath = tempDir.resolve("server.ini");
-		InstallationSchema client = createInstallationSchema(
-			clientPath,
-			ConfigOwnership.CLIENT
-		);
-		InstallationSchema server = createInstallationSchema(
-			serverPath,
-			ConfigOwnership.SERVER
-		);
+		InstallationSchema client = createClientInstallationSchema(clientPath);
+		InstallationSchema server = createStaticServerSchema(serverPath);
 		manager.startWatching();
 		manager.registerSchema(client.schema());
 		manager.registerSchema(server.schema());
@@ -180,8 +173,8 @@ public class ConfigManagerTest {
 		ConfigManager manager = createDisabledConfigManager();
 		Path path = tempDir.resolve("shared.ini");
 		Path equivalentPath = tempDir.resolve("unused").resolve("..").resolve("shared.ini");
-		ConfigSchema clientSchema = createInstallationSchema(equivalentPath, ConfigOwnership.CLIENT).schema();
-		ConfigSchema serverSchema = createInstallationSchema(path, ConfigOwnership.SERVER).schema();
+		ConfigSchema clientSchema = createInstallationSchema(equivalentPath);
+		ConfigSchema serverSchema = createStaticServerSchema(path).schema();
 		manager.registerSchema(clientSchema);
 		String originalContents = Files.readString(path);
 
@@ -239,8 +232,7 @@ public class ConfigManagerTest {
 			List.of(category),
 			List.of(category),
 			(command, delay) -> CompletableFuture.completedFuture(null),
-			ConfigOwnership.SERVER,
-			ConfigScope.WORLD,
+			ConfigSchemaType.SERVER,
 			key
 		);
 	}
@@ -255,8 +247,7 @@ public class ConfigManagerTest {
 			List.of(category),
 			List.of(category),
 			(command, delay) -> CompletableFuture.completedFuture(null),
-			ConfigOwnership.CLIENT,
-			ConfigScope.WORLD,
+			ConfigSchemaType.CLIENT_PER_WORLD,
 			null
 		);
 	}
@@ -270,10 +261,10 @@ public class ConfigManagerTest {
 	}
 
 	private static ConfigSchema createInstallationSchema(Path path) {
-		return createInstallationSchema(path, ConfigOwnership.CLIENT).schema();
+		return createClientInstallationSchema(path).schema();
 	}
 
-	private static InstallationSchema createInstallationSchema(Path path, ConfigOwnership ownership) {
+	private static InstallationSchema createClientInstallationSchema(Path path) {
 		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = category.addBoolean("enabled", true)
 			.build();
@@ -283,9 +274,25 @@ public class ConfigManagerTest {
 			List.of(category),
 			List.of(category),
 			(command, delay) -> CompletableFuture.completedFuture(null),
-			ownership,
-			ConfigScope.INSTALLATION,
+			ConfigSchemaType.CLIENT,
 			null
+		);
+		return new InstallationSchema(schema, enabled);
+	}
+
+	private static InstallationSchema createStaticServerSchema(Path path) {
+		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = category.addBoolean("enabled", true)
+			.build();
+		ServerConfigKey key = new ServerConfigKey("test_mod", path.getFileName().toString());
+		ConfigSchema schema = new ConfigSchema(
+			key.modId(),
+			() -> Optional.of(path),
+			List.of(category),
+			List.of(category),
+			(command, delay) -> CompletableFuture.completedFuture(null),
+			ConfigSchemaType.SERVER,
+			key
 		);
 		return new InstallationSchema(schema, enabled);
 	}

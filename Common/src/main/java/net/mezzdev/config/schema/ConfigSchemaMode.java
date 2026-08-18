@@ -1,7 +1,6 @@
 package net.mezzdev.config.schema;
 
-import net.mezzdev.config.api.schema.ConfigOwnership;
-import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.file.ConfigSerializer;
 
 import java.util.List;
@@ -11,11 +10,12 @@ record ConfigSchemaMode(
 	boolean waitForLocalization,
 	boolean synchronousFileAccess
 ) {
-	static ConfigSchemaMode forSchema(ConfigOwnership ownership, ConfigScope scope) {
-		if (scope == ConfigScope.INSTALLATION) {
-			return installation();
-		}
-		return live(ownership == ConfigOwnership.CLIENT);
+	static ConfigSchemaMode forSchema(ConfigSchemaType type) {
+		return switch (type) {
+			case CLIENT -> installation();
+			case CLIENT_PER_WORLD -> live(true);
+			case SERVER -> live(false);
+		};
 	}
 
 	private static ConfigSchemaMode live(boolean waitForLocalization) {

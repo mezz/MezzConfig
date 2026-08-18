@@ -22,10 +22,10 @@ IConfigSchema schema = builder.build();
 ```
 
 `Configs.forMod(...)` uses the active mod loader's conventional config
-directory. Its overload accepting a `Path` lets a mod deliberately store its
-configuration under another root and supports tests or embedded applications.
-`build()` loads an installation-scoped schema before it returns, so its values
-can be consumed immediately.
+directory. `build()` loads a client schema before it returns, so its values can
+be consumed immediately. A schema builder already has a complete type and
+location when it is returned; there are no ownership, scope, or location
+setters on the builder.
 
 Build client and server schemas together from your mod's common initializer or
 mod constructor. On a dedicated server, client schema declarations remain safe
@@ -40,26 +40,35 @@ config-screen factories during client setup. A schema built later remains
 registered and usable through MezzConfig, but it is not included in those
 automatically generated screens.
 
-The builder factory selects who owns the values:
+Choose a factory for the complete schema behavior you need:
 
-- `createClientSchemaBuilder(...)` creates locally owned client settings.
-- `createServerSchemaBuilder(...)` creates server-owned settings.
+- `createClientSchemaBuilder(...)` creates client preferences that remain active across worlds and connections.
+- `createClientPerWorldSchemaBuilder(...)` creates separate client preferences for each world or server.
+- `createServerSchemaBuilder(...)` creates authoritative settings stored with the active world and synchronized to clients.
+- `createClientSchemaBuilderAtLocation(...)` creates an always-active client schema at one explicit file location.
 
-Both builders use `ConfigScope.INSTALLATION` by default. Installation schemas
-use one local file and are not synchronized:
+Automatically placed client schemas use one local file and are not synchronized:
 
 ```text
 config/<mod-id>/client/<file-name>
-config/<mod-id>/server/<file-name>
 ```
 
-Call `setScope(ConfigScope.WORLD)` before `build()` when values belong to a
-world. Ownership and scope are independent: a client-owned world schema stores
-local preferences separately for each singleplayer world or multiplayer
-server, while a server-owned world schema is authoritative for the active world
-and synchronized to connected clients.
+For an explicit client file, pass its complete path before the builder is
+created:
 
-Register server-owned world schemas on both physical sides from common setup.
+```java
+IConfigSchemaBuilder builder = configs.createClientSchemaBuilderAtLocation(
+	sharedConfigDirectory.resolve("example.ini"),
+	"example_mod.config.shared"
+);
+```
+
+MezzConfig does not append a mod id or file name to this path. Relative paths
+are captured as normalized absolute paths when the factory is called. Explicit
+locations are an alternative to automatic placement and cannot be combined
+with per-world behavior.
+
+Register server schemas on both physical sides from common setup.
 The dedicated or integrated server uses its file-backed authoritative instance;
 a remote client keeps the same schema in memory and activates it from server
 snapshots without reading or creating the server's world files.
@@ -103,9 +112,8 @@ they cannot observe a half-written correction.
 
 ### Server-authoritative schemas
 
-Use `IConfigRegistration.createServerSchemaBuilder(...)` with
-`setScope(ConfigScope.WORLD)` for settings
-whose effective value is owned by the server. This is distinct from a
+Use `IConfigRegistration.createServerSchemaBuilder(...)` for settings whose
+effective value is owned by the server. This is distinct from a
 client-world schema: a client-world schema merely selects a different local
 preference file for each connection, while a server schema is loaded, validated,
 persisted, and authorized by the server.
@@ -151,7 +159,7 @@ CompletableFuture<Void> result = schema.requestBatchUpdate(updater -> {
 ```
 
 For client schemas, the future is already complete after the normal local
-update. For remote server-owned world schemas, current values remain unchanged until an accepted
+update. For remote server schemas, current values remain unchanged until an accepted
 request returns in an authoritative snapshot. The future completes
 exceptionally when the player lacks permission, a value is rejected, the
 connection closes, a send fails, the server does not support the request, or no
@@ -159,7 +167,7 @@ response arrives within 15 seconds. At most 128 remote update requests may be
 pending at once. Every synchronized batch is fully decoded and validated before
 any value changes; if any known value is invalid, none of that batch is applied.
 Direct `IConfigValue.set(...)` and `IConfigSchema.batchUpdate(...)` calls are rejected
-for server-owned world schemas so an integrated client cannot bypass server authority.
+for server schemas so an integrated client cannot bypass server authority.
 
 The server-config channel is optional. Connecting to a server without it still
 succeeds; an attempted remote edit fails through its future. The current

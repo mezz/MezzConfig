@@ -4,7 +4,6 @@ import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.IConfigRegistration;
 import net.mezzdev.config.api.schema.IConfigSchema;
 
-import java.nio.file.Path;
 import java.util.Collection;
 
 /**
@@ -14,8 +13,6 @@ import java.util.Collection;
  */
 public interface IConfigProvider {
 	IConfigRegistration createRegistration(String modId);
-
-	IConfigRegistration createRegistration(Path configRootDir, String modId);
 
 	Collection<? extends IConfigSchema> getSchemas();
 }

@@ -2,7 +2,6 @@ package net.mezzdev.config.test.forge;
 
 import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.IConfigRegistration;
-import net.mezzdev.config.api.schema.ConfigScope;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
@@ -35,8 +34,7 @@ public final class ForgeTestMod {
 	}
 
 	private static void registerServerConfig(IConfigRegistration registration) {
-		IConfigSchemaBuilder schema = registration.createServerSchemaBuilder("server-test.ini", "mezz_config_test.forge.server")
-			.setScope(ConfigScope.WORLD);
+		IConfigSchemaBuilder schema = registration.createServerSchemaBuilder("server-test.ini", "mezz_config_test.forge.server");
 		IConfigCategoryBuilder general = schema.addCategory("general");
 		general.addBoolean("enabled", true)
 			.build();

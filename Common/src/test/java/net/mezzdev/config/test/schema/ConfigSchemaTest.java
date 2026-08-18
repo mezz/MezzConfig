@@ -3,8 +3,7 @@ package net.mezzdev.config.test.schema;
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
-import net.mezzdev.config.api.schema.ConfigOwnership;
-import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
@@ -952,8 +951,7 @@ public class ConfigSchemaTest {
 			"%s -> %s".formatted(change.oldValue(), change.newValue())
 		));
 
-		assertEquals(ConfigOwnership.SERVER, schema.getOwnership());
-		assertEquals(ConfigScope.WORLD, schema.getScope());
+		assertEquals(ConfigSchemaType.SERVER, schema.getType());
 		assertFalse(schema.isActive());
 		assertFalse(schema.canEdit());
 
@@ -1160,8 +1158,7 @@ public class ConfigSchemaTest {
 				scheduledTasks.add(command);
 				return CompletableFuture.completedFuture(null);
 			},
-			ConfigOwnership.SERVER,
-			ConfigScope.WORLD,
+			ConfigSchemaType.SERVER,
 			new ServerConfigKey("test_mod", "server.ini")
 		);
 		schema.register(null, false);
@@ -1390,8 +1387,7 @@ public class ConfigSchemaTest {
 			List.of(builders),
 			List.of(builders),
 			(command, delay) -> CompletableFuture.completedFuture(null),
-			ConfigOwnership.SERVER,
-			ConfigScope.WORLD,
+			ConfigSchemaType.SERVER,
 			new ServerConfigKey("test_mod", "server.ini")
 		);
 	}

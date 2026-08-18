@@ -8,7 +8,7 @@ registration.
 ## Using the API
 
 The stable integration surface is published from the `CommonApi` module. See
-the [API guide](CommonApi/README.md) for config schemas, ownership and scope,
+the [API guide](CommonApi/README.md) for config schema types and locations,
 custom serializers, editor hints, and sorting configs.
 
 MezzConfig currently targets Minecraft 1.21.1 and Java 21. Loader-specific

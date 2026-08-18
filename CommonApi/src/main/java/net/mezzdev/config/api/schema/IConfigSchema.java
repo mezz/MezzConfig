@@ -38,24 +38,18 @@ public interface IConfigSchema {
 	String getModId();
 
 	/**
-	 * Get who owns this schema's effective values.
+	 * Get this schema's ownership and location behavior.
 	 *
 	 * @since 0.3.0
 	 */
-	ConfigOwnership getOwnership();
-
-	/**
-	 * Get the context that selects this schema's backing file.
-	 *
-	 * @since 0.3.0
-	 */
-	ConfigScope getScope();
+	ConfigSchemaType getType();
 
 	/**
 	 * Return whether this schema currently has effective values for the current context.
 	 * <p>
-	 * Installation-scoped schemas are always active. World-scoped schemas are active while a world is available. A
-	 * server-owned world schema is also active on a client after it receives the server's authoritative snapshot.
+	 * Client schemas are active whenever client configs are available. Client-world schemas are active while a world or
+	 * server connection is available. A server schema is active on the server while a world is available and on a client
+	 * after it receives the server's authoritative snapshot.
 	 *
 	 * @since 0.2.0
 	 */
@@ -75,9 +69,10 @@ public interface IConfigSchema {
 	/**
 	 * Get the current path of this config schema.
 	 * <p>
-	 * Installation-scoped schemas always have a path. World-scoped schemas return an empty optional when no world is
-	 * available. A synchronized remote server schema also returns an empty optional because its backing file belongs to
-	 * the server; use {@link #isActive()} to distinguish that from an inactive schema.
+	 * Client schemas have a path whenever client configs are available. Client-world and locally authoritative server
+	 * schemas return an empty optional when no world is available. A synchronized remote server schema also returns an
+	 * empty optional because its backing file belongs to the server; use {@link #isActive()} to distinguish that from an
+	 * inactive schema.
 	 * <p>
 	 * Note that config values will read from this file automatically,
 	 * and updating config values will save the file automatically,
@@ -119,7 +114,7 @@ public interface IConfigSchema {
 	 *
 	 * @throws IllegalArgumentException if a value is invalid, cannot be safely serialized, or does not belong to this schema
 	 * @throws IllegalStateException if this context-specific schema is currently inactive
-	 * @throws IllegalStateException if this is a server-owned world schema; use
+	 * @throws IllegalStateException if this is a server schema; use
 	 * {@link #requestBatchUpdate(Consumer)} instead
 	 *
 	 * @since 0.1.0
@@ -131,11 +126,10 @@ public interface IConfigSchema {
 	 * Request several config value updates together.
 	 * <p>
 	 * For client-owned schemas, this has the same validation, persistence, and listener behavior as
-	 * {@link #batchUpdate(Consumer)} and returns an already-completed future. The same applies to installation-scoped
-	 * server-owned schemas. For a server-owned world schema, the values are sent to the server without changing the local
-	 * snapshot. The future completes after the server applies the accepted request and sends its authoritative result. It
-	 * completes exceptionally if the request cannot be sent, permission is denied, the server rejects a value, or the
-	 * server does not respond before the implementation's bounded request timeout.
+	 * {@link #batchUpdate(Consumer)} and returns an already-completed future. For a server schema, the values are sent to
+	 * the server without changing the local snapshot. The future completes after the server applies the accepted request
+	 * and sends its authoritative result. It completes exceptionally if the request cannot be sent, permission is denied,
+	 * the server rejects a value, or the server does not respond before the implementation's bounded request timeout.
 	 * <p>
 	 * Config editors should prefer this method so the same editing flow works for every schema.
 	 * Queued values are snapshotted and locally validated before the request is sent.

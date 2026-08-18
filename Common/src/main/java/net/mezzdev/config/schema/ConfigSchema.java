@@ -3,8 +3,7 @@ package net.mezzdev.config.schema;
 import com.google.gson.JsonElement;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
-import net.mezzdev.config.api.schema.ConfigOwnership;
-import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
@@ -54,8 +53,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	private final String modId;
 	private final ConfigSchemaPathResolver pathResolver;
-	private final ConfigOwnership ownership;
-	private final ConfigScope scope;
+	private final ConfigSchemaType type;
 	private final ConfigSchemaMode mode;
 	private final @Nullable ServerConfigKey serverKey;
 	private final List<ConfigCategory> categories;
@@ -155,8 +153,7 @@ public class ConfigSchema implements IConfigSchema {
 			categoryBuilders,
 			editorCategoryBuilders,
 			scheduler,
-			ConfigOwnership.CLIENT,
-			ConfigScope.INSTALLATION,
+			ConfigSchemaType.CLIENT,
 			null
 		);
 	}
@@ -167,19 +164,15 @@ public class ConfigSchema implements IConfigSchema {
 		List<ConfigCategoryBuilder> categoryBuilders,
 		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
 		DelayedTaskScheduler scheduler,
-		ConfigOwnership ownership,
-		ConfigScope scope,
+		ConfigSchemaType type,
 		@Nullable ServerConfigKey serverKey
 	) {
 		this.modId = validateModId(modId);
 		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
-		this.ownership = ErrorUtil.checkNotNull(ownership, "ownership");
-		this.scope = ErrorUtil.checkNotNull(scope, "scope");
-		this.mode = ConfigSchemaMode.forSchema(ownership, scope);
+		this.type = ErrorUtil.checkNotNull(type, "type");
+		this.mode = ConfigSchemaMode.forSchema(type);
 		this.serverKey = serverKey;
-		if (isSynchronizedServerSchema() != (serverKey != null)) {
-			throw new IllegalArgumentException("World-scoped server config schemas must have exactly one server key.");
-		}
+		validateServerKey(type, serverKey);
 		Map<ConfigCategoryBuilder, ConfigCategory> categoryMap = new IdentityHashMap<>();
 		Map<ConfigEditorCategoryBuilder, ConfigEditorCategory> editorCategoryMap = new IdentityHashMap<>();
 		List<ConfigCategory> categories = new ArrayList<>();
@@ -210,6 +203,12 @@ public class ConfigSchema implements IConfigSchema {
 			throw new IllegalArgumentException("modId must not be blank.");
 		}
 		return modId;
+	}
+
+	static void validateServerKey(ConfigSchemaType type, @Nullable ServerConfigKey serverKey) {
+		if ((type == ConfigSchemaType.SERVER) != (serverKey != null)) {
+			throw new IllegalArgumentException("Server config schemas must have exactly one server key.");
+		}
 	}
 
 	public synchronized void loadIfNeeded() {
@@ -946,17 +945,12 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public ConfigOwnership getOwnership() {
-		return ownership;
-	}
-
-	@Override
-	public ConfigScope getScope() {
-		return scope;
+	public ConfigSchemaType getType() {
+		return type;
 	}
 
 	private boolean isSynchronizedServerSchema() {
-		return ownership == ConfigOwnership.SERVER && scope == ConfigScope.WORLD;
+		return type == ConfigSchemaType.SERVER;
 	}
 
 	@Override
@@ -1002,7 +996,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	public synchronized <T> T getEffectiveValue(ConfigValue<T> configValue) {
 		loadIfNeeded();
-		if (scope == ConfigScope.WORLD && activePath == null && !remotelyActive) {
+		if (type != ConfigSchemaType.CLIENT && activePath == null && !remotelyActive) {
 			return configValue.getDefaultValue();
 		}
 		return configValue.getEffectiveValueWithoutLoading();
@@ -1010,7 +1004,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	public synchronized <T> T getPendingValue(ConfigValue<T> configValue) {
 		loadIfNeeded();
-		if (scope == ConfigScope.WORLD && activePath == null && !remotelyActive) {
+		if (type != ConfigSchemaType.CLIENT && activePath == null && !remotelyActive) {
 			return configValue.getDefaultValue();
 		}
 		return configValue.getPendingValueWithoutLoading();

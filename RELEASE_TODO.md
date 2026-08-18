@@ -9,9 +9,10 @@ mistaken for a requirement without supporting evidence.
 
 ## Decisions Already Made
 
-- `Configs.forMod(Path, String)` is a supported public feature. Mods may keep
-  configuration under an arbitrary root, including a global location outside
-  the Minecraft installation.
+- Client schemas may use an explicit complete file location, including a global
+  location outside the Minecraft installation. Explicit locations are selected
+  before a complete builder is returned and cannot be combined with automatic
+  per-world placement.
 - Both schema-level and value-scoped batch listeners are useful and will remain.
   They serve different subscription scopes described below.
 - Sorting will keep an easy string path and gain a supported generic path with
@@ -116,43 +117,30 @@ mistaken for a requirement without supporting evidence.
 
 ## P1 — Complete and Freeze the Public API
 
-### Support Arbitrary Configuration Roots Coherently
+### Support Explicit Client Config Locations Coherently
 
-- [ ] Fully specify and test `Configs.forMod(Path, String)` as a first-class
-      storage model.
+- [x] Make explicit client config locations a first-class builder factory.
 
-  **Reason:** Arbitrary roots are intentional, including global configuration
-  outside the Minecraft directory. The current implementation uses the custom
-  root for installation files, client-world files, server-world defaults, and
-  sorting files, but the complete layout and the deliberate world-save
-  exception are not yet captured as one stable contract.
+  **Reason:** A registration-wide custom root combined independently with
+  ownership and scope, creating unsupported or surprising combinations. A
+  complete explicit file location is now one concrete alternative to every
+  automatically placed schema type.
 
-  - [ ] Document that the supplied path is a configuration root and that
-        MezzConfig appends `<mod-id>` plus its ownership and scope directories.
-  - [ ] Document and test client installation files at
-        `<root>/<mod-id>/client/<file-name>`.
-  - [ ] Document and test server installation files at
-        `<root>/<mod-id>/server/<file-name>`.
-  - [ ] Document and test sorting files in the client installation namespace,
-        subject to shared path reservation.
-  - [ ] Document and test client-world default, local-world, and remote-server
-        files beneath `<root>/<mod-id>/client/world/...`.
-  - [ ] Document and test server-world defaults beneath
-        `<root>/<mod-id>/server/world/default/...`.
-  - [ ] Document that the active authoritative server-world file remains under
-        `<world>/serverconfig/<mod-id>/...` so it travels with the world; only
-        its distributable default comes from the arbitrary root.
-  - [ ] Define whether relative roots remain relative or are captured as
-        absolute paths at registration, and make `getPath`, watcher identity,
-        and duplicate detection follow that rule consistently.
-  - [ ] Preserve the rule that the root itself may be anywhere while `modId`
-        and `configFileName` cannot escape their owned directory beneath it.
-  - [ ] Document synchronous build failures and later watcher/save failures for
-        missing, read-only, disconnected, or otherwise unavailable external
-        roots.
-  - [ ] Test an absolute root outside the game directory, a relative root,
-        nested config file names, unavailable roots, and every ownership/scope
-        combination.
+  - [x] Replace mutable ownership/scope selection with concrete client,
+        client-world, and server builder factories.
+  - [x] Accept the complete file path in
+        `createClientSchemaBuilderAtLocation(Path, String)` without appending an
+        owned directory or file name.
+  - [x] Capture relative explicit locations as normalized absolute paths before
+        returning the builder.
+  - [x] Apply the same absolute path identity and collision checks to automatic
+        and explicit locations.
+  - [x] Preserve owned-directory traversal checks for automatically placed mod
+        ids and config file names while allowing explicit locations anywhere.
+  - [x] Test absolute and relative explicit locations, malformed and bounded
+        file recovery, unavailable files, and path collisions.
+  - [ ] Document later watcher/save failures for read-only, disconnected, or
+        otherwise temporarily unavailable explicit locations.
 
 ### Complete Generic Sorting Without Burdening String Callers
 
@@ -207,9 +195,9 @@ mistaken for a requirement without supporting evidence.
   - [ ] Correct the `IConfigSchema` Javadocs for inert client declarations on a
         dedicated server.
   - [ ] Add a compact behavior table to the API guide.
-  - [ ] Clarify that installation-scoped server settings belong to the local
-        process and are not synchronized from a connected server.
-  - [ ] Test active, editable, and path state for each supported combination.
+  - [x] Replace the invalid ownership/scope cross-product with concrete schema
+        types.
+  - [ ] Test active, editable, and path state for each supported schema type.
 
 ### Keep Both Listener Scopes and Make Them Discoverable
 
@@ -368,11 +356,11 @@ mistaken for a requirement without supporting evidence.
 
 - [ ] Update Javadocs and the API guide after the contracts above are settled.
 
-  **Reason:** Threading, custom-root storage, serializer failures, listener
+  **Reason:** Threading, explicit-location storage, serializer failures, listener
   scopes, asynchronous completion, and server snapshot rejection affect how
   callers safely use the API and must not be left as implementation details.
 
-  - [ ] Document arbitrary-root layouts and failure behavior.
+  - [ ] Document explicit-location failure behavior.
   - [ ] Document serializer requirements and diagnostics.
   - [x] Document thread and listener behavior.
   - [ ] Document update-stage completion and cancellation behavior.
@@ -391,8 +379,8 @@ identified above, not only internal helpers.
 - [ ] Test oversized snapshot rejection and confirm authoritative state never
       changes on failure.
 - [ ] Test throwing custom serializers and malformed-file recovery.
-- [ ] Test conventional and arbitrary roots across every ownership and scope.
-- [ ] Test schema, sorting, and cross-root path-collision rejection.
+- [ ] Test conventional and explicit locations across every supported schema type.
+- [ ] Test schema, sorting, and cross-location path-collision rejection.
 - [ ] Test category order and all listener scopes through public APIs.
 - [ ] Inspect generated jars and POMs and compile a standalone CommonApi
       consumer against the validated publication repository.

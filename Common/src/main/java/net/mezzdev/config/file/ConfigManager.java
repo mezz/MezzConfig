@@ -1,7 +1,6 @@
 package net.mezzdev.config.file;
 
-import net.mezzdev.config.api.schema.ConfigOwnership;
-import net.mezzdev.config.api.schema.ConfigScope;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.server.ServerConfigKey;
@@ -21,7 +20,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,7 +33,8 @@ public class ConfigManager {
 	private static final Duration SAVE_SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
 	private static final String SAVE_SCHEDULER_THREAD_NAME = "MezzConfig Save Scheduler";
 
-	private final Map<ConfigOwnership, FileWatcherRegistration> fileWatchers;
+	private final FileWatcherRegistration clientFileWatcher;
+	private final FileWatcherRegistration serverFileWatcher;
 	private final DelayedExecutor saveExecutor;
 	private final List<ConfigSchema> schemas = new ArrayList<>();
 	private final Map<RegistrationKey, ConfigSchema> schemasByKey = new LinkedHashMap<>();
@@ -72,17 +71,16 @@ public class ConfigManager {
 		fileWatcherThreadName = ErrorUtil.checkNotNull(fileWatcherThreadName, "fileWatcherThreadName");
 		clientFileWatcherSettings = ErrorUtil.checkNotNull(clientFileWatcherSettings, "clientFileWatcherSettings");
 		serverFileWatcherSettings = ErrorUtil.checkNotNull(serverFileWatcherSettings, "serverFileWatcherSettings");
-		this.fileWatchers = new EnumMap<>(ConfigOwnership.class);
-		this.fileWatchers.put(ConfigOwnership.CLIENT, new FileWatcherRegistration(
+		this.clientFileWatcher = new FileWatcherRegistration(
 			fileWatcherThreadName,
 			clientFileWatcherSettings,
-			ConfigOwnership.CLIENT
-		));
-		this.fileWatchers.put(ConfigOwnership.SERVER, new FileWatcherRegistration(
+			"client"
+		);
+		this.serverFileWatcher = new FileWatcherRegistration(
 			fileWatcherThreadName,
 			serverFileWatcherSettings,
-			ConfigOwnership.SERVER
-		));
+			"server"
+		);
 		this.logUntranslatedKeys = logUntranslatedKeys;
 		this.saveExecutor = new DelayedExecutor(SAVE_SHUTDOWN_TIMEOUT, SAVE_SCHEDULER_THREAD_NAME);
 		Runtime.getRuntime()
@@ -97,7 +95,7 @@ public class ConfigManager {
 		RegistrationKey key = reserve(schema);
 		boolean initialized = false;
 		try {
-			FileWatcher fileWatcher = getFileWatcher(schema.getOwnership());
+			FileWatcher fileWatcher = getFileWatcher(schema.getType());
 			schema.register(
 				fileWatcher,
 				logUntranslatedKeys,
@@ -112,7 +110,7 @@ public class ConfigManager {
 			}
 			throw e;
 		}
-		if (schema.getOwnership() == ConfigOwnership.SERVER && schema.getScope() == ConfigScope.WORLD) {
+		if (schema.getType() == ConfigSchemaType.SERVER) {
 			try {
 				ServerConfigRuntime.onServerSchemaRegistered(schema);
 			} catch (RuntimeException e) {
@@ -139,15 +137,17 @@ public class ConfigManager {
 	}
 
 	private static String getSchemaDescription(ConfigSchema schema) {
-		return "a %s %s config schema for mod '%s'".formatted(
-			schema.getOwnership().name().toLowerCase(Locale.ROOT),
-			schema.getScope().name().toLowerCase(Locale.ROOT),
+		return "a %s config schema for mod '%s'".formatted(
+			schema.getType().name().toLowerCase(Locale.ROOT),
 			schema.getModId()
 		);
 	}
 
-	private @Nullable FileWatcher getFileWatcher(ConfigOwnership ownership) {
-		return fileWatchers.get(ownership).getOrCreate();
+	private @Nullable FileWatcher getFileWatcher(ConfigSchemaType type) {
+		if (type == ConfigSchemaType.SERVER) {
+			return serverFileWatcher.getOrCreate();
+		}
+		return clientFileWatcher.getOrCreate();
 	}
 
 	private synchronized RegistrationKey reserve(ConfigSchema schema) {
@@ -173,30 +173,29 @@ public class ConfigManager {
 	}
 
 	private static RegistrationKey getRegistrationKey(ConfigSchema schema) {
-		if (schema.getOwnership() == ConfigOwnership.SERVER && schema.getScope() == ConfigScope.WORLD) {
-			return new RegistrationKey(schema.getOwnership(), schema.getScope(), schema.getServerKey());
+		if (schema.getType() == ConfigSchemaType.SERVER) {
+			return new RegistrationKey(schema.getType(), schema.getServerKey());
 		}
-		if (schema.getScope() == ConfigScope.INSTALLATION) {
+		if (schema.getType() == ConfigSchemaType.CLIENT) {
 			Path path = schema.getRegistrationPath()
-				.orElseThrow(() -> new IllegalArgumentException("Installation-scoped schemas must have a backing file."))
+				.orElseThrow(() -> new IllegalArgumentException("Client schemas must have a backing file."))
 				.toAbsolutePath()
 				.normalize();
-			return new RegistrationKey(schema.getOwnership(), schema.getScope(), path);
+			return new RegistrationKey(schema.getType(), path);
 		}
-		if (schema.getOwnership() == ConfigOwnership.CLIENT) {
+		if (schema.getType() == ConfigSchemaType.CLIENT_PER_WORLD) {
 			Path path = schema.getDefaultPath()
-				.orElseThrow(() -> new IllegalArgumentException("Client-owned world schemas must have a default file."))
+				.orElseThrow(() -> new IllegalArgumentException("Client-world schemas must have a default file."))
 				.toAbsolutePath()
 				.normalize();
-			return new RegistrationKey(schema.getOwnership(), schema.getScope(), path);
+			return new RegistrationKey(schema.getType(), path);
 		}
-		throw new IllegalArgumentException(
-			"Unsupported config schema ownership and scope: " + schema.getOwnership() + ", " + schema.getScope()
-		);
+		throw new IllegalArgumentException("Unsupported config schema type: " + schema.getType());
 	}
 
 	public void startWatching() {
-		fileWatchers.values().forEach(FileWatcherRegistration::start);
+		clientFileWatcher.start();
+		serverFileWatcher.start();
 	}
 
 	public void onWorldStarted() {
@@ -209,17 +208,12 @@ public class ConfigManager {
 
 	public Collection<ConfigSchema> getServerSchemas() {
 		return getConfigSchemaSnapshot().stream()
-			.filter(schema -> schema.getOwnership() == ConfigOwnership.SERVER)
-			.filter(schema -> schema.getScope() == ConfigScope.WORLD)
+			.filter(schema -> schema.getType() == ConfigSchemaType.SERVER)
 			.toList();
 	}
 
 	public synchronized Optional<ConfigSchema> getServerSchema(ServerConfigKey key) {
-		RegistrationKey registrationKey = new RegistrationKey(
-			ConfigOwnership.SERVER,
-			ConfigScope.WORLD,
-			key
-		);
+		RegistrationKey registrationKey = new RegistrationKey(ConfigSchemaType.SERVER, key);
 		return Optional.ofNullable(schemasByKey.get(registrationKey));
 	}
 
@@ -227,12 +221,12 @@ public class ConfigManager {
 		return List.copyOf(schemas);
 	}
 
-	private record RegistrationKey(ConfigOwnership ownership, ConfigScope scope, Object identity) {}
+	private record RegistrationKey(ConfigSchemaType type, Object identity) {}
 
 	private static final class FileWatcherRegistration {
 		private final String threadName;
 		private final ConfigFileWatcherSettings settings;
-		private final ConfigOwnership ownership;
+		private final String ownershipName;
 		private boolean initialized;
 		private boolean startRequested;
 		private @Nullable FileWatcher fileWatcher;
@@ -240,11 +234,11 @@ public class ConfigManager {
 		private FileWatcherRegistration(
 			String threadName,
 			ConfigFileWatcherSettings settings,
-			ConfigOwnership ownership
+			String ownershipName
 		) {
 			this.threadName = threadName;
 			this.settings = settings;
-			this.ownership = ownership;
+			this.ownershipName = ownershipName;
 		}
 
 		private synchronized @Nullable FileWatcher getOrCreate() {
@@ -270,17 +264,17 @@ public class ConfigManager {
 
 		private @Nullable FileWatcher createFileWatcher() {
 			if (!settings.enabled()) {
-				LOGGER.info("Automatic {} config file watching is disabled.", ownership);
+				LOGGER.info("Automatic {} config file watching is disabled.", ownershipName);
 				return null;
 			}
 			try {
 				return new FileWatcher(
-					threadName + " " + ownership,
+					threadName + " " + ownershipName,
 					settings.changeSettlingDelay(),
 					settings.missingDirectoryRetryInterval()
 				);
 			} catch (FileWatcherUnavailableException e) {
-				LOGGER.error("Automatic {} config file watching is unavailable.", ownership, e);
+				LOGGER.error("Automatic {} config file watching is unavailable.", ownershipName, e);
 				return null;
 			}
 		}
