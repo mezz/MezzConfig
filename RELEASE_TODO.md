@@ -8,5 +8,5 @@
 - [x] Replace dedicated listener interfaces with standard `Consumer` callbacks and add value- and schema-level pending-change listeners.
 - [x] Mark `ISortingConfig` `@ApiStatus.NonExtendable` and document it as a runtime-owned type.
 - [x] Compare `CommonApi` against the latest released API, resolve that baseline from the release repository, and fail when a post-initial-release baseline is missing.
-- [ ] Run the NeoForge server GameTests in CI so authoritative config lifecycle and synchronization behavior are exercised before release.
+- [x] Run the NeoForge server GameTests in CI so authoritative config lifecycle and synchronization behavior are exercised before release.
 - [ ] Add concise repository and dependency instructions for API consumers to the project README.

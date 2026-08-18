@@ -28,3 +28,6 @@ jobs:
 
       - name: Validate build, API, documentation, and publications
         run: ./gradlew --stacktrace spotlessCheck build :CommonApi:javadoc :CommonApi:checkJarCompatibility validatePublishing
+
+      - name: Run NeoForge server GameTests
+        run: ./gradlew --stacktrace :NeoForge:runGameTestServer
