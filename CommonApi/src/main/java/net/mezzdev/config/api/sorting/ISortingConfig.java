@@ -1,6 +1,7 @@
 package net.mezzdev.config.api.sorting;
 
 import net.mezzdev.config.api.IConfigRegistration;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Collection;
@@ -12,7 +13,6 @@ import java.util.List;
  * <p>
  * Create and register a string sort order here:
  * {@link IConfigRegistration#createSortingConfig(String, Comparator, boolean)}.
- * You can also pass your own implementation to APIs that explicitly accept {@link ISortingConfig}.
  * <p>
  * Values must be non-null and effectively immutable while held by the sorting config. Their
  * {@link Object#equals(Object)} and {@link Object#hashCode()} results must remain stable, because equality identifies
@@ -22,6 +22,7 @@ import java.util.List;
  *
  * @since 0.1.0
  */
+@ApiStatus.NonExtendable
 public interface ISortingConfig<T> {
 	/**
 	 * Get the sorted visible values from the given complete value set.

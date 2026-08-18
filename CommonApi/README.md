@@ -316,8 +316,10 @@ integration layer.
 ## Sorting configs
 
 Use `IConfigRegistration.createSortingConfig(...)` for string-backed sort-order
-files. Saved sort orders can either preserve missing values by appending them
-from the default comparator, or allow values to be removed.
+files. `ISortingConfig` instances are created and owned by the MezzConfig
+runtime; integrations consume them but do not implement the interface. Saved
+sort orders can either preserve missing values by appending them from the
+default comparator, or allow values to be removed.
 
 Sort-order files are installation-scoped under
 `config/<mod-id>/client/<file-name>`. The file is generated the first time the
