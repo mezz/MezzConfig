@@ -20,8 +20,7 @@ import java.util.function.Consumer;
  * Add a value to your category with the add methods on {@link IConfigCategoryBuilder}.
  * Get registered values here: {@link IConfigCategory#getConfigValues()}.
  * <p>
- * Listener callbacks run synchronously on the thread applying the change; MezzConfig does not dispatch them to another
- * thread. A runtime exception from one callback is logged and does not prevent persistence or later callbacks.
+ * Runtime methods are thread-safe. Listener behavior follows {@link IConfigSchema}.
  *
  * @param <T> an effectively immutable value type with stable {@link Object#equals(Object)} behavior
  *

@@ -302,11 +302,10 @@ unchanged value. It throws `IllegalArgumentException` for invalid values and
 Config editor integrations should normally use `requestBatchUpdate(...)`
 instead, because it also handles server-authoritative schemas.
 
-Listener registration returns an unsubscribe callback. Each owner should retain
-and invoke its callbacks during teardown. Listeners run synchronously on the
-thread applying the change; a failing listener is logged without preventing
-persistence or later listeners from running. Listener parameters use the JDK
-`Consumer` type; no MezzConfig-specific listener types are required.
+Built schemas, values, and sorting configs are thread-safe; batches are atomic,
+but concurrent operations are unordered. Listeners run on the applying thread,
+update futures have no fixed completion thread, and builders are not thread-safe.
+Retain listener removal callbacks for teardown; listener failures are isolated.
 
 The core API exposes serialization, validation, storage names, localization
 keys, lightweight editor category hints, and edit-mode hints. GUI-specific

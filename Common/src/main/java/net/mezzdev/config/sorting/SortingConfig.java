@@ -20,6 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class SortingConfig implements ISortingConfig<String> {
 	private static final Logger LOGGER = LogManager.getLogger();
@@ -32,7 +33,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 	private final @Nullable Path path;
 	private final Comparator<String> defaultSortOrder;
 	private final boolean allowsRemovingValues;
-	private final List<Runnable> changeListeners = new ArrayList<>();
+	private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 	private List<String> lastAllValues = List.of();
 	@Nullable
 	private SavedValues savedValues;
@@ -78,7 +79,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	@Override
-	public List<String> getSortedValues(Collection<String> allValues) {
+	public synchronized List<String> getSortedValues(Collection<String> allValues) {
 		List<String> allValuesSnapshot = getDistinctValues(allValues, "allValues");
 		writeDefaultIfMissing(allValuesSnapshot);
 		SavedValues previousSavedValues = getSavedValues();
@@ -92,14 +93,14 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	@Override
-	public List<String> getDefaultSortedValues(Collection<String> allValues) {
+	public synchronized List<String> getDefaultSortedValues(Collection<String> allValues) {
 		return getDistinctValues(allValues, "allValues").stream()
 			.sorted(defaultSortOrder)
 			.toList();
 	}
 
 	@Override
-	public boolean setSortedValues(List<String> sortedValues) {
+	public synchronized boolean setSortedValues(List<String> sortedValues) {
 		Objects.requireNonNull(sortedValues, "sortedValues");
 		List<String> sortedValuesCopy = copySortedValues(sortedValues);
 		SavedValues previousSavedValues = getSavedValues();
@@ -417,14 +418,14 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	@Override
-	public Comparator<String> getComparator(Collection<String> allValues) {
+	public synchronized Comparator<String> getComparator(Collection<String> allValues) {
 		List<String> sortedValues = getSortedValues(allValues);
 		Comparator<String> savedOrder = Comparator.comparingInt(value -> indexOfSort(sortedValues.indexOf(value)));
 		return savedOrder.thenComparing(defaultSortOrder);
 	}
 
 	@Override
-	public boolean isVisible(Collection<String> allValues, String value) {
+	public synchronized boolean isVisible(Collection<String> allValues, String value) {
 		Objects.requireNonNull(value, "value");
 		return getSortedValues(allValues).contains(value);
 	}
@@ -442,8 +443,7 @@ public final class SortingConfig implements ISortingConfig<String> {
 	}
 
 	private void notifyListeners() {
-		List<Runnable> listeners = List.copyOf(changeListeners);
-		for (Runnable listener : listeners) {
+		for (Runnable listener : changeListeners) {
 			try {
 				listener.run();
 			} catch (RuntimeException e) {

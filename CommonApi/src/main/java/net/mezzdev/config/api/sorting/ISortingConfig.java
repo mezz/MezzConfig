@@ -17,6 +17,9 @@ import java.util.List;
  * Values must be non-null and effectively immutable while held by the sorting config. Their
  * {@link Object#equals(Object)} and {@link Object#hashCode()} results must remain stable, because equality identifies
  * the same sortable value across saved preferences and runtime value collections.
+ * <p>
+ * Methods are thread-safe, but concurrent operations have no defined order. Listeners run synchronously after an update
+ * is committed.
  *
  * @param <T> effectively immutable value type with stable equality and hash codes
  *
@@ -99,8 +102,8 @@ public interface ISortingConfig<T> {
 	 * Register a callback invoked when this sort order changes.
 	 * <p>
 	 * Callbacks run synchronously on the thread calling {@link #setSortedValues(List)}, after the new in-memory order is
-	 * committed and persistence has been attempted. A runtime exception from one callback is logged and does not
-	 * prevent later callbacks from running.
+	 * committed and persistence has been attempted. Registration and removal are thread-safe. A runtime exception is logged
+	 * without preventing later callbacks.
 	 *
 	 * @param listener callback to run after the sort order changes
 	 * @return a callback that removes this listener

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -35,14 +36,20 @@ public class ServerConfigRuntimeTest {
 			List.of(new ConfigValueUpdate<>(testSchema.enabled(), false))
 		);
 		AtomicInteger completions = new AtomicInteger();
-		future.whenComplete((ignored, throwable) -> completions.incrementAndGet());
+		AtomicReference<Thread> completionThread = new AtomicReference<>();
+		future.whenComplete((ignored, throwable) -> {
+			completions.incrementAndGet();
+			completionThread.set(Thread.currentThread());
+		});
 
 		assertFalse(future.isDone());
+		Thread timeoutThread = Thread.currentThread();
 		ServerConfigRuntime.expireClientRequests(Long.MAX_VALUE);
 
 		CompletionException exception = assertThrows(CompletionException.class, future::join);
 		assertTrue(exception.getCause().getMessage().contains("Timed out"));
 		assertEquals(1, completions.get());
+		assertEquals(timeoutThread, completionThread.get());
 		ServerConfigRuntime.onClientDisconnect();
 		assertEquals(1, completions.get());
 	}

@@ -22,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -36,10 +37,10 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	private final ConfigValueRestartRequirement restartRequirement;
 	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders;
 	private List<ConfigEditorCategory> editorCategories = List.of();
-	private @Nullable List<Consumer<? super IAppliedConfigValueChange<T>>> listeners;
-	private @Nullable List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> batchListeners;
-	private @Nullable List<Consumer<? super IAppliedConfigValueChange<T>>> pendingListeners;
-	private @Nullable List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> pendingBatchListeners;
+	private final List<Consumer<? super IAppliedConfigValueChange<T>>> listeners = new CopyOnWriteArrayList<>();
+	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> batchListeners = new CopyOnWriteArrayList<>();
+	private final List<Consumer<? super IAppliedConfigValueChange<T>>> pendingListeners = new CopyOnWriteArrayList<>();
+	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> pendingBatchListeners = new CopyOnWriteArrayList<>();
 	private volatile T effectiveValue;
 	private volatile T pendingValue;
 	@Nullable
@@ -347,48 +348,36 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 
 	public void notifyListeners(List<? extends AppliedConfigValueChange<?>> changes) {
 		AppliedConfigValueChange<T> change = getChange(changes);
-		if (listeners != null) {
-			List<Consumer<? super IAppliedConfigValueChange<T>>> listeners = List.copyOf(this.listeners);
-			for (Consumer<? super IAppliedConfigValueChange<T>> listener : listeners) {
-				try {
-					listener.accept(change);
-				} catch (RuntimeException e) {
-					LOGGER.error("Config value listener failed for '{}'.", name, e);
-				}
+		for (Consumer<? super IAppliedConfigValueChange<T>> listener : listeners) {
+			try {
+				listener.accept(change);
+			} catch (RuntimeException e) {
+				LOGGER.error("Config value listener failed for '{}'.", name, e);
 			}
 		}
-		if (batchListeners != null) {
-			List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> batchListeners = List.copyOf(this.batchListeners);
-			for (Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener : batchListeners) {
-				try {
-					listener.accept(changes);
-				} catch (RuntimeException e) {
-					LOGGER.error("Config value batch listener failed for '{}'.", name, e);
-				}
+		for (Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener : batchListeners) {
+			try {
+				listener.accept(changes);
+			} catch (RuntimeException e) {
+				LOGGER.error("Config value batch listener failed for '{}'.", name, e);
 			}
 		}
 	}
 
 	private void notifyPendingListeners(List<? extends AppliedConfigValueChange<?>> changes) {
 		AppliedConfigValueChange<T> change = getChange(changes);
-		if (pendingListeners != null) {
-			List<Consumer<? super IAppliedConfigValueChange<T>>> listeners = List.copyOf(this.pendingListeners);
-			for (Consumer<? super IAppliedConfigValueChange<T>> listener : listeners) {
-				try {
-					listener.accept(change);
-				} catch (RuntimeException e) {
-					LOGGER.error("Pending config value listener failed for '{}'.", name, e);
-				}
+		for (Consumer<? super IAppliedConfigValueChange<T>> listener : pendingListeners) {
+			try {
+				listener.accept(change);
+			} catch (RuntimeException e) {
+				LOGGER.error("Pending config value listener failed for '{}'.", name, e);
 			}
 		}
-		if (pendingBatchListeners != null) {
-			List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> listeners = List.copyOf(this.pendingBatchListeners);
-			for (Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener : listeners) {
-				try {
-					listener.accept(changes);
-				} catch (RuntimeException e) {
-					LOGGER.error("Pending config value batch listener failed for '{}'.", name, e);
-				}
+		for (Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener : pendingBatchListeners) {
+			try {
+				listener.accept(changes);
+			} catch (RuntimeException e) {
+				LOGGER.error("Pending config value batch listener failed for '{}'.", name, e);
 			}
 		}
 	}
@@ -412,56 +401,28 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	@Override
 	public Runnable addListener(Consumer<? super IAppliedConfigValueChange<T>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		if (this.listeners == null) {
-			this.listeners = new ArrayList<>();
-		}
 		this.listeners.add(listener);
-		return () -> {
-			if (this.listeners != null) {
-				this.listeners.remove(listener);
-			}
-		};
+		return () -> this.listeners.remove(listener);
 	}
 
 	@Override
 	public Runnable addPendingListener(Consumer<? super IAppliedConfigValueChange<T>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		if (this.pendingListeners == null) {
-			this.pendingListeners = new ArrayList<>();
-		}
 		this.pendingListeners.add(listener);
-		return () -> {
-			if (this.pendingListeners != null) {
-				this.pendingListeners.remove(listener);
-			}
-		};
+		return () -> this.pendingListeners.remove(listener);
 	}
 
 	@Override
 	public Runnable addBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		if (this.batchListeners == null) {
-			this.batchListeners = new ArrayList<>();
-		}
 		this.batchListeners.add(listener);
-		return () -> {
-			if (this.batchListeners != null) {
-				this.batchListeners.remove(listener);
-			}
-		};
+		return () -> this.batchListeners.remove(listener);
 	}
 
 	@Override
 	public Runnable addPendingBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		if (this.pendingBatchListeners == null) {
-			this.pendingBatchListeners = new ArrayList<>();
-		}
 		this.pendingBatchListeners.add(listener);
-		return () -> {
-			if (this.pendingBatchListeners != null) {
-				this.pendingBatchListeners.remove(listener);
-			}
-		};
+		return () -> this.pendingBatchListeners.remove(listener);
 	}
 }

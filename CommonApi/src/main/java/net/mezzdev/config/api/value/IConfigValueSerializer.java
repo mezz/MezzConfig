@@ -20,6 +20,7 @@ import java.util.Optional;
  * Config values must be effectively immutable while held by MezzConfig, and their {@link Object#equals(Object)} result
  * must remain stable. Custom serializers must return immutable values from {@link #deserialize(String)}, and callers
  * must not pass mutable values to config value builders or updates.
+ * Shared custom serializer instances must be thread-safe.
  *
  * @param <T> effectively immutable value type with stable equality
  *

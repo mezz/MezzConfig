@@ -11,6 +11,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,6 +32,37 @@ public class SortingConfigTest {
 		assertTrue(sortingConfig.setSortedValues(List.of("second")));
 		assertEquals(List.of("second"), sortingConfig.getSortedValues(List.of("first", "second")));
 		assertFalse(sortingConfig.isVisible(List.of("first", "second"), "first"));
+	}
+
+	@Test
+	public void concurrentUpdatesLeaveACompleteSortOrder() throws Exception {
+		SortingConfig sortingConfig = SortingConfig.inMemory(Comparator.naturalOrder(), false);
+		List<String> allValues = List.of("first", "second", "third");
+		List<String> firstOrder = List.of("second", "first", "third");
+		List<String> secondOrder = List.of("third", "second", "first");
+		assertEquals(allValues, sortingConfig.getSortedValues(allValues));
+		AtomicInteger notifications = new AtomicInteger();
+		sortingConfig.addChangeListener(notifications::incrementAndGet);
+		CountDownLatch start = new CountDownLatch(1);
+
+		try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+			Future<Boolean> firstUpdate = executor.submit(() -> {
+				start.await();
+				return sortingConfig.setSortedValues(firstOrder);
+			});
+			Future<Boolean> secondUpdate = executor.submit(() -> {
+				start.await();
+				return sortingConfig.setSortedValues(secondOrder);
+			});
+			start.countDown();
+
+			assertTrue(firstUpdate.get(5, TimeUnit.SECONDS));
+			assertTrue(secondUpdate.get(5, TimeUnit.SECONDS));
+		}
+
+		assertEquals(2, notifications.get());
+		List<String> savedOrder = sortingConfig.getSortedValues(allValues);
+		assertTrue(savedOrder.equals(firstOrder) || savedOrder.equals(secondOrder));
 	}
 
 	@Test

@@ -39,9 +39,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 public class ConfigSchema implements IConfigSchema {
@@ -67,8 +68,8 @@ public class ConfigSchema implements IConfigSchema {
 	private @Nullable Path pendingSavePath;
 	private @Nullable Runnable removeDefaultFileWatcherCallback;
 	private @Nullable Runnable removeFileWatcherCallback;
-	private @Nullable List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> listeners;
-	private @Nullable List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> pendingListeners;
+	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> listeners = new CopyOnWriteArrayList<>();
+	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> pendingListeners = new CopyOnWriteArrayList<>();
 	private boolean registered;
 	private boolean restartValuesInitialized;
 	private boolean logUntranslatedKeys;
@@ -208,7 +209,7 @@ public class ConfigSchema implements IConfigSchema {
 		return modId;
 	}
 
-	public void loadIfNeeded() {
+	public synchronized void loadIfNeeded() {
 		LoadResult loadResult = loadIfNeededWithoutNotifying();
 		notifyChanges(loadResult.effectiveChanges(), loadResult.pendingChanges());
 		InitialSave initialSave = loadResult.initialSave();
@@ -517,7 +518,7 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
-	private void saveAfterLocalizationLoads(Path path, int attempt) {
+	private synchronized void saveAfterLocalizationLoads(Path path, int attempt) {
 		if (!Objects.equals(path, activePath) && !Objects.equals(path, pendingSavePath)) {
 			return;
 		}
@@ -536,7 +537,7 @@ public class ConfigSchema implements IConfigSchema {
 		delayedSave.run(() -> saveAfterLocalizationLoads(path, attempt + 1));
 	}
 
-	private void saveInitialFileAfterLocalizationLoads(InitialSave initialSave, int attempt) {
+	private synchronized void saveInitialFileAfterLocalizationLoads(InitialSave initialSave, int attempt) {
 		Path path = initialSave.path();
 		if (initialSave.defaults()) {
 			if (!Objects.equals(path, activeDefaultPath) || Files.exists(path)) {
@@ -616,7 +617,7 @@ public class ConfigSchema implements IConfigSchema {
 		ConfigTranslationChecker.logUntranslatedKeys(path, editorCategories, categories);
 	}
 
-	public void markDirty() {
+	public synchronized void markDirty() {
 		Path path = activePath;
 		if (path == null) {
 			return;
@@ -626,7 +627,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public List<? extends IAppliedConfigValueChange<?>> batchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
+	public synchronized List<? extends IAppliedConfigValueChange<?>> batchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
 		if (isSynchronizedServerSchema()) {
 			throw new IllegalStateException("Server config schemas must be updated through requestBatchUpdate.");
 		}
@@ -635,7 +636,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public CompletableFuture<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
+	public synchronized CompletableFuture<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
 		ConfigBatchUpdater updater = createBatchUpdater(updateBatch);
 		List<ConfigValueUpdate<?>> updates = updater.getUpdates();
 		if (!isSynchronizedServerSchema()) {
@@ -667,7 +668,7 @@ public class ConfigSchema implements IConfigSchema {
 		return updater;
 	}
 
-	List<AppliedConfigValueChange<?>> applyBatchUpdates(List<? extends ConfigValueUpdate<?>> updates) {
+	synchronized List<AppliedConfigValueChange<?>> applyBatchUpdates(List<? extends ConfigValueUpdate<?>> updates) {
 		ErrorUtil.checkNotNull(updates, "updates");
 		if (updates.isEmpty()) {
 			return List.of();
@@ -746,29 +747,15 @@ public class ConfigSchema implements IConfigSchema {
 	@Override
 	public Runnable addListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		if (this.listeners == null) {
-			this.listeners = new ArrayList<>();
-		}
 		this.listeners.add(listener);
-		return () -> {
-			if (this.listeners != null) {
-				this.listeners.remove(listener);
-			}
-		};
+		return () -> this.listeners.remove(listener);
 	}
 
 	@Override
 	public Runnable addPendingListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		if (this.pendingListeners == null) {
-			this.pendingListeners = new ArrayList<>();
-		}
 		this.pendingListeners.add(listener);
-		return () -> {
-			if (this.pendingListeners != null) {
-				this.pendingListeners.remove(listener);
-			}
-		};
+		return () -> this.pendingListeners.remove(listener);
 	}
 
 	private void notifyChanges(
@@ -791,17 +778,14 @@ public class ConfigSchema implements IConfigSchema {
 
 	private void notifyListeners(
 		List<? extends IAppliedConfigValueChange<?>> changes,
-		@Nullable List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> registeredListeners,
+		List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> registeredListeners,
 		String description
 	) {
-		if (registeredListeners != null) {
-			List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> listeners = List.copyOf(registeredListeners);
-			for (Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener : listeners) {
-				try {
-					listener.accept(changes);
-				} catch (RuntimeException e) {
-					LOGGER.error("{} listener failed for '{}'.", description, activePath, e);
-				}
+		for (Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener : registeredListeners) {
+			try {
+				listener.accept(changes);
+			} catch (RuntimeException e) {
+				LOGGER.error("{} listener failed for '{}'.", description, activePath, e);
 			}
 		}
 	}
@@ -836,13 +820,13 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public boolean isActive() {
+	public synchronized boolean isActive() {
 		loadIfNeeded();
 		return activePath != null || (isSynchronizedServerSchema() && remotelyActive);
 	}
 
 	@Override
-	public boolean canEdit() {
+	public synchronized boolean canEdit() {
 		if (isSynchronizedServerSchema()) {
 			return isActive() && (activePath != null || remoteCanEdit);
 		}
@@ -850,17 +834,17 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public Optional<Path> getPath() {
+	public synchronized Optional<Path> getPath() {
 		loadIfNeeded();
 		return Optional.ofNullable(activePath);
 	}
 
-	public Optional<Path> getRegistrationPath() {
+	public synchronized Optional<Path> getRegistrationPath() {
 		return pathResolver.resolvePath()
 			.map(Path::normalize);
 	}
 
-	public Optional<Path> getDefaultPath() {
+	public synchronized Optional<Path> getDefaultPath() {
 		return pathResolver.resolveDefaultPath()
 			.map(Path::normalize);
 	}
@@ -876,7 +860,7 @@ public class ConfigSchema implements IConfigSchema {
 		return changeVersion.get();
 	}
 
-	public <T> T getEffectiveValue(ConfigValue<T> configValue) {
+	public synchronized <T> T getEffectiveValue(ConfigValue<T> configValue) {
 		loadIfNeeded();
 		if (scope == ConfigScope.WORLD && activePath == null && !remotelyActive) {
 			return configValue.getDefaultValue();
@@ -884,7 +868,7 @@ public class ConfigSchema implements IConfigSchema {
 		return configValue.getEffectiveValueWithoutLoading();
 	}
 
-	public <T> T getPendingValue(ConfigValue<T> configValue) {
+	public synchronized <T> T getPendingValue(ConfigValue<T> configValue) {
 		loadIfNeeded();
 		if (scope == ConfigScope.WORLD && activePath == null && !remotelyActive) {
 			return configValue.getDefaultValue();
@@ -892,7 +876,7 @@ public class ConfigSchema implements IConfigSchema {
 		return configValue.getPendingValueWithoutLoading();
 	}
 
-	public List<ServerConfigValueData> serializeValues() {
+	public synchronized List<ServerConfigValueData> serializeValues() {
 		loadIfNeeded();
 		List<ServerConfigValueData> values = new ArrayList<>();
 		for (ConfigCategory category : categories) {
@@ -903,7 +887,7 @@ public class ConfigSchema implements IConfigSchema {
 		return List.copyOf(values);
 	}
 
-	public List<ServerConfigValueData> serializeUpdates(List<? extends ConfigValueUpdate<?>> updates) {
+	public synchronized List<ServerConfigValueData> serializeUpdates(List<? extends ConfigValueUpdate<?>> updates) {
 		validateUpdates(updates);
 		List<ServerConfigValueData> values = new ArrayList<>();
 		for (ConfigValueUpdate<?> update : updates) {
@@ -941,7 +925,7 @@ public class ConfigSchema implements IConfigSchema {
 		);
 	}
 
-	public List<ConfigValueUpdate<?>> deserializeUpdates(List<ServerConfigValueData> values, boolean allowSchemaDifferences) {
+	public synchronized List<ConfigValueUpdate<?>> deserializeUpdates(List<ServerConfigValueData> values, boolean allowSchemaDifferences) {
 		List<ConfigValueUpdate<?>> updates = new ArrayList<>();
 		for (ResolvedServerConfigValue value : resolveServerValues(values, allowSchemaDifferences)) {
 			updates.add(deserializeUpdate(value.configValue(), value.data().serializedPendingValue()));
@@ -1000,7 +984,7 @@ public class ConfigSchema implements IConfigSchema {
 		return new ConfigValueUpdate<>(configValue, result.getResult().orElseThrow());
 	}
 
-	public List<AppliedConfigValueChange<?>> applyServerUpdates(List<? extends ConfigValueUpdate<?>> updates) {
+	public synchronized List<AppliedConfigValueChange<?>> applyServerUpdates(List<? extends ConfigValueUpdate<?>> updates) {
 		if (!isSynchronizedServerSchema()) {
 			throw new IllegalStateException("Config schema is not server-owned.");
 		}

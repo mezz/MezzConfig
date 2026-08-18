@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -65,13 +66,17 @@ public class ConfigManagerTest {
 		manager.startWatching();
 		manager.registerSchema(client.schema());
 		manager.registerSchema(server.schema());
+		AtomicReference<Thread> reloadListenerThread = new AtomicReference<>();
+		server.enabled().addListener(ignored -> reloadListenerThread.set(Thread.currentThread()));
 
 		Files.writeString(clientPath, "[general]\nenabled = false\n");
 		Files.writeString(serverPath, "[general]\nenabled = false\n");
 
+		Thread readingThread = Thread.currentThread();
 		awaitValue(server.enabled(), false);
 		assertTrue(client.enabled().getValue());
 		assertFalse(server.enabled().getValue());
+		assertSame(readingThread, reloadListenerThread.get());
 	}
 
 	@Test

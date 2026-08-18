@@ -43,6 +43,11 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -597,6 +602,64 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void schemaListenerCanBeRemovedFromAnotherThread() throws Exception {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		AtomicInteger notifications = new AtomicInteger();
+		Runnable unsubscribe = schema.addListener(ignored -> notifications.incrementAndGet());
+
+		try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+			executor.submit(unsubscribe)
+				.get(5, TimeUnit.SECONDS);
+		}
+		assertTrue(enabled.set(false));
+
+		assertEquals(0, notifications.get());
+	}
+
+	@Test
+	public void concurrentSchemaBatchesRemainAtomic() throws Exception {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Integer> first = builder.addInteger("first", 0, 0, 2)
+			.build();
+		ConfigValue<Integer> second = builder.addInteger("second", 0, 0, 2)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		List<List<String>> notifiedBatches = new java.util.concurrent.CopyOnWriteArrayList<>();
+		schema.addListener(changes -> notifiedBatches.add(changes.stream()
+			.map(change -> change.configValue().getName())
+			.toList()));
+		CountDownLatch start = new CountDownLatch(1);
+
+		try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+			Future<?> firstBatch = executor.submit(() -> {
+				awaitLatch(start);
+				schema.batchUpdate(updater -> {
+					updater.set(first, 1);
+					updater.set(second, 1);
+				});
+			});
+			Future<?> secondBatch = executor.submit(() -> {
+				awaitLatch(start);
+				schema.batchUpdate(updater -> {
+					updater.set(first, 2);
+					updater.set(second, 2);
+				});
+			});
+			start.countDown();
+			firstBatch.get(5, TimeUnit.SECONDS);
+			secondBatch.get(5, TimeUnit.SECONDS);
+		}
+
+		assertEquals(2, notifiedBatches.size());
+		assertTrue(notifiedBatches.stream().allMatch(names -> names.equals(List.of("first", "second"))));
+		assertEquals(first.getValue(), second.getValue());
+		assertTrue(first.getValue() == 1 || first.getValue() == 2);
+	}
+
+	@Test
 	public void schemaListenerFailuresAreIsolatedAfterPersistenceIsScheduled(@TempDir Path tempDir) {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
@@ -933,6 +996,28 @@ public class ConfigSchemaTest {
 		assertTrue(enabled.getValue());
 		assertEquals(1, count.getValue());
 		assertEquals(List.of("true -> false", "false -> true"), pendingRestartChanges);
+	}
+
+	@Test
+	public void remoteSnapshotListenersRunOnTheApplyingThread() throws Exception {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createRemoteServerSchema(builder);
+		AtomicReference<Thread> listenerThread = new AtomicReference<>();
+		enabled.addListener(ignored -> listenerThread.set(Thread.currentThread()));
+
+		try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+			Future<Thread> update = executor.submit(() -> {
+				Thread applyingThread = Thread.currentThread();
+				schema.applyRemoteSnapshot(List.of(
+					new ServerConfigValueData("category", "enabled", "false")
+				), true);
+				return applyingThread;
+			});
+
+			assertSame(update.get(5, TimeUnit.SECONDS), listenerThread.get());
+		}
 	}
 
 	@Test
@@ -1283,6 +1368,17 @@ public class ConfigSchemaTest {
 				.run();
 		}
 		assertTrue(scheduledTasks.isEmpty(), "Scheduled config saves did not settle.");
+	}
+
+	private static void awaitLatch(CountDownLatch latch) {
+		try {
+			if (!latch.await(5, TimeUnit.SECONDS)) {
+				throw new IllegalStateException("Timed out waiting for test synchronization.");
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("Interrupted while waiting for test synchronization.", e);
+		}
 	}
 
 	private static List<String> getCategoryNames(List<? extends IConfigEditorCategory> categories) {

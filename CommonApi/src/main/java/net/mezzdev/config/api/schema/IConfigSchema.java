@@ -20,6 +20,9 @@ import java.util.function.Consumer;
  * <p>
  * Create and register your schema here: {@link IConfigSchemaBuilder#build()}.
  * Get registered schemas here: {@link Configs#getSchemas()}.
+ * <p>
+ * Runtime methods are thread-safe and batches are atomic; concurrent operations are unordered. Listeners run
+ * synchronously on the applying thread and are not dispatched to a game thread.
  *
  * @since 0.1.0
  */
@@ -136,6 +139,7 @@ public interface IConfigSchema {
 	 * <p>
 	 * Config editors should prefer this method so the same editing flow works for every schema.
 	 * Queued values are snapshotted and locally validated before the request is sent.
+	 * No completion thread is guaranteed; use an explicit executor for dependent work that has thread affinity.
 	 *
 	 * @param updateBatch callback that queues updates
 	 * @return completion of the local update or server request
@@ -150,8 +154,7 @@ public interface IConfigSchema {
 	/**
 	 * Add a listener that is called with every batch of effective-value changes applied to this schema. Pending changes do
 	 * not invoke this listener.
-	 * Callbacks run synchronously on the thread applying the batch. A runtime exception from one callback is logged and
-	 * does not prevent persistence or later callbacks.
+	 * Registration and removal are thread-safe. A runtime exception is logged without preventing later callbacks.
 	 *
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener
