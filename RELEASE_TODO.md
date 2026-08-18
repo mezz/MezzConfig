@@ -280,17 +280,17 @@ mistaken for a requirement without supporting evidence.
 
 ### Make the Publishing Pipeline Run the Full Release Gate
 
-- [ ] Bring the Jenkins publishing path up to the same validation level as
+- [x] Bring the Jenkins publishing path up to the same validation level as
       GitHub CI.
 
   **Reason:** GitHub CI runs publication validation and NeoForge server
   GameTests, while Jenkins can publish after the narrower `clean spotlessCheck
   build javadoc` command.
 
-  - [ ] Run `validatePublishing` before Jenkins publication.
-  - [ ] Run NeoForge server GameTests before publication, or require a matching
+  - [x] Run `validatePublishing` before Jenkins publication.
+  - [x] Run NeoForge server GameTests before publication, or require a matching
         green GitHub CI commit.
-  - [ ] Keep publish, signing, and deployment tasks separate from ordinary
+  - [x] Keep publish, signing, and deployment tasks separate from ordinary
         validation.
 
 ### Establish the Post-Release Compatibility Baseline

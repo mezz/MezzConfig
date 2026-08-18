@@ -60,7 +60,15 @@ pipeline {
         stage('Validate') {
             steps {
                 script {
-                    sh "./gradlew clean spotlessCheck build javadoc ${getReleaseGradleArgs()} --no-daemon"
+                    sh "./gradlew clean spotlessCheck build :CommonApi:javadoc :CommonApi:checkJarCompatibility validatePublishing ${getReleaseGradleArgs()} --no-daemon"
+                }
+            }
+        }
+
+        stage('NeoForge Server GameTests') {
+            steps {
+                script {
+                    sh "./gradlew :NeoForge:runGameTestServer ${getReleaseGradleArgs()} --no-daemon"
                 }
             }
         }
