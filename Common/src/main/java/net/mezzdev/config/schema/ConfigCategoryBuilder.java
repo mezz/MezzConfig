@@ -2,7 +2,6 @@ package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.value.ConfigListOrdering;
-import net.mezzdev.config.api.value.IConfigKeyValueSerializer;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.value.PackedColor;
 import net.mezzdev.config.serializers.BooleanSerializer;
@@ -217,25 +216,6 @@ public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implement
 		ConfigListOrdering ordering
 	) {
 		return addValue(name, defaultValue, new ListSerializer<>(elementSerializer, ordering));
-	}
-
-	@Override
-	public <T, K, V> ConfigValueBuilder<List<T>> addKeyValueList(
-		String name,
-		List<T> defaultValue,
-		IConfigKeyValueSerializer<T, K, V> elementSerializer
-	) {
-		return addKeyValueList(name, defaultValue, elementSerializer, ConfigListOrdering.ORDERED);
-	}
-
-	@Override
-	public <T, K, V> ConfigValueBuilder<List<T>> addKeyValueList(
-		String name,
-		List<T> defaultValue,
-		IConfigKeyValueSerializer<T, K, V> elementSerializer,
-		ConfigListOrdering ordering
-	) {
-		return addList(name, defaultValue, elementSerializer, ordering);
 	}
 
 	private <T> ConfigValueBuilder<T> addValueBuilder(ConfigValueBuilder<T> builder) {

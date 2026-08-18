@@ -13,7 +13,7 @@ import java.util.Map;
  * map-style rows without changing the config value to a {@link Map}.
  * <p>
  * Pass an implementation to {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)} or
- * {@link IConfigCategoryBuilder#addKeyValueList(String, List, IConfigKeyValueSerializer)}.
+ * {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)}.
  *
  * @param <T> entry type
  * @param <K> key type

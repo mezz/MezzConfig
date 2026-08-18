@@ -160,7 +160,7 @@ public class ConfigSchemaTest {
 		// Operation: create scalar and ordered list values through the public methods available to extensions.
 		IConfigValue<ExtensionEntry> value = builder.addValue("extensionValue", defaultValue, serializer)
 			.build();
-		IConfigValue<List<ExtensionEntry>> values = builder.addKeyValueList(
+		IConfigValue<List<ExtensionEntry>> values = builder.addList(
 				"extensionValues",
 				List.of(defaultValue),
 				serializer,
