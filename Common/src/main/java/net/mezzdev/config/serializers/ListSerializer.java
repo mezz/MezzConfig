@@ -12,6 +12,7 @@ import net.mezzdev.config.util.ErrorUtil;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Serializer for comma-separated list config values.
@@ -85,11 +86,14 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 	}
 
 	private static <T> DeserializeResult<T> copyResult(IDeserializeResult<T> result) {
-		return switch (result.getState()) {
-			case SUCCESS -> DeserializeResult.success(result.getResult().orElseThrow());
-			case PARTIAL_SUCCESS -> DeserializeResult.partialSuccess(result.getResult().orElseThrow(), result.getDiagnostics());
-			case FAILURE -> DeserializeResult.failure(result.getDiagnostics());
-		};
+		Optional<T> value = result.getResult();
+		if (value.isEmpty()) {
+			return DeserializeResult.failure(result.getDiagnostics());
+		}
+		if (result.getDiagnostics().isEmpty()) {
+			return DeserializeResult.success(value.orElseThrow());
+		}
+		return DeserializeResult.partialSuccess(value.orElseThrow(), result.getDiagnostics());
 	}
 
 	@Override

@@ -228,16 +228,16 @@ mistaken for a requirement without supporting evidence.
 
 ### Remove Redundant Deserialization State
 
-- [ ] Remove `DeserializeResultState` and `IDeserializeResult.getState()`.
+- [x] Remove `DeserializeResultState` and `IDeserializeResult.getState()`.
 
   **Reason:** Success, partial success, and failure are already fully determined
   by result presence and diagnostics. The public enum adds a permanent type and
   encourages exhaustive switches that would be fragile if states ever grow,
   without adding information.
 
-  - [ ] Preserve the static result factories and their invariant checks.
-  - [ ] Update runtime code to use result presence and diagnostics.
-  - [ ] Update tests and documentation.
+  - [x] Preserve the static result factories and their invariant checks.
+  - [x] Update runtime code to use result presence and diagnostics.
+  - [x] Update tests and documentation.
 
 ### Expose Only the Needed Asynchronous Contract
 

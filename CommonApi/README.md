@@ -224,11 +224,12 @@ Config value types must be effectively immutable and have stable `equals`
 behavior while MezzConfig holds them. Built-in list containers are copied when
 created, loaded, or updated and are exposed as unmodifiable snapshots.
 
-Deserializer results have three explicit states: success has a value and no
-diagnostics, partial success has a usable value and one or more diagnostics,
-and failure has no value and one or more diagnostics. Use the corresponding
-`IDeserializeResult.success(...)`, `partialSuccess(...)`, or `failure(...)`
-factory; invalid state combinations are rejected.
+Deserializer outcomes are determined by result presence and diagnostics:
+success has a value and no diagnostics, partial success has a usable value and
+one or more diagnostics, and failure has no value and one or more diagnostics.
+Use the corresponding `IDeserializeResult.success(...)`,
+`partialSuccess(...)`, or `failure(...)` factory; invalid result and diagnostic
+combinations are rejected.
 
 List helpers expose their element serializer through `IConfigListValueSerializer`,
 so integrations can edit list elements individually without GUI-specific API in

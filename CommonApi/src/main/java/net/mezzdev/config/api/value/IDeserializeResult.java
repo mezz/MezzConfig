@@ -11,11 +11,11 @@ import java.util.Optional;
 /**
  * The result of deserializing a config value.
  * <p>
- * A result is always in exactly one of these states:
+ * A result always has exactly one of these outcomes:
  * <ul>
- *     <li>{@link DeserializeResultState#SUCCESS}: a non-null result and no diagnostics;</li>
- *     <li>{@link DeserializeResultState#PARTIAL_SUCCESS}: a non-null, usable result and one or more diagnostics;</li>
- *     <li>{@link DeserializeResultState#FAILURE}: no result and one or more diagnostics.</li>
+ *     <li>success: a non-null result and no diagnostics;</li>
+ *     <li>partial success: a non-null, usable result and one or more diagnostics;</li>
+ *     <li>failure: no result and one or more diagnostics.</li>
  * </ul>
  * Create a result with {@link #success(Object)}, {@link #partialSuccess(Object, String)},
  * {@link #partialSuccess(Object, List)}, {@link #failure(String)}, or {@link #failure(List)} and return it from
@@ -33,7 +33,7 @@ public interface IDeserializeResult<T> {
 	 * @since 0.1.0
 	 */
 	static <T> IDeserializeResult<T> success(T result) {
-		return create(DeserializeResultState.SUCCESS, Objects.requireNonNull(result, "result"), List.of());
+		return create(Objects.requireNonNull(result, "result"), List.of());
 	}
 
 	/**
@@ -52,9 +52,8 @@ public interface IDeserializeResult<T> {
 	 */
 	static <T> IDeserializeResult<T> partialSuccess(T result, List<String> diagnostics) {
 		return create(
-			DeserializeResultState.PARTIAL_SUCCESS,
 			Objects.requireNonNull(result, "result"),
-			diagnostics
+			requireDiagnostics(diagnostics, "Partial")
 		);
 	}
 
@@ -73,37 +72,26 @@ public interface IDeserializeResult<T> {
 	 * @since 0.1.0
 	 */
 	static <T> IDeserializeResult<T> failure(List<String> diagnostics) {
-		return create(DeserializeResultState.FAILURE, null, diagnostics);
+		return create(null, requireDiagnostics(diagnostics, "Failed"));
 	}
 
-	private static <T> IDeserializeResult<T> create(
-		DeserializeResultState state,
-		@Nullable T result,
-		List<String> diagnostics
-	) {
+	private static List<String> requireDiagnostics(List<String> diagnostics, String outcome) {
 		List<String> diagnosticsCopy = List.copyOf(Objects.requireNonNull(diagnostics, "diagnostics"));
-		if (state == DeserializeResultState.SUCCESS && !diagnosticsCopy.isEmpty()) {
-			throw new IllegalArgumentException("Successful results must not have diagnostics.");
-		}
-		if (state != DeserializeResultState.SUCCESS && diagnosticsCopy.isEmpty()) {
-			throw new IllegalArgumentException("Partial and failed results must have at least one diagnostic.");
+		if (diagnosticsCopy.isEmpty()) {
+			throw new IllegalArgumentException(outcome + " results must have at least one diagnostic.");
 		}
 		if (diagnosticsCopy.stream().anyMatch(String::isBlank)) {
 			throw new IllegalArgumentException("Diagnostics must not be blank.");
 		}
-		Optional<T> optionalResult = Optional.ofNullable(result);
-		if (state == DeserializeResultState.FAILURE && optionalResult.isPresent()) {
-			throw new IllegalArgumentException("Failed results must not have a result.");
-		}
-		if (state != DeserializeResultState.FAILURE && optionalResult.isEmpty()) {
-			throw new IllegalArgumentException("Successful and partial results must have a result.");
-		}
-		return new IDeserializeResult<>() {
-			@Override
-			public DeserializeResultState getState() {
-				return state;
-			}
+		return diagnosticsCopy;
+	}
 
+	private static <T> IDeserializeResult<T> create(
+		@Nullable T result,
+		List<String> diagnostics
+	) {
+		Optional<T> optionalResult = Optional.ofNullable(result);
+		return new IDeserializeResult<>() {
 			@Override
 			public Optional<T> getResult() {
 				return optionalResult;
@@ -112,17 +100,10 @@ public interface IDeserializeResult<T> {
 			@Override
 			@Unmodifiable
 			public List<String> getDiagnostics() {
-				return diagnosticsCopy;
+				return diagnostics;
 			}
 		};
 	}
-
-	/**
-	 * Get the explicit state of this result.
-	 *
-	 * @since 0.1.0
-	 */
-	DeserializeResultState getState();
 
 	/**
 	 * The usable deserialization result, or {@link Optional#empty()} if deserialization failed.
@@ -134,8 +115,7 @@ public interface IDeserializeResult<T> {
 	/**
 	 * Diagnostics produced while deserializing.
 	 * <p>
-	 * This is empty for {@link DeserializeResultState#SUCCESS} and non-empty for
-	 * {@link DeserializeResultState#PARTIAL_SUCCESS} and {@link DeserializeResultState#FAILURE}.
+	 * This is empty for success and non-empty for partial success and failure.
 	 *
 	 * @since 0.1.0
 	 */

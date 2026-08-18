@@ -3,7 +3,6 @@ package net.mezzdev.config.test.serializers;
 import net.mezzdev.config.api.value.ConfigColorFormat;
 import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.ConfigValueRange;
-import net.mezzdev.config.api.value.DeserializeResultState;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigKeyValueSerializer;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
@@ -240,7 +239,6 @@ public class ConfigValueSerializerTest {
 		IDeserializeResult<List<Boolean>> result = serializer.deserialize("[true, false");
 
 		assertTrue(result.getResult().isEmpty());
-		assertEquals(DeserializeResultState.FAILURE, result.getState());
 		assertEquals(1, result.getDiagnostics().size());
 		assertTrue(result.getDiagnostics().getFirst().startsWith("Invalid JSON value"));
 	}
@@ -251,7 +249,6 @@ public class ConfigValueSerializerTest {
 
 		IDeserializeResult<List<Boolean>> result = serializer.deserialize("true, invalid, false");
 
-		assertEquals(DeserializeResultState.PARTIAL_SUCCESS, result.getState());
 		assertEquals(List.of(true, false), result.getResult().orElseThrow());
 		assertEquals(List.of("string must be 'true' or 'false'"), result.getDiagnostics());
 	}
@@ -262,7 +259,6 @@ public class ConfigValueSerializerTest {
 
 		IDeserializeResult<List<Boolean>> result = serializer.deserialize("invalid, also-invalid");
 
-		assertEquals(DeserializeResultState.FAILURE, result.getState());
 		assertTrue(result.getResult().isEmpty());
 		assertEquals(
 			List.of("string must be 'true' or 'false'", "string must be 'true' or 'false'"),
@@ -337,13 +333,10 @@ public class ConfigValueSerializerTest {
 		IDeserializeResult<String> failure = IDeserializeResult.failure("error");
 		IDeserializeResult<String> partial = IDeserializeResult.partialSuccess("partial", List.of("warning"));
 
-		assertEquals(DeserializeResultState.SUCCESS, success.getState());
 		assertEquals("value", success.getResult().orElseThrow());
 		assertEquals(List.of(), success.getDiagnostics());
-		assertEquals(DeserializeResultState.FAILURE, failure.getState());
 		assertTrue(failure.getResult().isEmpty());
 		assertEquals(List.of("error"), failure.getDiagnostics());
-		assertEquals(DeserializeResultState.PARTIAL_SUCCESS, partial.getState());
 		assertEquals("partial", partial.getResult().orElseThrow());
 		assertEquals(List.of("warning"), partial.getDiagnostics());
 	}

@@ -1,6 +1,5 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.api.value.DeserializeResultState;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jetbrains.annotations.Nullable;
@@ -12,12 +11,10 @@ import java.util.Optional;
  * Standard result implementation for config value deserialization.
  */
 public final class DeserializeResult<T> implements IDeserializeResult<T> {
-	private final DeserializeResultState state;
 	private final @Nullable T result;
 	private final List<String> diagnostics;
 
 	private DeserializeResult(IDeserializeResult<T> result) {
-		this.state = result.getState();
 		this.result = result.getResult().orElse(null);
 		this.diagnostics = result.getDiagnostics();
 	}
@@ -36,11 +33,6 @@ public final class DeserializeResult<T> implements IDeserializeResult<T> {
 
 	public static <T> DeserializeResult<T> failure(List<String> diagnostics) {
 		return new DeserializeResult<>(IDeserializeResult.failure(diagnostics));
-	}
-
-	@Override
-	public DeserializeResultState getState() {
-		return state;
 	}
 
 	@Override
