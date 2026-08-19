@@ -7,9 +7,11 @@ registration.
 
 ## Using the API
 
-The stable integration surface is published from the `CommonApi` module. See
-the [API guide](CommonApi/README.md) for config schema types and locations,
-custom serializers, editor hints, and sorting configs.
+The stable integration surface consists of the non-internal packages published
+from the `CommonApi` module. Public implementation classes in `Common` and the
+loader modules are internal and are not compatibility-guaranteed API. See the
+[API guide](CommonApi/README.md) for the exact supported boundary, config schema
+types and locations, custom serializers, editor hints, and sorting configs.
 
 MezzConfig currently targets Minecraft 1.21.1 and Java 21. Loader-specific
 artifacts are built for Fabric, Forge, and NeoForge.

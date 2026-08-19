@@ -330,7 +330,7 @@ mistaken for a requirement without supporting evidence.
 
 ### Correct the Protocol Documentation
 
-- [ ] Change the API guide's protocol version from 2 to 3 and verify all
+- [x] Change the API guide's protocol version from 2 to 3 and verify all
       documented limits against the implementation.
 
   **Reason:** The chunk envelope and Forge and NeoForge channels use protocol
@@ -339,7 +339,7 @@ mistaken for a requirement without supporting evidence.
 
 ### State the Stable Package Boundary Explicitly
 
-- [ ] Document that supported API consists of non-internal packages in
+- [x] Document that supported API consists of non-internal packages in
       `CommonApi`; public implementation classes in Common and loader artifacts
       are not stable API.
 
@@ -347,26 +347,26 @@ mistaken for a requirement without supporting evidence.
   package-level `@ApiStatus.Internal` packages. A written boundary prevents
   accidental compatibility obligations outside CommonApi.
 
-  - [ ] Keep implementation and loader packages annotated
+  - [x] Keep implementation and loader packages annotated
         `@ApiStatus.Internal`.
-  - [ ] Keep runtime-owned implementation interfaces `@NonExtendable` where
+  - [x] Keep runtime-owned implementation interfaces `@NonExtendable` where
         appropriate.
-  - [ ] Ensure examples and tests consume only supported API unless explicitly
+  - [x] Ensure examples and tests consume only supported API unless explicitly
         testing internals.
 
 ### Complete API Contract Documentation
 
-- [ ] Update Javadocs and the API guide after the contracts above are settled.
+- [x] Update Javadocs and the API guide after the contracts above are settled.
 
   **Reason:** Threading, explicit-location storage, serializer failures, listener
   scopes, asynchronous completion, and server snapshot rejection affect how
   callers safely use the API and must not be left as implementation details.
 
-  - [ ] Document explicit-location failure behavior.
-  - [ ] Document serializer requirements and diagnostics.
+  - [x] Document explicit-location failure behavior.
+  - [x] Document serializer requirements and diagnostics.
   - [x] Document thread and listener behavior.
-  - [ ] Document update-stage completion and cancellation behavior.
-  - [ ] Document server snapshot validation without exposing configurable
+  - [x] Document update-stage completion and cancellation behavior.
+  - [x] Document server snapshot validation without exposing configurable
         protocol limits.
 
 ## Final MezzConfig Verification

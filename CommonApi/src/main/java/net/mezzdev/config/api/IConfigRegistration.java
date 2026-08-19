@@ -59,7 +59,6 @@ public interface IConfigRegistration {
 	 * @param configFile complete path to the config file
 	 * @param localizationPath translation key prefix for the config file
 	 * @return client-owned schema builder
-	 * @throws java.io.UncheckedIOException when the schema cannot initially read or create the config file
 	 *
 	 * @since 0.3.0
 	 */

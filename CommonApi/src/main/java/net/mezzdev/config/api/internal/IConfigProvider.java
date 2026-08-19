@@ -3,6 +3,7 @@ package net.mezzdev.config.api.internal;
 import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.IConfigRegistration;
 import net.mezzdev.config.api.schema.IConfigSchema;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.Collection;
 
@@ -11,6 +12,7 @@ import java.util.Collection;
  *
  * @since 0.3.0
  */
+@ApiStatus.NonExtendable
 public interface IConfigProvider {
 	IConfigRegistration createRegistration(String modId);
 

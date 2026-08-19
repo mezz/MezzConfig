@@ -3,6 +3,17 @@
 MezzConfig lets mods directly create typed client-owned and server-owned config
 schemas, plus string-backed client sort orders.
 
+## Supported API boundary
+
+The supported API is the non-internal packages published by the `CommonApi`
+module under `net.mezzdev.config.api`. Packages annotated with
+`@ApiStatus.Internal`, including `net.mezzdev.config.api.internal`, are runtime
+integration details. Public classes in the `Common` implementation module and
+the Fabric, Forge, and NeoForge loader modules are also internal and may change
+without API compatibility guarantees. Depend on those modules through the
+loader artifact, but compile integrations only against the supported
+`CommonApi` types.
+
 ## Registering configs
 
 Create one registration for the owning mod, declare values, and build the
@@ -207,7 +218,7 @@ for server schemas so an integrated client cannot bypass server authority.
 
 The server-config channel is optional. Connecting to a server without it still
 succeeds; an attempted remote edit fails through its future. The current
-fragment envelope is protocol version 2 and is intentionally incompatible with
+fragment envelope is protocol version 3 and is intentionally incompatible with
 the earlier unreleased first/last-fragment format.
 
 Supported built-in value helpers include:
