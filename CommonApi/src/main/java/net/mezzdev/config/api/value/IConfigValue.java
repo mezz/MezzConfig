@@ -129,7 +129,7 @@ public interface IConfigValue<T> {
 	 *
 	 * @since 0.1.0
 	 */
-	Runnable addListener(Consumer<? super IAppliedConfigValueChange<T>> listener);
+	Runnable addListener(IConfigValueChangeListener<T> listener);
 
 	/**
 	 * Add a listener that is called when this config value's pending saved value changes.
@@ -143,7 +143,7 @@ public interface IConfigValue<T> {
 	 *
 	 * @since 0.3.0
 	 */
-	Runnable addPendingListener(Consumer<? super IAppliedConfigValueChange<T>> listener);
+	Runnable addPendingListener(IConfigValueChangeListener<T> listener);
 
 	/**
 	 * Add a listener that is called with all effective-value changes from a batch containing this config value. Pending
@@ -157,7 +157,7 @@ public interface IConfigValue<T> {
 	 *
 	 * @since 0.1.0
 	 */
-	Runnable addBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
+	Runnable addBatchListener(IConfigValueBatchChangeListener listener);
 
 	/**
 	 * Add a listener that is called with all pending-value changes from a batch containing this config value.
@@ -171,7 +171,7 @@ public interface IConfigValue<T> {
 	 *
 	 * @since 0.3.0
 	 */
-	Runnable addPendingBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
+	Runnable addPendingBatchListener(IConfigValueBatchChangeListener listener);
 
 	/**
 	 * Get the helper for serializing values to and from Strings, and validating values.

@@ -3,6 +3,7 @@ package net.mezzdev.config.api.schema;
 import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -174,7 +175,7 @@ public interface IConfigSchema {
 	 *
 	 * @since 0.1.0
 	 */
-	Runnable addBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
+	Runnable addBatchListener(IConfigValueBatchChangeListener listener);
 
 	/**
 	 * Add a listener called exactly once for every non-empty batch of pending saved-value changes applied to this schema.
@@ -189,5 +190,5 @@ public interface IConfigSchema {
 	 *
 	 * @since 0.3.0
 	 */
-	Runnable addPendingBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener);
+	Runnable addPendingBatchListener(IConfigValueBatchChangeListener listener);
 }

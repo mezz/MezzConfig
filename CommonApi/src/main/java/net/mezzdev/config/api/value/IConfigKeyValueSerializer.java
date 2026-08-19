@@ -14,6 +14,11 @@ import java.util.Map;
  * <p>
  * Pass an implementation to {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)} or
  * {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)}.
+ * <p>
+ * For every entry accepted by {@link #isValid(Object)}, the extracted key and value must be accepted by their component
+ * serializers. Rebuilding an entry from those extracted components must return an equal entry. {@link #createEntry(Object,
+ * Object)} must not throw for components accepted by their serializers, and the returned entry must preserve the supplied
+ * components; integrations may still use {@link #isValid(Object)} to reject combinations that are not valid together.
  *
  * @param <T> entry type
  * @param <K> key type
@@ -62,6 +67,7 @@ public interface IConfigKeyValueSerializer<T, K, V> extends IConfigValueSerializ
 
 	/**
 	 * Create an entry from edited key and value components.
+	 * This must return without throwing when both components are accepted by their serializers.
 	 *
 	 * @param key key component
 	 * @param value value component

@@ -1,5 +1,9 @@
 package net.mezzdev.config.value;
 
+import com.google.gson.JsonElement;
+import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.util.ErrorUtil;
 
 import java.util.ArrayList;
@@ -10,11 +14,11 @@ import java.util.function.Function;
 
 public final class ConfigValueMigration<T> {
 	private final ConfigValue<T> configValue;
-	private final BiFunction<String, List<AppliedConfigValueChange<?>>, List<String>> migration;
+	private final BiFunction<JsonElement, List<AppliedConfigValueChange<?>>, List<String>> migration;
 
 	private ConfigValueMigration(
 		ConfigValue<T> configValue,
-		BiFunction<String, List<AppliedConfigValueChange<?>>, List<String>> migration
+		BiFunction<JsonElement, List<AppliedConfigValueChange<?>>, List<String>> migration
 	) {
 		this.configValue = ErrorUtil.checkNotNull(configValue, "configValue");
 		this.migration = ErrorUtil.checkNotNull(migration, "migration");
@@ -22,16 +26,27 @@ public final class ConfigValueMigration<T> {
 
 	public static <T> ConfigValueMigration<T> deserialize(ConfigValue<T> configValue) {
 		ErrorUtil.checkNotNull(configValue, "configValue");
-		return new ConfigValueMigration<>(configValue, configValue::setFromSerializedValue);
+		return new ConfigValueMigration<>(configValue, (value, changes) -> configValue.setFromDeserializedValue(
+			ConfigFileValueAdapter.deserialize(configValue.getSerializer(), value),
+			changes
+		));
 	}
 
-	public static <T> ConfigValueMigration<T> migrate(ConfigValue<T> configValue, Function<String, T> migration) {
+	public static <T, U> ConfigValueMigration<T> migrate(
+		ConfigValue<T> configValue,
+		IConfigValueSerializer<U> legacySerializer,
+		Function<U, T> migration
+	) {
 		ErrorUtil.checkNotNull(configValue, "configValue");
+		ErrorUtil.checkNotNull(legacySerializer, "legacySerializer");
 		ErrorUtil.checkNotNull(migration, "migration");
-		return new ConfigValueMigration<>(configValue, (value, changes) -> migrateValue(configValue, migration, value, changes));
+		return new ConfigValueMigration<>(
+			configValue,
+			(value, changes) -> migrateValue(configValue, legacySerializer, migration, value, changes)
+		);
 	}
 
-	public List<String> migrate(String value) {
+	public List<String> migrate(JsonElement value) {
 		T previousEffectiveValue = configValue.getEffectiveValueWithoutLoading();
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
 		List<String> diagnostics = migrate(value, changes);
@@ -45,35 +60,44 @@ public final class ConfigValueMigration<T> {
 		return diagnostics;
 	}
 
-	public List<String> migrate(String value, List<AppliedConfigValueChange<?>> changes) {
+	public List<String> migrate(JsonElement value, List<AppliedConfigValueChange<?>> changes) {
 		ErrorUtil.checkNotNull(changes, "changes");
 		return migration.apply(value, changes);
 	}
 
-	private static <T> List<String> migrateValue(
+	private static <T, U> List<String> migrateValue(
 		ConfigValue<T> configValue,
-		Function<String, T> migration,
-		String value,
+		IConfigValueSerializer<U> legacySerializer,
+		Function<U, T> migration,
+		JsonElement value,
 		List<AppliedConfigValueChange<?>> changes
 	) {
+		IDeserializeResult<U> legacyResult = ConfigFileValueAdapter.deserialize(legacySerializer, value);
+		List<String> diagnostics = new ArrayList<>(legacyResult.getDiagnostics());
+		U legacyValue = legacyResult.getResult().orElse(null);
+		if (legacyValue == null) {
+			return List.copyOf(diagnostics);
+		}
 		try {
-			T migratedValue = ErrorUtil.checkNotNull(migration.apply(value), "migratedValue");
+			T migratedValue = ErrorUtil.checkNotNull(migration.apply(legacyValue), "migratedValue");
 			if (!configValue.getSerializer().isValid(migratedValue)) {
 				String errorMessage = "Migrated value is invalid. Must be: " + configValue.getSerializer().getValidValuesDescription();
-				return List.of(errorMessage);
+				diagnostics.add(errorMessage);
+				return List.copyOf(diagnostics);
 			}
 			AppliedConfigValueChange<T> change = configValue.setWithoutNotifying(migratedValue);
 			if (change != null) {
 				changes.add(change);
 				configValue.markDirty();
 			}
-			return List.of();
+			return List.copyOf(diagnostics);
 		} catch (RuntimeException e) {
 			String errorMessage = e.getMessage();
 			if (errorMessage == null) {
 				errorMessage = e.getClass().getName();
 			}
-			return List.of("Unable to migrate value: " + errorMessage);
+			diagnostics.add("Unable to migrate value: " + errorMessage);
+			return List.copyOf(diagnostics);
 		}
 	}
 }

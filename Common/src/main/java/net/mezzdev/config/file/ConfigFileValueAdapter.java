@@ -239,10 +239,4 @@ public final class ConfigFileValueAdapter {
 		return typedSerializer.isValid(value);
 	}
 
-	public static String toPublicSerializerRepresentation(JsonElement value) {
-		if (value instanceof JsonPrimitive primitive) {
-			return primitive.getAsString();
-		}
-		return ConfigFileValueCodec.serialize(value);
-	}
 }

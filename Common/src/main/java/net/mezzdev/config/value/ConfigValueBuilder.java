@@ -24,7 +24,7 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 	private final T defaultValue;
 	private final IConfigValueSerializer<T> serializer;
 	private final Set<ConfigValueReference> legacyValueReferences = new LinkedHashSet<>();
-	private final Map<ConfigValueReference, Function<String, T>> legacyValueMigrations = new LinkedHashMap<>();
+	private final Map<ConfigValueReference, MigrationFactory<T>> legacyValueMigrationFactories = new LinkedHashMap<>();
 	private final Set<ConfigEditorCategoryBuilder> editorCategoryBuilders = new LinkedHashSet<>();
 	private ConfigValueEditMode editMode = ConfigValueEditMode.BATCH;
 	private ConfigValueRestartRequirement restartRequirement = ConfigValueRestartRequirement.NONE;
@@ -78,20 +78,28 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 	}
 
 	@Override
-	public ConfigValueBuilder<T> addLegacyValueMigration(
+	public <U> ConfigValueBuilder<T> addLegacyValueMigration(
 		String legacyCategoryName,
 		String legacyValueName,
-		Function<String, T> migration
+		IConfigValueSerializer<U> legacySerializer,
+		Function<U, T> migration
 	) {
 		checkNotBuilt();
 		ConfigValueReference reference = createLegacyReference(legacyCategoryName, legacyValueName);
 		if (isCurrentValueReference(reference)) {
 			throw new IllegalArgumentException("Legacy value reference must not match the current value: " + reference);
 		}
-		if (legacyValueReferences.contains(reference) || legacyValueMigrations.containsKey(reference)) {
+		if (legacyValueReferences.contains(reference) || legacyValueMigrationFactories.containsKey(reference)) {
 			throw new IllegalArgumentException("There is already a legacy value reference: " + reference);
 		}
-		legacyValueMigrations.put(reference, ErrorUtil.checkNotNull(migration, "migration"));
+		legacySerializer = ErrorUtil.checkNotNull(legacySerializer, "legacySerializer");
+		migration = ErrorUtil.checkNotNull(migration, "migration");
+		IConfigValueSerializer<U> checkedLegacySerializer = legacySerializer;
+		Function<U, T> checkedMigration = migration;
+		legacyValueMigrationFactories.put(
+			reference,
+			value -> ConfigValueMigration.migrate(value, checkedLegacySerializer, checkedMigration)
+		);
 		return this;
 	}
 
@@ -146,6 +154,8 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 			restartRequirement,
 			editorCategoryBuilders
 		);
+		Map<ConfigValueReference, ConfigValueMigration<T>> legacyValueMigrations = new LinkedHashMap<>();
+		legacyValueMigrationFactories.forEach((reference, factory) -> legacyValueMigrations.put(reference, factory.create(value)));
 		this.configValue = categoryBuilder.addValue(
 			value,
 			legacyValueReferences,
@@ -155,7 +165,7 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 	}
 
 	private void addLegacyValueReference(ConfigValueReference reference) {
-		if (legacyValueMigrations.containsKey(reference) || !legacyValueReferences.add(reference)) {
+		if (legacyValueMigrationFactories.containsKey(reference) || !legacyValueReferences.add(reference)) {
 			throw new IllegalArgumentException("There is already a legacy value reference: " + reference);
 		}
 	}
@@ -175,5 +185,10 @@ public class ConfigValueBuilder<T> implements IConfigValueBuilder<T> {
 		if (configValue != null) {
 			throw new IllegalStateException("Config value has already been built: " + name);
 		}
+	}
+
+	@FunctionalInterface
+	private interface MigrationFactory<T> {
+		ConfigValueMigration<T> create(ConfigValue<T> value);
 	}
 }

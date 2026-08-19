@@ -118,7 +118,7 @@ public class SortingConfigTest {
 		SortingConfig<String> sortingConfig = createInMemorySortingConfig(Comparator.naturalOrder(), true);
 
 		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("second", "first")));
-		assertTrue(sortingConfig.setSortedValues(List.of("second")));
+		assertTrue(sortingConfig.setSortedValues(List.of("first", "second"), List.of("second")));
 		assertEquals(List.of("second"), sortingConfig.getSortedValues(List.of("first", "second")));
 		assertFalse(sortingConfig.isVisible(List.of("first", "second"), "first"));
 	}
@@ -137,11 +137,11 @@ public class SortingConfigTest {
 		try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
 			Future<Boolean> firstUpdate = executor.submit(() -> {
 				start.await();
-				return sortingConfig.setSortedValues(firstOrder);
+				return sortingConfig.setSortedValues(allValues, firstOrder);
 			});
 			Future<Boolean> secondUpdate = executor.submit(() -> {
 				start.await();
-				return sortingConfig.setSortedValues(secondOrder);
+				return sortingConfig.setSortedValues(allValues, secondOrder);
 			});
 			start.countDown();
 
@@ -186,7 +186,7 @@ public class SortingConfigTest {
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
 		assertEquals(List.of("a", "b"), sortingConfig.getSortedValues(List.of("a", "b")));
 
-		assertTrue(sortingConfig.setSortedValues(List.of("a")));
+		assertTrue(sortingConfig.setSortedValues(List.of("a", "b"), List.of("a")));
 		assertEquals(List.of("a", "c"), sortingConfig.getSortedValues(List.of("a", "b", "c")));
 		assertFalse(sortingConfig.isVisible(List.of("a", "b", "c"), "b"));
 
@@ -230,8 +230,9 @@ public class SortingConfigTest {
 		List<String> notifications = new ArrayList<>();
 		sortingConfig.addChangeListener(() -> notifications.add("changed"));
 
-		boolean changed = sortingConfig.setSortedValues(List.of("third", "first"));
-		boolean unchanged = sortingConfig.setSortedValues(List.of("third", "first"));
+		List<String> allValues = List.of("first", "third");
+		boolean changed = sortingConfig.setSortedValues(allValues, List.of("third", "first"));
+		boolean unchanged = sortingConfig.setSortedValues(allValues, List.of("third", "first"));
 
 		assertTrue(changed);
 		assertFalse(unchanged);
@@ -247,9 +248,30 @@ public class SortingConfigTest {
 
 		assertThrows(
 			IllegalArgumentException.class,
-			() -> sortingConfig.setSortedValues(List.of("first", "first"))
+			() -> sortingConfig.setSortedValues(List.of("first"), List.of("first", "first"))
 		);
 		assertFalse(Files.exists(path));
+	}
+
+	@Test
+	public void setSortedValuesRejectsValuesOutsideTheCompleteValueSet(@TempDir Path tempDir) {
+		Path path = tempDir.resolve("sort-order.txt");
+		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
+
+		assertThrows(
+			IllegalArgumentException.class,
+			() -> sortingConfig.setSortedValues(List.of("first"), List.of("second"))
+		);
+		assertFalse(Files.exists(path));
+	}
+
+	@Test
+	public void setSortedValuesUsesTheSuppliedCompleteValueSetWithoutAPriorRead() {
+		SortingConfig<String> sortingConfig = createInMemorySortingConfig(Comparator.naturalOrder(), true);
+
+		assertTrue(sortingConfig.setSortedValues(List.of("first", "second"), List.of("first")));
+
+		assertEquals(List.of("first"), sortingConfig.getSortedValues(List.of("first", "second")));
 	}
 
 	@Test
@@ -262,7 +284,7 @@ public class SortingConfigTest {
 		});
 		sortingConfig.addChangeListener(() -> notifications.add("changed"));
 
-		boolean changed = sortingConfig.setSortedValues(List.of("second", "first"));
+		boolean changed = sortingConfig.setSortedValues(List.of("first", "second"), List.of("second", "first"));
 
 		assertTrue(changed);
 		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), false);
@@ -277,7 +299,7 @@ public class SortingConfigTest {
 		List<String> allValues = List.of("", "[hidden]", "\\value");
 		assertEquals(allValues, sortingConfig.getSortedValues(allValues));
 
-		assertTrue(sortingConfig.setSortedValues(List.of("", "\\value")));
+		assertTrue(sortingConfig.setSortedValues(allValues, List.of("", "\\value")));
 
 		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), true);
 		assertEquals(List.of("", "\\value", "new"), reloaded.getSortedValues(List.of("", "[hidden]", "\\value", "new")));
@@ -299,7 +321,7 @@ public class SortingConfigTest {
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
 		sortingConfig.getSortedValues(values);
 
-		assertTrue(sortingConfig.setSortedValues(values));
+		assertTrue(sortingConfig.setSortedValues(values, values));
 
 		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), true);
 		assertEquals(values, reloaded.getSortedValues(values));
@@ -358,7 +380,7 @@ public class SortingConfigTest {
 		SortingConfig<String> sortingConfig = createSortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
 
 		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("first", "second")));
-		assertTrue(sortingConfig.setSortedValues(List.of("second", "first")));
+		assertTrue(sortingConfig.setSortedValues(List.of("first", "second"), List.of("second", "first")));
 
 		assertEquals(List.of("[visible]", "second", "first", "[hidden]"), Files.readAllLines(defaultPath));
 		assertEquals(List.of("[visible]", "second", "first", "[hidden]"), Files.readAllLines(playerPath));
@@ -419,7 +441,7 @@ public class SortingConfigTest {
 		);
 		assertEquals(List.of(1, 2, 3), sortingConfig.getSortedValues(List.of(3, 1, 2)));
 
-		assertTrue(sortingConfig.setSortedValues(List.of(3, 1)));
+		assertTrue(sortingConfig.setSortedValues(List.of(1, 2, 3), List.of(3, 1)));
 
 		SortingConfig<Integer> reloaded = new SortingConfig<>(
 			path,

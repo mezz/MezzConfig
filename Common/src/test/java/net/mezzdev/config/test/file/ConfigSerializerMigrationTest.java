@@ -6,6 +6,9 @@ import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.serializers.BooleanSerializer;
+import net.mezzdev.config.serializers.IntegerSerializer;
+import net.mezzdev.config.serializers.ListSerializer;
+import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
@@ -89,7 +92,7 @@ public class ConfigSerializerMigrationTest {
 		));
 		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", false)
-			.addLegacyValueMigration("general", "oldEnabled", "yes"::equalsIgnoreCase)
+			.addLegacyValueMigration("general", "oldEnabled", StringSerializer.INSTANCE, "yes"::equalsIgnoreCase)
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
@@ -109,13 +112,36 @@ public class ConfigSerializerMigrationTest {
 		));
 		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", true)
-			.addLegacyValueMigration("legacy", "disabled", legacyValue -> !Boolean.parseBoolean(legacyValue))
+			.addLegacyValueMigration("legacy", "disabled", BooleanSerializer.INSTANCE, legacyValue -> !legacyValue)
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
 		ConfigSerializer.load(path, List.of(category));
 
 		assertFalse(enabled.getValue());
+	}
+
+	@Test
+	public void loadMigratesStructuredLegacyListAsTypedValues(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[general]",
+			"oldNumbers = [1, 2, 3]"
+		));
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<String> numbers = categoryBuilder.addString("numbers", "")
+			.addLegacyValueMigration(
+				"general",
+				"oldNumbers",
+				new ListSerializer<>(new IntegerSerializer(Integer.MIN_VALUE, Integer.MAX_VALUE)),
+				values -> String.join(":", values.stream().map(Object::toString).toList())
+			)
+			.build();
+		ConfigCategory category = buildCategory(path, categoryBuilder);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertEquals("1:2:3", numbers.getValue());
 	}
 
 	@Test
@@ -157,7 +183,11 @@ public class ConfigSerializerMigrationTest {
 			BooleanSerializer.INSTANCE
 		);
 		ConfigValueReference legacyValue = new ConfigValueReference("legacy", "value");
-		ConfigValueMigration<Boolean> migration = ConfigValueMigration.migrate(value, Boolean::parseBoolean);
+		ConfigValueMigration<Boolean> migration = ConfigValueMigration.migrate(
+			value,
+			BooleanSerializer.INSTANCE,
+			oldValue -> oldValue
+		);
 		ConfigCategory category = new ConfigCategory(
 			"mezz_config.config.test.current",
 			"current",
@@ -190,8 +220,16 @@ public class ConfigSerializerMigrationTest {
 			BooleanSerializer.INSTANCE
 		);
 		ConfigValueReference legacyValue = new ConfigValueReference("legacy", "value");
-		ConfigValueMigration<Boolean> firstMigration = ConfigValueMigration.migrate(first, Boolean::parseBoolean);
-		ConfigValueMigration<Boolean> secondMigration = ConfigValueMigration.migrate(second, oldValue -> !Boolean.parseBoolean(oldValue));
+		ConfigValueMigration<Boolean> firstMigration = ConfigValueMigration.migrate(
+			first,
+			BooleanSerializer.INSTANCE,
+			oldValue -> oldValue
+		);
+		ConfigValueMigration<Boolean> secondMigration = ConfigValueMigration.migrate(
+			second,
+			BooleanSerializer.INSTANCE,
+			oldValue -> !oldValue
+		);
 		ConfigCategory category = new ConfigCategory(
 			"mezz_config.config.test.current",
 			"current",

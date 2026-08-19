@@ -250,13 +250,16 @@ public final class ConfigSerializer {
 						problems.log(lineNumber, line, "Legacy config value '%s.%s' will be migrated.".formatted(categoryName, key));
 						int previousChangeCount = changes.size();
 						List<String> diagnostics = new ArrayList<>();
-						String migrationValue = ConfigFileValueAdapter.toPublicSerializerRepresentation(value);
-						migrations.forEach(migration -> diagnostics.addAll(migration.migrate(migrationValue, changes)));
+						migrations.forEach(migration -> diagnostics.addAll(migration.migrate(value, changes)));
 						for (int changeIndex = previousChangeCount; changeIndex < changes.size(); changeIndex++) {
 							encounteredValues.add(changes.get(changeIndex).configValue());
 						}
 						if (!diagnostics.isEmpty()) {
-							problems.log(lineNumber, line, getDeserializeDiagnostics(migrationValue, diagnostics));
+							problems.log(
+								lineNumber,
+								line,
+								getDeserializeDiagnostics(ConfigFileValueCodec.serialize(value), diagnostics)
+							);
 						}
 					}
 				} else {

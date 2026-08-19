@@ -7,6 +7,7 @@ import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.file.ConfigFileValueCodec;
 import net.mezzdev.config.file.ConfigSerializer;
@@ -68,8 +69,8 @@ public class ConfigSchema implements IConfigSchema {
 	private @Nullable Path pendingSavePath;
 	private @Nullable Runnable removeDefaultFileWatcherCallback;
 	private @Nullable Runnable removeFileWatcherCallback;
-	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> batchListeners = new CopyOnWriteArrayList<>();
-	private final List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> pendingBatchListeners = new CopyOnWriteArrayList<>();
+	private final List<IConfigValueBatchChangeListener> batchListeners = new CopyOnWriteArrayList<>();
+	private final List<IConfigValueBatchChangeListener> pendingBatchListeners = new CopyOnWriteArrayList<>();
 	private boolean registered;
 	private boolean registrationInProgress;
 	private boolean restartValuesInitialized;
@@ -887,14 +888,14 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
-	public Runnable addBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
+	public Runnable addBatchListener(IConfigValueBatchChangeListener listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
 		this.batchListeners.add(listener);
 		return () -> this.batchListeners.remove(listener);
 	}
 
 	@Override
-	public Runnable addPendingBatchListener(Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener) {
+	public Runnable addPendingBatchListener(IConfigValueBatchChangeListener listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
 		this.pendingBatchListeners.add(listener);
 		return () -> this.pendingBatchListeners.remove(listener);
@@ -920,12 +921,12 @@ public class ConfigSchema implements IConfigSchema {
 
 	private void notifyListeners(
 		List<? extends IAppliedConfigValueChange<?>> changes,
-		List<Consumer<? super List<? extends IAppliedConfigValueChange<?>>>> registeredListeners,
+		List<IConfigValueBatchChangeListener> registeredListeners,
 		String description
 	) {
-		for (Consumer<? super List<? extends IAppliedConfigValueChange<?>>> listener : registeredListeners) {
+		for (IConfigValueBatchChangeListener listener : registeredListeners) {
 			try {
-				listener.accept(changes);
+				listener.onConfigValuesChanged(changes);
 			} catch (RuntimeException e) {
 				LOGGER.error("{} listener failed for '{}'.", description, activePath, e);
 			}

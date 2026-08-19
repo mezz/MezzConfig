@@ -305,19 +305,34 @@ public class ConfigSchemaTest {
 			.addLegacyValue("legacy", "enabled");
 
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("category", "enabled"));
-		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration("category", "enabled", Boolean::parseBoolean));
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration(
+			"category",
+			"enabled",
+			BooleanSerializer.INSTANCE,
+			legacyValue -> legacyValue
+		));
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("legacy", "enabled"));
-		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration("legacy", "enabled", Boolean::parseBoolean));
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration(
+			"legacy",
+			"enabled",
+			BooleanSerializer.INSTANCE,
+			legacyValue -> legacyValue
+		));
 	}
 
 	@Test
 	public void addValueRejectsDuplicateLegacyValueMigrations() {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		var valueBuilder = builder.addBoolean("enabled", false)
-			.addLegacyValueMigration("legacy", "enabled", Boolean::parseBoolean);
+			.addLegacyValueMigration("legacy", "enabled", BooleanSerializer.INSTANCE, legacyValue -> legacyValue);
 
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("legacy", "enabled"));
-		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration("legacy", "enabled", Boolean::parseBoolean));
+		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration(
+			"legacy",
+			"enabled",
+			BooleanSerializer.INSTANCE,
+			legacyValue -> legacyValue
+		));
 	}
 
 	@Test

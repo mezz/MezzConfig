@@ -58,19 +58,23 @@ public interface ISortingConfig<T> {
 
 	/**
 	 * Set and persist a new sorted value list.
-	 * The list is copied to an unmodifiable snapshot before this method returns.
+	 * Both collections are copied to unmodifiable snapshots before this method returns. Every value in
+	 * {@code sortedValues} must be present in {@code allValues}.
 	 * <p>
-	 * When removal is allowed, a value from the most recent {@code allValues} collection is explicitly hidden when it is
-	 * omitted from this list. Previously hidden values are made visible again when they are included.
+	 * When removal is allowed, a value from {@code allValues} is explicitly hidden when it is omitted from
+	 * {@code sortedValues}. Previously hidden values are made visible again when they are included. When removal is not
+	 * allowed, omitted values are appended in their default order.
 	 *
+	 * @param allValues every value that may be sorted
 	 * @param sortedValues the non-null, duplicate-free sorted values to save
 	 * @return {@code true} if the sort order changed, or {@code false} if it was equal to the saved sort order
 	 *
-	 * @throws IllegalArgumentException if the list contains null or duplicate values
+	 * @throws IllegalArgumentException if a collection contains null, {@code sortedValues} contains duplicates, or a
+	 * value in {@code sortedValues} is not present in {@code allValues}
 	 *
 	 * @since 0.1.0
 	 */
-	boolean setSortedValues(List<T> sortedValues);
+	boolean setSortedValues(Collection<T> allValues, List<T> sortedValues);
 
 	/**
 	 * Get a comparator that follows this sort order.
@@ -96,7 +100,7 @@ public interface ISortingConfig<T> {
 	/**
 	 * Return whether values may be removed from this sort order.
 	 * Explicitly removed values are not returned by {@link #getSortedValues(Collection)} until they are added back with
-	 * {@link #setSortedValues(List)}. Values discovered after an order was saved remain visible by default.
+	 * {@link #setSortedValues(Collection, List)}. Values discovered after an order was saved remain visible by default.
 	 *
 	 * @since 0.1.0
 	 */
@@ -105,9 +109,9 @@ public interface ISortingConfig<T> {
 	/**
 	 * Register a callback invoked when this sort order changes.
 	 * <p>
-	 * Callbacks run synchronously on the thread calling {@link #setSortedValues(List)}, after the new in-memory order is
-	 * committed and persistence has been attempted. Registration and removal are thread-safe. A runtime exception is logged
-	 * without preventing later callbacks.
+	 * Callbacks run synchronously on the thread calling {@link #setSortedValues(Collection, List)}, after the new in-memory
+	 * order is committed and persistence has been attempted. Registration and removal are thread-safe. A runtime exception
+	 * is logged without preventing later callbacks.
 	 *
 	 * @param listener callback to run after the sort order changes
 	 * @return a callback that removes this listener

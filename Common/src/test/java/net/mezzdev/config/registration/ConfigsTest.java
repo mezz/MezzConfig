@@ -215,7 +215,7 @@ public class ConfigsTest {
 
 		assertEquals(List.of("second", "first"), strings.getSortedValues(List.of("first", "second")));
 		assertEquals(List.of(1, 2, 3), integers.getSortedValues(List.of(3, 1, 2)));
-		assertTrue(integers.setSortedValues(List.of(3, 1)));
+		assertTrue(integers.setSortedValues(List.of(1, 2, 3), List.of(3, 1)));
 		assertEquals(List.of(3, 1, 4), integers.getSortedValues(List.of(1, 2, 3, 4)));
 		assertFalse(integers.isVisible(List.of(1, 2, 3, 4), 2));
 	}

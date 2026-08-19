@@ -42,7 +42,6 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 	private final boolean supportsLegacyStringValues;
 	private final boolean allowsRemovingValues;
 	private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
-	private List<T> lastAllValues = List.of();
 	@Nullable
 	private SavedValues<T> savedValues;
 	private boolean savedValuesNeedWrite;
@@ -106,7 +105,6 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		SavedValues<T> previousSavedValues = getSavedValues();
 		validateSerializedIdentities(previousSavedValues, allValuesSnapshot);
 		SavedValues<T> reconciledSavedValues = addDiscoveredValues(previousSavedValues, allValuesSnapshot);
-		this.lastAllValues = allValuesSnapshot;
 		if (savedValuesNeedWrite || !previousSavedValues.equals(reconciledSavedValues)) {
 			this.savedValues = reconciledSavedValues;
 			this.savedValuesNeedWrite = !save(reconciledSavedValues);
@@ -123,12 +121,16 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 	}
 
 	@Override
-	public synchronized boolean setSortedValues(List<T> sortedValues) {
+	public synchronized boolean setSortedValues(Collection<T> allValues, List<T> sortedValues) {
+		List<T> allValuesSnapshot = getDistinctValues(allValues, "allValues");
 		Objects.requireNonNull(sortedValues, "sortedValues");
 		List<T> sortedValuesCopy = copySortedValues(sortedValues);
+		if (!new HashSet<>(allValuesSnapshot).containsAll(sortedValuesCopy)) {
+			throw new IllegalArgumentException("sortedValues must only contain values from allValues.");
+		}
 		SavedValues<T> previousSavedValues = getSavedValues();
-		validateSerializedIdentities(previousSavedValues, sortedValuesCopy, lastAllValues);
-		SavedValues<T> updatedSavedValues = updateSavedValues(previousSavedValues, sortedValuesCopy);
+		validateSerializedIdentities(previousSavedValues, sortedValuesCopy, allValuesSnapshot);
+		SavedValues<T> updatedSavedValues = updateSavedValues(previousSavedValues, allValuesSnapshot, sortedValuesCopy);
 		boolean changed = !previousSavedValues.equals(updatedSavedValues);
 		if (savedValuesNeedWrite || changed) {
 			this.savedValues = updatedSavedValues;
@@ -155,9 +157,9 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		return new SavedValues<>(visibleValues, savedValues.hiddenValues());
 	}
 
-	private SavedValues<T> updateSavedValues(SavedValues<T> savedValues, List<T> sortedValues) {
+	private SavedValues<T> updateSavedValues(SavedValues<T> savedValues, List<T> allValues, List<T> sortedValues) {
 		Set<T> sortedValuesSet = new HashSet<>(sortedValues);
-		Set<T> currentValues = new HashSet<>(lastAllValues);
+		Set<T> currentValues = new HashSet<>(allValues);
 		List<T> visibleValues = new ArrayList<>(sortedValues);
 		for (T previouslyVisible : savedValues.visibleValues()) {
 			if (!sortedValuesSet.contains(previouslyVisible) && !currentValues.contains(previouslyVisible)) {
@@ -168,7 +170,7 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		if (!allowsRemovingValues) {
 			Set<T> visibleValuesSet = new HashSet<>(visibleValues);
 			List<T> requiredVisibleValues = new ArrayList<>();
-			for (T value : lastAllValues) {
+			for (T value : allValues) {
 				if (visibleValuesSet.add(value)) {
 					requiredVisibleValues.add(value);
 				}
@@ -185,7 +187,7 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 
 		Set<T> hiddenValues = new LinkedHashSet<>(savedValues.hiddenValues());
 		hiddenValues.removeAll(sortedValuesSet);
-		lastAllValues.stream()
+		allValues.stream()
 			.filter(value -> !sortedValuesSet.contains(value))
 			.sorted(defaultSortOrder)
 			.forEach(hiddenValues::add);

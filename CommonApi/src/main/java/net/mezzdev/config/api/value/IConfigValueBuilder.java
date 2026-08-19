@@ -44,10 +44,12 @@ public interface IConfigValueBuilder<T> {
 	IConfigValueBuilder<T> addLegacyValue(String legacyCategoryName, String legacyValueName);
 
 	/**
-	 * Add a migration from an old storage location and old serialized text for this value.
+	 * Add a typed migration from an old storage location and value format.
 	 * <p>
 	 * Use this when this value has moved from another category, another name, or both, and its serialized format or
-	 * type has changed.
+	 * type has changed. MezzConfig deserializes the old stored value with {@code legacySerializer}, then passes each usable
+	 * result to {@code migration}. Structured values such as lists are decoded through the legacy serializer's normal storage
+	 * contract instead of exposing the config file's encoded text to the migration.
 	 * <p>
 	 * The legacy category and value name must not match this value's current storage location. If a serialized format
 	 * changes without a storage name change, use a serializer that accepts both formats, or move to a new storage name
@@ -55,11 +57,18 @@ public interface IConfigValueBuilder<T> {
 	 *
 	 * @param legacyCategoryName old stable storage category name
 	 * @param legacyValueName old stable storage value name
-	 * @param migration converts the old serialized text into the current value type
+	 * @param legacySerializer serializer for the old value type and storage format
+	 * @param migration converts a usable old value into a valid current value; it must be deterministic and thread-safe
+	 * @param <U> old value type
 	 *
 	 * @since 0.1.0
 	 */
-	IConfigValueBuilder<T> addLegacyValueMigration(String legacyCategoryName, String legacyValueName, Function<String, T> migration);
+	<U> IConfigValueBuilder<T> addLegacyValueMigration(
+		String legacyCategoryName,
+		String legacyValueName,
+		IConfigValueSerializer<U> legacySerializer,
+		Function<U, T> migration
+	);
 
 	/**
 	 * Set the edit mode hint for this value.

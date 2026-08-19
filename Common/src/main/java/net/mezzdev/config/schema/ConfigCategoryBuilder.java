@@ -25,7 +25,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 
 public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implements IConfigCategoryBuilder {
 	private final List<ConfigValueBuilder<?>> valueBuilders = new ArrayList<>();
@@ -45,15 +44,15 @@ public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implement
 	public <T> ConfigValue<T> addValue(
 		ConfigValue<T> value,
 		Set<ConfigValueReference> legacyValueReferences,
-		Map<ConfigValueReference, Function<String, T>> legacyValueMigrations
+		Map<ConfigValueReference, ConfigValueMigration<T>> legacyValueMigrations
 	) {
 		checkNotBuilt();
 		this.values.add(value);
 		for (ConfigValueReference reference : legacyValueReferences) {
 			addMovedValueMigration(reference, ConfigValueMigration.deserialize(value));
 		}
-		for (Map.Entry<ConfigValueReference, Function<String, T>> entry : legacyValueMigrations.entrySet()) {
-			addMovedValueMigration(entry.getKey(), ConfigValueMigration.migrate(value, entry.getValue()));
+		for (Map.Entry<ConfigValueReference, ConfigValueMigration<T>> entry : legacyValueMigrations.entrySet()) {
+			addMovedValueMigration(entry.getKey(), entry.getValue());
 		}
 		return value;
 	}

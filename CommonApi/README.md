@@ -257,7 +257,9 @@ Custom key-value entry types can implement
 `IConfigKeyValueSerializer`. It exposes serializers for both components and
 methods to split and rebuild the entry. This supports map-style
 editors while preserving ordered lists, domain value types, and custom storage
-formats. Pass it to `addList(...)` to create a list with this structure.
+formats. Valid entries must split into valid components and rebuild to equal
+entries; integrations validate newly combined components against the complete
+entry serializer. Pass it to `addList(...)` to create a list with this structure.
 
 List serializers expose `ConfigListOrdering`. Lists are ordered by default;
 pass `ConfigListOrdering.UNORDERED` to `addList(...)` when integrations do not
@@ -304,11 +306,13 @@ Generated config screens can enumerate registered schemas with
 
 Use value legacy names when storage names change. If a value moved from another
 storage category, declare the old category and value name on that value. If
-serialized text also changed, add a legacy value migration from the old storage
-location. Legacy migrations must come from an old category, old value name, or
-both. If the serialized format changes without a storage name change, use a
-serializer that accepts both formats, or move to a new storage name and migrate
-from the old one.
+the serialized format or value type also changed, add a typed legacy value
+migration with the old serializer and a converter to the current type. MezzConfig
+decodes old scalar and structured values through that serializer before calling
+the converter, so migration code does not parse config-file syntax. Legacy
+migrations must come from an old category, old value name, or both. If the
+serialized format changes without a storage name change, use a serializer that
+accepts both formats, or move to a new storage name and migrate from the old one.
 
 Values can also declare editor metadata and restart behavior:
 
@@ -426,12 +430,14 @@ skipped, backed up, and corrected while valid neighboring entries remain usable.
 
 Sorting methods return unmodifiable, duplicate-free snapshots and reconcile the
 saved preference against the runtime values supplied to each call.
-`ISortingConfig.setSortedValues(...)` returns `true` only for a change, returns
-`false` for an unchanged order, and rejects duplicate values. Change listeners
-run synchronously after persistence is attempted; a failing listener is logged
-without preventing later listeners from running.
+`ISortingConfig.setSortedValues(allValues, sortedValues)` takes the complete
+runtime value set with every update, returns `true` only for a change, returns
+`false` for an unchanged order, and rejects duplicates or sorted values outside
+the complete set. Change listeners run synchronously after persistence is
+attempted; a failing listener is logged without preventing later listeners from
+running.
 
 When removal is enabled, sorting configs persist explicitly hidden known values
 separately from the visible order. A value omitted from an update is hidden only
-if it was present in the latest runtime collection. Values discovered later are
-visible by default.
+if it is present in that update's complete runtime collection. Values discovered
+later are visible by default.
