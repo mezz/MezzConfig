@@ -5,10 +5,8 @@ import net.mezzdev.config.server.ServerConfigRuntime;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.event.entity.player.PermissionsChangedEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
-import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.common.Mod;
 
@@ -20,7 +18,7 @@ public final class ConfigForge {
 	public static final String MOD_ID = "mezz_config";
 
 	public ConfigForge() {
-		ConfigForgeNetwork network = new ConfigForgeNetwork();
+		new ConfigForgeNetwork();
 		MinecraftForge.EVENT_BUS.addListener((ServerStartedEvent event) -> ServerConfigRuntime.onServerStarted(event.getServer()));
 		MinecraftForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> ServerConfigRuntime.onServerStopped());
 		MinecraftForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedInEvent event) -> {
@@ -28,22 +26,7 @@ public final class ConfigForge {
 				ServerConfigRuntime.onPlayerJoin(player);
 			}
 		});
-		MinecraftForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedOutEvent event) -> {
-			if (event.getEntity() instanceof ServerPlayer player) {
-				ServerConfigRuntime.onPlayerDisconnect(player);
-			}
-		});
-		MinecraftForge.EVENT_BUS.addListener(
-			EventPriority.LOWEST,
-			true,
-			PermissionsChangedEvent.class,
-			event -> {
-				if (event.getEntity() instanceof ServerPlayer player) {
-					ServerConfigRuntime.onPlayerPermissionsChanging(player);
-				}
-			}
-		);
-		ConfigForgeClientSafeRunner clientSafeRunner = new ConfigForgeClientSafeRunner(network);
+		ConfigForgeClientSafeRunner clientSafeRunner = new ConfigForgeClientSafeRunner();
 		DistExecutor.safeRunWhenOn(Dist.CLIENT, () -> clientSafeRunner::registerClient);
 	}
 }

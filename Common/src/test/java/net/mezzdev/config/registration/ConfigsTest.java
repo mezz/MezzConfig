@@ -83,16 +83,16 @@ public class ConfigsTest {
 		assertEquals(ConfigSchemaType.CLIENT, client.schema().getType());
 		assertEquals(ConfigSchemaType.CLIENT, explicit.schema().getType());
 		assertEquals(ConfigSchemaType.SERVER, server.schema().getType());
+		assertEquals("client.ini", client.schema().getId());
+		assertEquals(explicitPath.toString().replace('\\', '/'), explicit.schema().getId());
+		assertEquals("server.ini", server.schema().getId());
 		assertTrue(client.schema().isActive());
-		assertTrue(client.schema().canEdit());
 		assertFalse(client.enabled().getValue());
 		assertTrue(explicit.schema().isActive());
-		assertTrue(explicit.schema().canEdit());
 		assertTrue(explicit.enabled().getValue());
 		assertEquals(clientPath, client.schema().getPath().orElseThrow());
 		assertEquals(explicitPath, explicit.schema().getPath().orElseThrow());
 		assertFalse(server.schema().isActive());
-		assertFalse(server.schema().canEdit());
 		assertEquals(Optional.empty(), server.schema().getPath());
 		assertTrue(getConfigManager().getServerSchemas().contains(server.schema()));
 	}

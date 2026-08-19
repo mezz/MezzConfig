@@ -39,8 +39,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -53,6 +51,7 @@ public class ConfigSchema implements IConfigSchema {
 	private static final int LOCALIZATION_SAVE_RETRY_LIMIT = 30;
 	private static final Consumer<? super Collection<Path>> NO_PATH_RESERVATION = ignored -> {};
 
+	private final String id;
 	private final String modId;
 	private final ConfigSchemaPathResolver pathResolver;
 	private final ConfigSchemaType type;
@@ -77,7 +76,6 @@ public class ConfigSchema implements IConfigSchema {
 	private boolean logUntranslatedKeys;
 	private boolean translationKeysChecked;
 	private volatile boolean remotelyActive;
-	private volatile boolean remoteCanEdit;
 	private Consumer<? super Collection<Path>> pathReservation = NO_PATH_RESERVATION;
 
 	public ConfigSchema(
@@ -169,6 +167,29 @@ public class ConfigSchema implements IConfigSchema {
 		ConfigSchemaType type,
 		@Nullable ServerConfigKey serverKey
 	) {
+		this(
+			getDefaultId(modId, pathResolver, serverKey),
+			modId,
+			pathResolver,
+			categoryBuilders,
+			editorCategoryBuilders,
+			scheduler,
+			type,
+			serverKey
+		);
+	}
+
+	public ConfigSchema(
+		String id,
+		String modId,
+		ConfigSchemaPathResolver pathResolver,
+		List<ConfigCategoryBuilder> categoryBuilders,
+		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
+		DelayedTaskScheduler scheduler,
+		ConfigSchemaType type,
+		@Nullable ServerConfigKey serverKey
+	) {
+		this.id = validateId(id);
 		this.modId = validateModId(modId);
 		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
 		this.type = ErrorUtil.checkNotNull(type, "type");
@@ -197,6 +218,27 @@ public class ConfigSchema implements IConfigSchema {
 		this.categories = List.copyOf(categories);
 		this.editorCategories = List.copyOf(editorCategories);
 		this.delayedSave = new DeduplicatingRunner(SAVE_DELAY_TIME, scheduler);
+	}
+
+	private static String getDefaultId(
+		String modId,
+		ConfigSchemaPathResolver pathResolver,
+		@Nullable ServerConfigKey serverKey
+	) {
+		if (serverKey != null) {
+			return serverKey.configFileName();
+		}
+		return pathResolver.resolvePath()
+			.map(path -> path.toAbsolutePath().normalize().toString())
+			.orElse(modId);
+	}
+
+	private static String validateId(String id) {
+		id = ErrorUtil.checkNotNull(id, "id");
+		if (id.isBlank()) {
+			throw new IllegalArgumentException("id must not be blank.");
+		}
+		return id;
 	}
 
 	public static String validateModId(String modId) {
@@ -232,7 +274,6 @@ public class ConfigSchema implements IConfigSchema {
 		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
 		boolean previousRestartValuesInitialized = restartValuesInitialized;
 		boolean previousRemotelyActive = remotelyActive;
-		boolean previousRemoteCanEdit = remoteCanEdit;
 		Path previousDefaultPath = activeDefaultPath;
 		Path previousPath = activePath;
 		updatePathReservations(previousDefaultPath, previousPath);
@@ -272,7 +313,6 @@ public class ConfigSchema implements IConfigSchema {
 					previousPendingValues,
 					previousRestartValuesInitialized,
 					previousRemotelyActive,
-					previousRemoteCanEdit,
 					initialSaves
 				);
 			}
@@ -282,7 +322,6 @@ public class ConfigSchema implements IConfigSchema {
 					previousPendingValues,
 					previousRestartValuesInitialized,
 					previousRemotelyActive,
-					previousRemoteCanEdit,
 					initialSaves
 				);
 			}
@@ -308,7 +347,6 @@ public class ConfigSchema implements IConfigSchema {
 			previousPendingValues,
 			previousRestartValuesInitialized,
 			previousRemotelyActive,
-			previousRemoteCanEdit,
 			getInitialSaves(defaultPath, path, activePathChanged, isSynchronizedServerSchema())
 		);
 	}
@@ -318,7 +356,6 @@ public class ConfigSchema implements IConfigSchema {
 		Map<ConfigValue<?>, Object> previousPendingValues,
 		boolean previousRestartValuesInitialized,
 		boolean previousRemotelyActive,
-		boolean previousRemoteCanEdit,
 		List<InitialSave> initialSaves
 	) {
 		if (!isSynchronizedServerSchema()) {
@@ -331,7 +368,6 @@ public class ConfigSchema implements IConfigSchema {
 			restoreValues(previousEffectiveValues, previousPendingValues);
 			restartValuesInitialized = previousRestartValuesInitialized;
 			remotelyActive = previousRemotelyActive;
-			remoteCanEdit = previousRemoteCanEdit;
 			if (!registered || registrationInProgress) {
 				throw e;
 			}
@@ -572,7 +608,7 @@ public class ConfigSchema implements IConfigSchema {
 	private void onFileChanged() {
 		needsLoad.set(true);
 		if (isSynchronizedServerSchema()) {
-			ServerConfigRuntime.onServerSchemaFileChanged(this);
+			ServerConfigRuntime.onServerSchemaChanged(this);
 		}
 	}
 
@@ -627,7 +663,6 @@ public class ConfigSchema implements IConfigSchema {
 		restartValuesInitialized = false;
 		translationKeysChecked = false;
 		remotelyActive = false;
-		remoteCanEdit = false;
 		resetAllValuesToDefaults();
 	}
 
@@ -769,34 +804,8 @@ public class ConfigSchema implements IConfigSchema {
 
 	@Override
 	public synchronized List<? extends IAppliedConfigValueChange<?>> batchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
-		if (isSynchronizedServerSchema()) {
-			throw new IllegalStateException("Server config schemas must be updated through requestBatchUpdate.");
-		}
 		ConfigBatchUpdater updater = createBatchUpdater(updateBatch);
 		return applyBatchUpdates(updater.getUpdates());
-	}
-
-	@Override
-	public synchronized CompletionStage<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
-		ConfigBatchUpdater updater = createBatchUpdater(updateBatch);
-		List<ConfigValueUpdate<?>> updates = updater.getUpdates();
-		if (!isSynchronizedServerSchema()) {
-			applyBatchUpdates(updates);
-			return CompletableFuture.completedStage(null);
-		}
-		loadIfNeeded();
-		if (!isActive()) {
-			throw new IllegalStateException("Server config schema is not active.");
-		}
-		validateUpdates(updates);
-		validateProspectiveServerSnapshot(updates);
-		if (updates.isEmpty()) {
-			return CompletableFuture.completedStage(null);
-		}
-		if (activePath != null) {
-			return ServerConfigRuntime.requestLocalUpdate(this, updates).minimalCompletionStage();
-		}
-		return ServerConfigRuntime.requestUpdate(this, updates).minimalCompletionStage();
 	}
 
 	private static ConfigBatchUpdater createBatchUpdater(Consumer<IConfigBatchUpdater> updateBatch) {
@@ -916,6 +925,9 @@ public class ConfigSchema implements IConfigSchema {
 		if (!effectiveChanges.isEmpty()) {
 			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(effectiveChanges);
 			notifyListeners(immutableChanges, batchListeners, "config schema");
+			if (registered && isSynchronizedServerSchema()) {
+				ServerConfigRuntime.onServerSchemaChanged(this);
+			}
 		}
 	}
 
@@ -944,6 +956,11 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	@Override
+	public String getId() {
+		return id;
+	}
+
+	@Override
 	public String getModId() {
 		return modId;
 	}
@@ -961,14 +978,6 @@ public class ConfigSchema implements IConfigSchema {
 	public synchronized boolean isActive() {
 		loadIfNeeded();
 		return activePath != null || (isSynchronizedServerSchema() && remotelyActive);
-	}
-
-	@Override
-	public synchronized boolean canEdit() {
-		if (isSynchronizedServerSchema()) {
-			return isActive() && (activePath != null || remoteCanEdit);
-		}
-		return isActive();
 	}
 
 	@Override
@@ -1100,55 +1109,16 @@ public class ConfigSchema implements IConfigSchema {
 		return new ServerConfigValueData(
 			categoryName,
 			value.getName(),
-			ConfigFileValueAdapter.serialize(value.getSerializer(), effectiveValue),
-			ConfigFileValueAdapter.serialize(value.getSerializer(), pendingValue)
+			ConfigFileValueAdapter.serialize(value.getSerializer(), effectiveValue)
 		);
-	}
-
-	public synchronized List<ServerConfigValueData> serializeUpdates(List<? extends ConfigValueUpdate<?>> updates) {
-		validateUpdates(updates);
-		List<ServerConfigValueData> values = new ArrayList<>();
-		for (ConfigValueUpdate<?> update : updates) {
-			String categoryName = getCategoryName(update.configValue());
-			values.add(serializeUpdate(categoryName, update.configValue(), update.newValue()));
-		}
-		return List.copyOf(values);
-	}
-
-	private String getCategoryName(ConfigValue<?> configValue) {
-		for (ConfigCategory category : categories) {
-			if (category.getConfigValues().stream().anyMatch(value -> value == configValue)) {
-				return category.getName();
-			}
-		}
-		throw new IllegalArgumentException("Config value does not belong to this schema: " + configValue.getName());
 	}
 
 	private static <T> ServerConfigValueData serializeValue(String categoryName, ConfigValue<T> value) {
 		return new ServerConfigValueData(
 			categoryName,
 			value.getName(),
-			ConfigFileValueAdapter.serialize(value.getSerializer(), value.getEffectiveValueWithoutLoading()),
-			ConfigFileValueAdapter.serialize(value.getSerializer(), value.getPendingValueWithoutLoading())
+			ConfigFileValueAdapter.serialize(value.getSerializer(), value.getEffectiveValueWithoutLoading())
 		);
-	}
-
-	private static <T> ServerConfigValueData serializeUpdate(String categoryName, ConfigValue<T> value, Object rawValue) {
-		@SuppressWarnings("unchecked")
-		T typedValue = (T) rawValue;
-		return new ServerConfigValueData(
-			categoryName,
-			value.getName(),
-			ConfigFileValueAdapter.serialize(value.getSerializer(), typedValue)
-		);
-	}
-
-	public synchronized List<ConfigValueUpdate<?>> deserializeUpdates(List<ServerConfigValueData> values, boolean allowSchemaDifferences) {
-		List<ConfigValueUpdate<?>> updates = new ArrayList<>();
-		for (ResolvedServerConfigValue value : resolveServerValues(values, allowSchemaDifferences)) {
-			updates.add(deserializeUpdate(value.configValue(), value.data().serializedPendingValue()));
-		}
-		return List.copyOf(updates);
 	}
 
 	private List<ResolvedServerConfigValue> resolveServerValues(
@@ -1185,7 +1155,7 @@ public class ConfigSchema implements IConfigSchema {
 		return List.copyOf(results);
 	}
 
-	private static <T> ConfigValueUpdate<T> deserializeUpdate(ConfigValue<T> configValue, String serializedValue) {
+	private static <T> T deserializeValue(ConfigValue<T> configValue, String serializedValue) {
 		IDeserializeResult<JsonElement> decodedValue = ConfigFileValueCodec.deserialize(serializedValue);
 		if (!decodedValue.getDiagnostics().isEmpty() || decodedValue.getResult().isEmpty()) {
 			String diagnostics = String.join("; ", decodedValue.getDiagnostics());
@@ -1199,17 +1169,10 @@ public class ConfigSchema implements IConfigSchema {
 			String diagnostics = String.join("; ", result.getDiagnostics());
 			throw new IllegalArgumentException("Invalid value for '%s': %s".formatted(configValue.getName(), diagnostics));
 		}
-		return new ConfigValueUpdate<>(configValue, result.getResult().orElseThrow());
+		return result.getResult().orElseThrow();
 	}
 
-	public synchronized List<AppliedConfigValueChange<?>> applyServerUpdates(List<? extends ConfigValueUpdate<?>> updates) {
-		if (!isSynchronizedServerSchema()) {
-			throw new IllegalStateException("Config schema is not server-owned.");
-		}
-		return applyBatchUpdates(updates);
-	}
-
-	public synchronized void applyRemoteSnapshot(List<ServerConfigValueData> values, boolean canEdit) {
+	public synchronized void applyRemoteSnapshot(List<ServerConfigValueData> values) {
 		if (!isSynchronizedServerSchema()) {
 			throw new IllegalStateException("Config schema is not server-owned.");
 		}
@@ -1219,14 +1182,12 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		loadIfNeeded();
 		if (activePath != null) {
-			remoteCanEdit = canEdit;
 			return;
 		}
 		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
 		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
 		resetAllValuesToDefaults();
 		synchronizedValues.forEach(SynchronizedConfigValue::apply);
-		remoteCanEdit = canEdit;
 		remotelyActive = true;
 		needsLoad.set(false);
 		List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
@@ -1237,20 +1198,14 @@ public class ConfigSchema implements IConfigSchema {
 	private static <T> SynchronizedConfigValue<T> deserializeSynchronizedValue(ResolvedServerConfigValue value) {
 		@SuppressWarnings("unchecked")
 		ConfigValue<T> configValue = (ConfigValue<T>) value.configValue();
-		T effectiveValue = deserializeValue(configValue, value.data().serializedEffectiveValue());
-		T pendingValue = deserializeValue(configValue, value.data().serializedPendingValue());
-		return new SynchronizedConfigValue<>(configValue, effectiveValue, pendingValue);
-	}
-
-	private static <T> T deserializeValue(ConfigValue<T> configValue, String serializedValue) {
-		return deserializeUpdate(configValue, serializedValue).newValue();
+		T synchronizedValue = deserializeValue(configValue, value.data().serializedValue());
+		return new SynchronizedConfigValue<>(configValue, synchronizedValue);
 	}
 
 	public synchronized void clearRemoteSnapshot() {
 		if (!isSynchronizedServerSchema()) {
 			return;
 		}
-		remoteCanEdit = false;
 		if (!remotelyActive) {
 			return;
 		}
@@ -1277,11 +1232,10 @@ public class ConfigSchema implements IConfigSchema {
 
 	private record SynchronizedConfigValue<T>(
 		ConfigValue<T> configValue,
-		T effectiveValue,
-		T pendingValue
+		T value
 	) {
 		private void apply() {
-			configValue.setSynchronizedValuesWithoutNotifying(effectiveValue, pendingValue);
+			configValue.setSynchronizedValuesWithoutNotifying(value, value);
 		}
 	}
 

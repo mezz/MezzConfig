@@ -115,7 +115,7 @@ first, followed by the distributable default and then the active world's file.
 
 The supported runtime states are:
 
-| Schema type and context | Active | Editable | Local path |
+| Schema type and context | Active | Local updates | Local path |
 | --- | --- | --- | --- |
 | `CLIENT` on a physical client | yes | yes | installation or explicit file |
 | `CLIENT` on a dedicated server | no | no | none |
@@ -124,12 +124,10 @@ The supported runtime states are:
 | `CLIENT_PER_WORLD` on a dedicated server | no | no | none |
 | `SERVER` before a local world or remote snapshot | no | no | none |
 | `SERVER` authoritative for a local world | yes | yes | world `serverconfig` file |
-| `SERVER` synchronized from a remote server | yes | server-reported permission | none |
+| `SERVER` synchronized from a remote server | yes | no | none |
 
 An inert client declaration on a dedicated server remains safe to build from
 common initialization code but is not returned by `Configs.getSchemas()`.
-For a remote server schema, `canEdit()` is a UI hint; the server authorizes each
-request again.
 
 ### Malformed-file recovery
 
@@ -160,7 +158,7 @@ Use `IConfigRegistration.createServerSchemaBuilder(...)` for settings whose
 effective value is owned by the server. This is distinct from a
 client-world schema: a client-world schema merely selects a different local
 preference file for each connection, while a server schema is loaded, validated,
-persisted, and authorized by the server.
+and persisted by the server.
 
 Server schemas use these locations:
 
@@ -173,53 +171,41 @@ The world file is created when the server starts. Declared code defaults are
 loaded first, then the distributable default, then the world file. Connected
 clients do not read either server file; they receive the server's complete
 effective snapshot in memory when they join and whenever the values change.
+Only effective values are synchronized. On a remote client,
+`getPendingValue()` therefore equals `getValue()` even when the authoritative
+server has a different saved value waiting for a restart.
 Editing the world file is detected and synchronized automatically. Client-owned
 files use a 500-millisecond quiet period, while server-owned files use a separate
 watcher profile with a two-second quiet period so a multi-step editor save can
-settle before MezzConfig reloads and broadcasts it. Large
-snapshots and update requests are split into bounded network fragments and
-reassembled before the complete batch is validated or applied. The internal
+settle before MezzConfig reloads and broadcasts it. Large snapshots are split
+into bounded network fragments and reassembled before the complete batch is
+validated or applied. The internal
 protocol accepts out-of-order and interleaved messages, rejects duplicates and
 inconsistent metadata, and limits each complete message to 1 MiB and 64
-fragments. Each peer/direction may retain at most four incomplete messages and
+fragments. A client may retain at most four incomplete messages and
 2 MiB of incomplete data; incomplete messages expire after 10 seconds. Decoded
 messages are limited to 4,096 values, 256 KiB per serialized value, and smaller
-field-specific bounds for identifiers and diagnostics. These controls are
+field-specific bounds for identifiers. These controls are
 internal and intentionally not caller-configurable.
 
 On a client, `IConfigSchema.isActive()` becomes true after the first snapshot.
-`canEdit()` is true when the server reports that the player has its configured
-operator permission level, and is refreshed when that permission changes. This
-flag helps config editors disable controls, but the server rechecks permission
-and validates every requested value.
+The synchronized instance is a read-only runtime mirror: `IConfigValue.set(...)`
+and `IConfigSchema.batchUpdate(...)` reject non-empty updates because it has no
+local backing file. On the authoritative server instance, those ordinary update
+methods validate, persist, notify, and synchronize changes normally.
 
-Use `requestBatchUpdate(...)` in config editors:
-
-```java
-CompletionStage<Void> result = schema.requestBatchUpdate(updater -> {
-	updater.set(enableCheatModeForOp, true);
-	updater.set(enableCheatModeForCreative, false);
-});
-```
-
-For client schemas, the stage is already complete after the normal local
-update. For remote server schemas, current values remain unchanged until an accepted
-request returns in an authoritative snapshot. The stage completes
-exceptionally when the player lacks permission, a value is rejected, the
-connection closes, a send fails, the server does not support the request, or no
-response arrives within 15 seconds. At most 128 remote update requests may be
-pending at once. Every synchronized batch is fully decoded and validated before
-any value changes; if any known value is invalid, none of that batch is applied.
-Cancellation is unsupported because it cannot reliably retract an update once
-queued or sent. Cancelling a future obtained from `toCompletableFuture()` only
-stops observation through that derived future; the update and stage continue.
-Direct `IConfigValue.set(...)` and `IConfigSchema.batchUpdate(...)` calls are rejected
-for server schemas so an integrated client cannot bypass server authority.
+Remote editing is intentionally outside MezzConfig's schema and networking
+contracts. An editor integration can define its own optional client-to-server
+protocol, authorization policy, request lifecycle, diagnostics, and pending
+value snapshot. Its server handler should resolve and validate proposed values,
+then apply accepted values to the authoritative schema with `batchUpdate(...)`.
+MezzConfig's one-way synchronization will broadcast any resulting effective
+changes independently.
 
 The server-config channel is optional. Connecting to a server without it still
-succeeds; an attempted remote edit fails through its future. The current
-fragment envelope is protocol version 3 and is intentionally incompatible with
-the earlier unreleased first/last-fragment format.
+succeeds, but the client keeps declared defaults instead of receiving server
+values. The current one-way protocol is version 4 and is intentionally
+incompatible with the earlier unreleased editing protocol.
 
 Supported built-in value helpers include:
 
@@ -299,7 +285,10 @@ path.
 
 Schemas expose the owning mod id through `IConfigSchema.getModId()`, so
 integrations can group schemas by mod and create default config screens without
-adding GUI-specific API to MezzConfig.
+adding GUI-specific API to MezzConfig. `IConfigSchema.getId()` returns the
+schema's stable opaque storage identity. The tuple of mod id, schema type, and
+schema id can address a schema without relying on registration order or its
+currently active path.
 
 Generated config screens can enumerate registered schemas with
 `Configs.getSchemas()`.
@@ -378,14 +367,11 @@ the outer notification resumes, so callers must prevent update cycles.
 
 `IConfigValue.set(...)` returns `true` for a change and `false` for a valid
 unchanged value. It throws `IllegalArgumentException` for invalid values and
-`IllegalStateException` when a context-specific schema is inactive.
-Config editor integrations should normally use `requestBatchUpdate(...)`
-instead, because it also handles server-authoritative schemas.
+`IllegalStateException` when its schema has no active local backing file.
 
 Built schemas, values, and sorting configs are thread-safe; batches are atomic,
 but concurrent operations are unordered. Listeners run on the applying thread,
-update stages have no fixed completion thread, and builders are not thread-safe.
-Retain listener removal callbacks for teardown.
+and builders are not thread-safe. Retain listener removal callbacks for teardown.
 
 The core API exposes serialization, validation, storage names, localization
 keys, lightweight editor category hints, and edit-mode hints. GUI-specific

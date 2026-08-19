@@ -10,13 +10,12 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
 /**
  * Represents one declared config schema.
- * A schema may be inactive or may hold synchronized server values without a local backing file; use {@link #isActive()},
- * {@link #canEdit()}, and {@link #getPath()} to inspect its current runtime state.
+ * A schema may be inactive or may hold synchronized server values without a local backing file; use {@link #isActive()}
+ * and {@link #getPath()} to inspect its current runtime state.
  * <p>
  * Config schemas contain one or more {@link IConfigCategory},
  * and each category has one or more {@link IConfigValue}.
@@ -41,6 +40,16 @@ import java.util.function.Consumer;
  */
 @ApiStatus.NonExtendable
 public interface IConfigSchema {
+	/**
+	 * Get the stable identifier for this schema within its owning mod and schema type.
+	 * <p>
+	 * Automatically located schemas use their normalized relative config file name. Explicit-location schemas use their
+	 * normalized absolute configured path. Treat this as an opaque storage identity rather than display text.
+	 *
+	 * @since 0.3.0
+	 */
+	String getId();
+
 	/**
 	 * Get the mod id that owns this config schema.
 	 * <p>
@@ -69,18 +78,6 @@ public interface IConfigSchema {
 	 * @since 0.2.0
 	 */
 	boolean isActive();
-
-	/**
-	 * Return whether the local user can currently request edits to this schema.
-	 * <p>
-	 * Active client and client-per-world schemas, plus locally authoritative server schemas, are editable. A synchronized
-	 * remote server schema is editable only when the server reported that the local player has its operator permission
-	 * level. Inactive schemas are never editable. The server checks permission again for every request, so this is a
-	 * presentation hint rather than an authorization boundary.
-	 *
-	 * @since 0.2.0
-	 */
-	boolean canEdit();
 
 	/**
 	 * Get the current path of this config schema.
@@ -130,39 +127,13 @@ public interface IConfigSchema {
 	 * @return saved-value changes that were applied
 	 *
 	 * @throws IllegalArgumentException if a value is invalid, cannot be safely serialized, or does not belong to this schema
-	 * @throws IllegalStateException if this context-specific schema is currently inactive
-	 * @throws IllegalStateException if this is a server schema; use
-	 * {@link #requestBatchUpdate(Consumer)} instead
+	 * @throws IllegalStateException if this schema has no active local backing file, including synchronized server schemas
+	 * viewed on a remote client
 	 *
 	 * @since 0.1.0
 	 */
 	@Unmodifiable
 	List<? extends IAppliedConfigValueChange<?>> batchUpdate(Consumer<IConfigBatchUpdater> updateBatch);
-
-	/**
-	 * Request several config value updates together.
-	 * <p>
-	 * For client-owned schemas, this has the same validation, persistence, and listener behavior as
-	 * {@link #batchUpdate(Consumer)} and returns an already-completed stage. For a server schema, the values are sent to
-	 * the server without changing the local snapshot. The stage completes after the server applies the accepted request
-	 * and sends its authoritative result. It completes exceptionally if the request cannot be sent, permission is denied,
-	 * the server rejects a value, or the server does not respond before the implementation's bounded request timeout.
-	 * <p>
-	 * Config editors should prefer this method so the same editing flow works for every schema.
-	 * Queued values are snapshotted and locally validated before the request is sent.
-	 * Cancellation is not supported because a queued or sent authoritative update cannot reliably be retracted. Cancelling
-	 * a {@link CompletionStage#toCompletableFuture() derived future} only stops observation through that derived future.
-	 * No completion thread is guaranteed; use an explicit executor for dependent work that has thread affinity.
-	 *
-	 * @param updateBatch callback that queues updates
-	 * @return completion of the local update or server request
-	 *
-	 * @throws IllegalArgumentException if a value is invalid, cannot be safely serialized, or does not belong to this schema
-	 * @throws IllegalStateException if this schema is currently inactive
-	 *
-	 * @since 0.2.0
-	 */
-	CompletionStage<Void> requestBatchUpdate(Consumer<IConfigBatchUpdater> updateBatch);
 
 	/**
 	 * Add a listener called exactly once for every non-empty batch of effective-value changes applied to this schema.

@@ -18,6 +18,7 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private final Set<String> categoryNames = new HashSet<>();
 	private final List<ConfigCategoryBuilder> categoryBuilders = new ArrayList<>();
 	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders = new ArrayList<>();
+	private final String id;
 	private final String modId;
 	private final ConfigSchemaPathResolver pathResolver;
 	private final String localizationPath;
@@ -63,6 +64,36 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 		@Nullable ServerConfigKey serverKey,
 		boolean registrationEnabled
 	) {
+		this(
+			getDefaultId(modId, serverKey),
+			modId,
+			pathResolver,
+			localizationPath,
+			configManager,
+			type,
+			serverKey,
+			registrationEnabled
+		);
+	}
+
+	private static String getDefaultId(String modId, @Nullable ServerConfigKey serverKey) {
+		if (serverKey == null) {
+			return modId;
+		}
+		return serverKey.configFileName();
+	}
+
+	public ConfigSchemaBuilder(
+		String id,
+		String modId,
+		ConfigSchemaPathResolver pathResolver,
+		String localizationPath,
+		ConfigManager configManager,
+		ConfigSchemaType type,
+		@Nullable ServerConfigKey serverKey,
+		boolean registrationEnabled
+	) {
+		this.id = ErrorUtil.checkNotNull(id, "id");
 		this.modId = ConfigSchema.validateModId(modId);
 		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
 		this.localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
@@ -103,6 +134,7 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 		checkNotBuilt();
 		built = true;
 		ConfigSchema schema = new ConfigSchema(
+			id,
 			modId,
 			pathResolver,
 			categoryBuilders,

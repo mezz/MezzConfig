@@ -76,16 +76,18 @@ public final class ConfigProvider implements IConfigProvider {
 		public IConfigSchemaBuilder createClientSchemaBuilder(String configFileName, String localizationPath) {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path relativeConfigFile = getRelativeConfigFile(configFileName);
+			String id = getSchemaId(relativeConfigFile);
 			ConfigSchemaPathResolver pathResolver = new StaticConfigSchemaPathResolver(
 				modDirectory.resolve("client").resolve(relativeConfigFile).normalize()
 			);
-			return createClientSchemaBuilder(pathResolver, localizationPath, ConfigSchemaType.CLIENT);
+			return createClientSchemaBuilder(id, pathResolver, localizationPath, ConfigSchemaType.CLIENT);
 		}
 
 		@Override
 		public IConfigSchemaBuilder createClientPerWorldSchemaBuilder(String configFileName, String localizationPath) {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path relativeConfigFile = getRelativeConfigFile(configFileName);
+			String id = getSchemaId(relativeConfigFile);
 			Path ownershipDirectory = modDirectory.resolve("client");
 			Path defaultConfigFile = ClientWorldConfigPathUtil.getDefaultWorldPath(ownershipDirectory)
 				.resolve(relativeConfigFile)
@@ -98,7 +100,7 @@ public final class ConfigProvider implements IConfigProvider {
 				defaultConfigFile,
 				activePathResolver
 			);
-			return createClientSchemaBuilder(pathResolver, localizationPath, ConfigSchemaType.CLIENT_PER_WORLD);
+			return createClientSchemaBuilder(id, pathResolver, localizationPath, ConfigSchemaType.CLIENT_PER_WORLD);
 		}
 
 		@Override
@@ -108,6 +110,7 @@ public final class ConfigProvider implements IConfigProvider {
 				.normalize();
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			return createClientSchemaBuilder(
+				getSchemaId(configFile),
 				new StaticConfigSchemaPathResolver(configFile),
 				localizationPath,
 				ConfigSchemaType.CLIENT
@@ -115,12 +118,14 @@ public final class ConfigProvider implements IConfigProvider {
 		}
 
 		private IConfigSchemaBuilder createClientSchemaBuilder(
+			String id,
 			ConfigSchemaPathResolver pathResolver,
 			String localizationPath,
 			ConfigSchemaType type
 		) {
 			if (!CLIENT_CONFIGS_AVAILABLE) {
 				return new ConfigSchemaBuilder(
+					id,
 					modId,
 					Optional::empty,
 					localizationPath,
@@ -131,12 +136,14 @@ public final class ConfigProvider implements IConfigProvider {
 				);
 			}
 			return new ConfigSchemaBuilder(
+				id,
 				modId,
 				pathResolver,
 				localizationPath,
 				configManager,
 				type,
-				null
+				null,
+				true
 			);
 		}
 
@@ -144,7 +151,7 @@ public final class ConfigProvider implements IConfigProvider {
 		public IConfigSchemaBuilder createServerSchemaBuilder(String configFileName, String localizationPath) {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path relativeConfigFile = getRelativeConfigFile(configFileName);
-			String normalizedFileName = relativeConfigFile.toString().replace(File.separatorChar, '/');
+			String normalizedFileName = getSchemaId(relativeConfigFile);
 			Path ownershipDirectory = modDirectory.resolve("server");
 			ServerConfigKey key = new ServerConfigKey(modId, normalizedFileName);
 			Path defaultConfigFile = ownershipDirectory.resolve("world")
@@ -157,13 +164,19 @@ public final class ConfigProvider implements IConfigProvider {
 				defaultConfigFile
 			);
 			return new ConfigSchemaBuilder(
+				normalizedFileName,
 				modId,
 				pathResolver,
 				localizationPath,
 				configManager,
 				ConfigSchemaType.SERVER,
-				key
+				key,
+				true
 			);
+		}
+
+		private static String getSchemaId(Path configFile) {
+			return configFile.toString().replace(File.separatorChar, '/');
 		}
 
 		@Override

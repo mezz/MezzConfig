@@ -26,11 +26,8 @@ import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.ListSerializer;
 import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.server.ServerConfigKey;
-import net.mezzdev.config.server.ServerConfigNetworking;
-import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigValueData;
 import net.mezzdev.config.value.ConfigValue;
-import net.mezzdev.config.value.ConfigValueUpdate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,7 +40,6 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -973,7 +969,6 @@ public class ConfigSchemaTest {
 		// Assertions: inactive schemas keep their defaults and cannot be updated because there is nowhere to save them.
 		assertEquals(ConfigSchemaType.CLIENT_PER_WORLD, schema.getType());
 		assertFalse(schema.isActive());
-		assertFalse(schema.canEdit());
 		assertEquals(Optional.empty(), schema.getPath());
 		assertTrue(enabled.getValue());
 		assertThrows(IllegalStateException.class, () -> enabled.set(false));
@@ -983,13 +978,12 @@ public class ConfigSchemaTest {
 
 		// Assertions: the schema is now editable and reports the active backing file.
 		assertTrue(schema.isActive());
-		assertTrue(schema.canEdit());
 		assertEquals(Optional.of(activePath), schema.getPath());
 		assertTrue(enabled.set(false));
 	}
 
 	@Test
-	public void serverSnapshotIsAuthoritativeAndDirectUpdatesAreRejected() {
+	public void serverSnapshotIsAuthoritativeEffectiveStateAndDirectUpdatesAreRejected() {
 		// Setup: a client has registered the shape of a server schema, but has no server values before synchronization.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
@@ -1007,41 +1001,32 @@ public class ConfigSchemaTest {
 
 		assertEquals(ConfigSchemaType.SERVER, schema.getType());
 		assertFalse(schema.isActive());
-		assertFalse(schema.canEdit());
 
-		// Operation: the server supplies the complete effective state without edit permission for this player.
+		// Operation: the server supplies the complete effective state.
 		List<ServerConfigValueData> snapshot = List.of(
 			new ServerConfigValueData("category", "enabled", "false"),
 			new ServerConfigValueData("category", "count", "3"),
-			new ServerConfigValueData("category", "afterRestart", "true", "false"),
+			new ServerConfigValueData("category", "afterRestart", "false"),
 			new ServerConfigValueData("newerServerCategory", "newerServerValue", "ignored")
 		);
-		schema.applyRemoteSnapshot(snapshot, false);
+		schema.applyRemoteSnapshot(snapshot);
 
-		// Assertions: synchronized values are active and pathless, and permission controls only editability.
+		// Assertions: synchronized values are active, pathless, and expose no separate editor-only pending state.
 		assertTrue(schema.isActive());
-		assertFalse(schema.canEdit());
 		assertEquals(Optional.empty(), schema.getPath());
 		assertFalse(enabled.getValue());
 		assertEquals(3, count.getValue());
-		assertTrue(afterRestart.getValue());
+		assertFalse(afterRestart.getValue());
 		assertFalse(afterRestart.getPendingValue());
 		assertEquals(List.of("true -> false"), pendingRestartChanges);
 		assertThrows(IllegalStateException.class, () -> enabled.set(true));
 		assertFalse(enabled.getValue());
 
-		// Operation: a later snapshot reports that this player has permission to request edits.
-		schema.applyRemoteSnapshot(snapshot, true);
-
-		assertTrue(schema.isActive());
-		assertTrue(schema.canEdit());
-		assertEquals(Optional.empty(), schema.getPath());
-
 		// Operation: a malformed later snapshot is rejected as one batch.
 		assertThrows(IllegalArgumentException.class, () -> schema.applyRemoteSnapshot(List.of(
 			new ServerConfigValueData("category", "enabled", "true"),
 			new ServerConfigValueData("category", "count", "outside-range")
-		), true));
+		)));
 
 		// Assertions: no value from the malformed snapshot was applied.
 		assertFalse(enabled.getValue());
@@ -1050,7 +1035,7 @@ public class ConfigSchemaTest {
 		// Operation: an older server sends no value for a setting only this client knows.
 		schema.applyRemoteSnapshot(List.of(
 			new ServerConfigValueData("category", "enabled", "true")
-		), true);
+		));
 
 		// Assertions: known synchronized values apply and missing values safely use their declared defaults.
 		assertTrue(enabled.getValue());
@@ -1072,7 +1057,7 @@ public class ConfigSchemaTest {
 				Thread applyingThread = Thread.currentThread();
 				schema.applyRemoteSnapshot(List.of(
 					new ServerConfigValueData("category", "enabled", "false")
-				), true);
+				));
 				return applyingThread;
 			});
 
@@ -1116,7 +1101,7 @@ public class ConfigSchemaTest {
 		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> schema.applyRemoteSnapshot(List.of(
 			new ServerConfigValueData("category", "text", "boom"),
 			new ServerConfigValueData("category", "enabled", "false")
-		), true));
+		)));
 
 		assertTrue(exception.getMessage().contains("failed to deserialize"));
 		assertEquals("default", text.getValue());
@@ -1158,71 +1143,12 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema targetSchema = createRemoteServerSchema(targetBuilder);
 
-		targetSchema.applyRemoteSnapshot(sourceSchema.serializeValues(), true);
+		targetSchema.applyRemoteSnapshot(sourceSchema.serializeValues());
 
 		assertEquals(effectiveStrings, targetStrings.getValue());
-		assertEquals(pendingStrings, targetStrings.getPendingValue());
+		assertEquals(effectiveStrings, targetStrings.getPendingValue());
 		assertEquals(effectiveNested, targetNested.getValue());
-		assertEquals(pendingNested, targetNested.getPendingValue());
-
-		List<ConfigValueUpdate<?>> updates = targetSchema.deserializeUpdates(
-			targetSchema.serializeUpdates(List.of(
-				new ConfigValueUpdate<>(targetStrings, effectiveStrings),
-				new ConfigValueUpdate<>(targetNested, effectiveNested)
-			)),
-			false
-		);
-
-		assertEquals(effectiveStrings, updates.get(0).newValue());
-		assertEquals(effectiveNested, updates.get(1).newValue());
-	}
-
-	@Test
-	public void serverUpdateRequestUsesServerAuthorizationWhenPermissionHintIsStale() {
-		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
-		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
-			.build();
-		ConfigSchema schema = createRemoteServerSchema(builder);
-		schema.applyRemoteSnapshot(List.of(
-			new ServerConfigValueData("category", "enabled", "true")
-		), false);
-		List<Object> sentChunks = new ArrayList<>();
-		ServerConfigNetworking.setClientSender(payload -> {
-			sentChunks.add(payload);
-			return true;
-		});
-
-		CompletionStage<Void> result = schema.requestBatchUpdate(updater -> updater.set(enabled, false));
-
-		assertFalse(result.toCompletableFuture().isDone());
-		assertFalse(sentChunks.isEmpty());
-		ServerConfigRuntime.onClientDisconnect();
-		assertTrue(result.toCompletableFuture().isCompletedExceptionally());
-		ServerConfigNetworking.setClientSender(payload -> false);
-	}
-
-	@Test
-	public void cancellingDerivedFutureDoesNotCancelSentServerRequest() {
-		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
-		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
-			.build();
-		ConfigSchema schema = createRemoteServerSchema(builder);
-		schema.applyRemoteSnapshot(List.of(
-			new ServerConfigValueData("category", "enabled", "true")
-		), true);
-		ServerConfigNetworking.setClientSender(payload -> true);
-
-		CompletionStage<Void> result = schema.requestBatchUpdate(updater -> updater.set(enabled, false));
-		CompletableFuture<Void> requestObserver = result.toCompletableFuture();
-		CompletableFuture<Void> cancelledObserver = result.toCompletableFuture();
-
-		assertTrue(cancelledObserver.cancel(false));
-		assertTrue(cancelledObserver.isCancelled());
-		assertFalse(requestObserver.isDone());
-		ServerConfigRuntime.onClientDisconnect();
-		assertTrue(requestObserver.isCompletedExceptionally());
-		assertFalse(requestObserver.isCancelled());
-		ServerConfigNetworking.setClientSender(payload -> false);
+		assertEquals(effectiveNested, targetNested.getPendingValue());
 	}
 
 	@Test
@@ -1233,7 +1159,7 @@ public class ConfigSchemaTest {
 		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.empty());
 		Deque<Runnable> scheduledTasks = new ArrayDeque<>();
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
-		builder.addBoolean("enabled", true)
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
 		ConfigSchemaPathResolver pathResolver = new ConfigSchemaPathResolver() {
 			@Override
@@ -1260,19 +1186,21 @@ public class ConfigSchemaTest {
 		);
 		schema.register(null, false);
 		assertFalse(schema.isActive());
-		assertFalse(schema.canEdit());
 		assertEquals(Optional.empty(), schema.getPath());
 
 		// Operation: starting a world activates its serverconfig path.
 		activePath.set(Optional.of(worldPath));
 		assertTrue(schema.isActive());
-		assertTrue(schema.canEdit());
 		assertEquals(Optional.of(worldPath), schema.getPath());
 		runScheduledTasks(scheduledTasks);
 
 		// Assertions: both distributable defaults and the world's authoritative copy exist without an in-game edit.
 		assertTrue(Files.readString(defaultPath).contains("enabled = true"));
 		assertTrue(Files.readString(worldPath).contains("enabled = true"));
+
+		assertTrue(enabled.set(false));
+		runScheduledTasks(scheduledTasks);
+		assertTrue(Files.readString(worldPath).contains("enabled = false"));
 	}
 
 	@Test

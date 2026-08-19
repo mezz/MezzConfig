@@ -18,14 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ServerConfigPayloadCodecTest {
 	@Test
-	public void syncPayloadPreservesEffectiveAndPendingValues() {
+	public void syncPayloadPreservesEffectiveValues() {
 		ServerConfigSyncPayload payload = new ServerConfigSyncPayload(
 			new ServerConfigKey("test_mod", "server.ini"),
-			1,
-			true,
-			true,
-			"",
-			List.of(new ServerConfigValueData("general", "afterRestart", "false", "true"))
+			List.of(new ServerConfigValueData("general", "afterRestart", "false"))
 		);
 
 		assertEquals(payload, ServerConfigPayloadCodec.decodeSync(ServerConfigPayloadCodec.encodeSync(payload)));
@@ -36,10 +32,6 @@ public class ServerConfigPayloadCodecTest {
 		List<ServerConfigValueData> values = createLargeValueList();
 		ServerConfigSyncPayload payload = new ServerConfigSyncPayload(
 			new ServerConfigKey("test_mod", "large-server-config.ini"),
-			42,
-			true,
-			true,
-			"",
 			values
 		);
 
@@ -51,23 +43,6 @@ public class ServerConfigPayloadCodecTest {
 		assertTrue(chunks.size() <= ServerConfigPayloadChunker.MAX_FRAGMENT_COUNT);
 		assertTrue(chunks.stream().allMatch(chunk -> chunk.length <= ServerConfigPayloadChunker.MAX_NETWORK_PAYLOAD_LENGTH));
 		assertEquals(payload, ServerConfigPayloadCodec.decodeSync(reassembled.orElseThrow()));
-	}
-
-	@Test
-	public void largeUpdatePayloadRoundTripsThroughOutOfOrderChunks() {
-		ServerConfigUpdatePayload payload = new ServerConfigUpdatePayload(
-			new ServerConfigKey("test_mod", "large-server-config.ini"),
-			77,
-			createLargeValueList()
-		);
-
-		byte[] encoded = ServerConfigPayloadCodec.encodeUpdate(payload);
-		List<byte[]> chunks = new ArrayList<>(ServerConfigPayloadChunker.split(encoded));
-		Collections.reverse(chunks);
-		Optional<byte[]> reassembled = reassemble(chunks);
-
-		assertTrue(chunks.size() > 1);
-		assertEquals(payload, ServerConfigPayloadCodec.decodeUpdate(reassembled.orElseThrow()));
 	}
 
 	@Test
@@ -189,12 +164,11 @@ public class ServerConfigPayloadCodecTest {
 		) {
 			writeString(output, "test_mod");
 			writeString(output, "server.ini");
-			output.writeLong(1);
 			output.writeInt(ServerConfigPayloadCodec.MAX_VALUE_COUNT + 1);
 			encoded = bytes.toByteArray();
 		}
 
-		assertThrows(IllegalArgumentException.class, () -> ServerConfigPayloadCodec.decodeUpdate(encoded));
+		assertThrows(IllegalArgumentException.class, () -> ServerConfigPayloadCodec.decodeSync(encoded));
 	}
 
 	@Test
@@ -205,28 +179,10 @@ public class ServerConfigPayloadCodecTest {
 		) {
 			writeString(output, "test_mod");
 			writeString(output, "server.ini");
-			output.writeLong(1);
 			output.writeInt(1);
 			output.writeInt(Integer.MAX_VALUE);
 			encoded = bytes.toByteArray();
 		}
-
-		assertThrows(IllegalArgumentException.class, () -> ServerConfigPayloadCodec.decodeUpdate(encoded));
-	}
-
-	@Test
-	public void codecRejectsNonCanonicalBooleans() {
-		ServerConfigSyncPayload payload = new ServerConfigSyncPayload(
-			new ServerConfigKey("test_mod", "server.ini"),
-			0,
-			true,
-			true,
-			"",
-			List.of()
-		);
-		byte[] encoded = ServerConfigPayloadCodec.encodeSync(payload);
-		int acceptedOffset = Integer.BYTES + "test_mod".length() + Integer.BYTES + "server.ini".length() + Long.BYTES;
-		encoded[acceptedOffset] = 2;
 
 		assertThrows(IllegalArgumentException.class, () -> ServerConfigPayloadCodec.decodeSync(encoded));
 	}
@@ -234,14 +190,12 @@ public class ServerConfigPayloadCodecTest {
 	@Test
 	public void codecRejectsTooManyValuesAndOversizedSerializedValuesWhenEncoding() {
 		ServerConfigValueData value = new ServerConfigValueData("general", "enabled", "true");
-		ServerConfigUpdatePayload tooManyValues = new ServerConfigUpdatePayload(
+		ServerConfigSyncPayload tooManyValues = new ServerConfigSyncPayload(
 			new ServerConfigKey("test_mod", "server.ini"),
-			1,
 			Collections.nCopies(ServerConfigPayloadCodec.MAX_VALUE_COUNT + 1, value)
 		);
-		ServerConfigUpdatePayload oversizedValue = new ServerConfigUpdatePayload(
+		ServerConfigSyncPayload oversizedValue = new ServerConfigSyncPayload(
 			new ServerConfigKey("test_mod", "server.ini"),
-			2,
 			List.of(new ServerConfigValueData(
 				"general",
 				"value",
@@ -249,8 +203,8 @@ public class ServerConfigPayloadCodecTest {
 			))
 		);
 
-		assertThrows(IllegalArgumentException.class, () -> ServerConfigPayloadCodec.encodeUpdate(tooManyValues));
-		assertThrows(IllegalArgumentException.class, () -> ServerConfigPayloadCodec.encodeUpdate(oversizedValue));
+		assertThrows(IllegalArgumentException.class, () -> ServerConfigPayloadCodec.encodeSync(tooManyValues));
+		assertThrows(IllegalArgumentException.class, () -> ServerConfigPayloadCodec.encodeSync(oversizedValue));
 	}
 
 	private static List<ServerConfigValueData> createLargeValueList() {

@@ -92,7 +92,6 @@ public final class ForgeTestMod {
 	private static void verifyDedicatedServerState(IConfigSchema clientSchema, IConfigSchema serverSchema) {
 		if (clientSchema.getType() != ConfigSchemaType.CLIENT ||
 			clientSchema.isActive() ||
-			clientSchema.canEdit() ||
 			clientSchema.getPath().isPresent() ||
 			Configs.getSchemas().contains(clientSchema)
 		) {
@@ -105,7 +104,6 @@ public final class ForgeTestMod {
 		}
 		if (serverSchema.getType() != ConfigSchemaType.SERVER ||
 			!serverSchema.isActive() ||
-			!serverSchema.canEdit() ||
 			!Configs.getSchemas().contains(serverSchema)
 		) {
 			throw new IllegalStateException("Forge did not activate the authoritative server schema.");

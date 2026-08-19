@@ -21,7 +21,7 @@ public enum ConfigSchemaType {
 	CLIENT_PER_WORLD,
 
 	/**
-	 * Server-owned settings stored with the world and synchronized to connected clients.
+	 * Server-owned settings stored with the world, with effective values synchronized to connected clients.
 	 *
 	 * @since 0.3.0
 	 */

@@ -20,7 +20,6 @@ final class ServerConfigPayloadCodec {
 	static final int MAX_CATEGORY_NAME_BYTES = 128;
 	static final int MAX_VALUE_NAME_BYTES = 128;
 	static final int MAX_SERIALIZED_VALUE_BYTES = 256 * 1024;
-	static final int MAX_ERROR_MESSAGE_BYTES = 4 * 1024;
 
 	private ServerConfigPayloadCodec() {
 
@@ -29,38 +28,14 @@ final class ServerConfigPayloadCodec {
 	static byte[] encodeSync(ServerConfigSyncPayload payload) {
 		return encode(output -> {
 			writeKey(output, payload.key());
-			output.writeLong(payload.requestId());
-			writeBoolean(output, payload.accepted());
-			writeBoolean(output, payload.canEdit());
-			writeString(output, payload.errorMessage(), MAX_ERROR_MESSAGE_BYTES, "error message");
-			writeValues(output, payload.values(), true);
+			writeValues(output, payload.values());
 		});
 	}
 
 	static ServerConfigSyncPayload decodeSync(byte[] data) {
 		return decode(data, input -> new ServerConfigSyncPayload(
 			readKey(input),
-			input.readLong(),
-			readBoolean(input, "accepted"),
-			readBoolean(input, "canEdit"),
-			readString(input, MAX_ERROR_MESSAGE_BYTES, "error message"),
-			readValues(input, true)
-		));
-	}
-
-	static byte[] encodeUpdate(ServerConfigUpdatePayload payload) {
-		return encode(output -> {
-			writeKey(output, payload.key());
-			output.writeLong(payload.requestId());
-			writeValues(output, payload.values(), false);
-		});
-	}
-
-	static ServerConfigUpdatePayload decodeUpdate(byte[] data) {
-		return decode(data, input -> new ServerConfigUpdatePayload(
-			readKey(input),
-			input.readLong(),
-			readValues(input, false)
+			readValues(input)
 		));
 	}
 
@@ -110,11 +85,7 @@ final class ServerConfigPayloadCodec {
 		);
 	}
 
-	private static void writeValues(
-		DataOutputStream output,
-		List<ServerConfigValueData> values,
-		boolean includeEffectiveValues
-	) throws IOException {
+	private static void writeValues(DataOutputStream output, List<ServerConfigValueData> values) throws IOException {
 		if (values.size() > MAX_VALUE_COUNT) {
 			throw new IllegalArgumentException("Too many server config values: " + values.size());
 		}
@@ -122,14 +93,11 @@ final class ServerConfigPayloadCodec {
 		for (ServerConfigValueData value : values) {
 			writeString(output, value.categoryName(), MAX_CATEGORY_NAME_BYTES, "category name");
 			writeString(output, value.valueName(), MAX_VALUE_NAME_BYTES, "value name");
-			if (includeEffectiveValues) {
-				writeString(output, value.serializedEffectiveValue(), MAX_SERIALIZED_VALUE_BYTES, "serialized effective value");
-			}
-			writeString(output, value.serializedPendingValue(), MAX_SERIALIZED_VALUE_BYTES, "serialized pending value");
+			writeString(output, value.serializedValue(), MAX_SERIALIZED_VALUE_BYTES, "serialized value");
 		}
 	}
 
-	private static List<ServerConfigValueData> readValues(DataInputStream input, boolean includeEffectiveValues) throws IOException {
+	private static List<ServerConfigValueData> readValues(DataInputStream input) throws IOException {
 		int size = input.readInt();
 		if (size < 0 || size > MAX_VALUE_COUNT || size > input.available() / (Integer.BYTES * 3)) {
 			throw new IllegalArgumentException("Invalid server config value count: " + size);
@@ -138,32 +106,10 @@ final class ServerConfigPayloadCodec {
 		for (int i = 0; i < size; i++) {
 			String categoryName = readString(input, MAX_CATEGORY_NAME_BYTES, "category name");
 			String valueName = readString(input, MAX_VALUE_NAME_BYTES, "value name");
-			if (includeEffectiveValues) {
-				String effectiveValue = readString(input, MAX_SERIALIZED_VALUE_BYTES, "serialized effective value");
-				String pendingValue = readString(input, MAX_SERIALIZED_VALUE_BYTES, "serialized pending value");
-				values.add(new ServerConfigValueData(categoryName, valueName, effectiveValue, pendingValue));
-			} else {
-				String pendingValue = readString(input, MAX_SERIALIZED_VALUE_BYTES, "serialized pending value");
-				values.add(new ServerConfigValueData(categoryName, valueName, pendingValue));
-			}
+			String serializedValue = readString(input, MAX_SERIALIZED_VALUE_BYTES, "serialized value");
+			values.add(new ServerConfigValueData(categoryName, valueName, serializedValue));
 		}
 		return List.copyOf(values);
-	}
-
-	private static void writeBoolean(DataOutputStream output, boolean value) throws IOException {
-		if (value) {
-			output.writeByte(1);
-		} else {
-			output.writeByte(0);
-		}
-	}
-
-	private static boolean readBoolean(DataInputStream input, String fieldName) throws IOException {
-		int value = input.readUnsignedByte();
-		if (value != 0 && value != 1) {
-			throw new IllegalArgumentException("Invalid server config boolean for " + fieldName + ": " + value);
-		}
-		return value == 1;
 	}
 
 	private static void writeString(

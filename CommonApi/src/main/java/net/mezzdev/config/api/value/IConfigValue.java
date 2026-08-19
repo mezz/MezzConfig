@@ -57,7 +57,8 @@ public interface IConfigValue<T> {
 	 * Get the saved value selected by the most recent edit or file load.
 	 * <p>
 	 * This equals {@link #getValue()} when no restart is required or no change is pending. Setting this back to the
-	 * effective value cancels a pending change.
+	 * effective value cancels a pending change. Synchronized remote server schemas replicate effective values only, so
+	 * their pending value always equals their effective value.
 	 *
 	 * @since 0.3.0
 	 */
@@ -113,9 +114,8 @@ public interface IConfigValue<T> {
 	 * @return {@code true} if the saved value changed, or {@code false} if it was valid but already pending
 	 *
 	 * @throws IllegalArgumentException if the value is invalid or cannot be safely serialized
-	 * @throws IllegalStateException if this value's context-specific schema is currently inactive
-	 * @throws IllegalStateException if this value belongs to a server schema; use
-	 * {@link IConfigSchema#requestBatchUpdate(Consumer)} instead
+	 * @throws IllegalStateException if this value's schema has no active local backing file, including synchronized server
+	 * values viewed on a remote client
 	 *
 	 * @since 0.1.0
 	 */

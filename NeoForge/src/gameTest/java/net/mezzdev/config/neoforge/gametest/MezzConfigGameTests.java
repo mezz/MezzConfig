@@ -44,9 +44,6 @@ public final class MezzConfigGameTests {
 		if (!schema.isActive()) {
 			throw failure("The authoritative server schema is not active.");
 		}
-		if (!schema.canEdit()) {
-			throw failure("The locally authoritative server schema is not editable.");
-		}
 		Path path = schema.getPath()
 			.orElseThrow(() -> failure("The authoritative server schema has no world file."));
 		if (!Files.isRegularFile(path)) {
@@ -88,7 +85,7 @@ public final class MezzConfigGameTests {
 			if (Configs.getSchemas().contains(schema)) {
 				throw failure("The dedicated server published an inert client config schema.");
 			}
-			if (schema.isActive() || schema.canEdit() || schema.getPath().isPresent()) {
+			if (schema.isActive() || schema.getPath().isPresent()) {
 				throw failure("The dedicated server activated an inert client config schema.");
 			}
 		}

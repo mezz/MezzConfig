@@ -88,7 +88,6 @@ public final class FabricTestMod implements ModInitializer {
 	private static void verifyDedicatedServerState(IConfigSchema clientSchema, IConfigSchema serverSchema) {
 		if (clientSchema.getType() != ConfigSchemaType.CLIENT ||
 			clientSchema.isActive() ||
-			clientSchema.canEdit() ||
 			clientSchema.getPath().isPresent() ||
 			Configs.getSchemas().contains(clientSchema)
 		) {
@@ -101,7 +100,6 @@ public final class FabricTestMod implements ModInitializer {
 		}
 		if (serverSchema.getType() != ConfigSchemaType.SERVER ||
 			!serverSchema.isActive() ||
-			!serverSchema.canEdit() ||
 			!Configs.getSchemas().contains(serverSchema)
 		) {
 			throw new IllegalStateException("Fabric did not activate the authoritative server schema.");

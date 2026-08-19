@@ -8,8 +8,6 @@ import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaPathResolver;
 import net.mezzdev.config.value.ConfigValue;
-import net.mezzdev.config.value.ConfigValueUpdate;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,106 +18,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ServerConfigRuntimeTest {
-	@AfterEach
-	public void cleanUpClientState() {
-		ServerConfigRuntime.onClientDisconnect();
-		ServerConfigNetworking.setClientSender(payload -> false);
-	}
-
-	@Test
-	public void pendingRemoteRequestTimesOutExactlyOnce() {
-		TestSchema testSchema = createRemoteServerSchema();
-		ServerConfigNetworking.setClientSender(payload -> true);
-		CompletableFuture<Void> future = ServerConfigRuntime.requestUpdate(
-			testSchema.schema(),
-			List.of(new ConfigValueUpdate<>(testSchema.enabled(), false))
-		);
-		AtomicInteger completions = new AtomicInteger();
-		AtomicReference<Thread> completionThread = new AtomicReference<>();
-		future.whenComplete((ignored, throwable) -> {
-			completions.incrementAndGet();
-			completionThread.set(Thread.currentThread());
-		});
-
-		assertFalse(future.isDone());
-		Thread timeoutThread = Thread.currentThread();
-		ServerConfigRuntime.expireClientRequests(Long.MAX_VALUE);
-
-		CompletionException exception = assertThrows(CompletionException.class, future::join);
-		assertTrue(exception.getCause().getMessage().contains("Timed out"));
-		assertEquals(1, completions.get());
-		assertEquals(timeoutThread, completionThread.get());
-		ServerConfigRuntime.onClientDisconnect();
-		assertEquals(1, completions.get());
-	}
-
-	@Test
-	public void sendFailureCompletesRequestWithUsefulFailureExactlyOnce() {
-		TestSchema testSchema = createRemoteServerSchema();
-		AtomicInteger sentFragments = new AtomicInteger();
-		ServerConfigNetworking.setClientSender(payload -> {
-			sentFragments.incrementAndGet();
-			return false;
-		});
-
-		CompletableFuture<Void> future = ServerConfigRuntime.requestUpdate(
-			testSchema.schema(),
-			List.of(new ConfigValueUpdate<>(testSchema.enabled(), false))
-		);
-		AtomicInteger completions = new AtomicInteger();
-		future.whenComplete((ignored, throwable) -> completions.incrementAndGet());
-
-		CompletionException exception = assertThrows(CompletionException.class, future::join);
-		assertTrue(exception.getCause().getMessage().contains("does not support"));
-		assertEquals(1, sentFragments.get());
-		assertEquals(1, completions.get());
-		ServerConfigRuntime.onClientDisconnect();
-		assertEquals(1, completions.get());
-	}
-
-	@Test
-	public void responseForDifferentSchemaFailsPendingRequest() {
-		TestSchema testSchema = createRemoteServerSchema();
-		List<byte[]> sentChunks = new java.util.ArrayList<>();
-		ServerConfigNetworking.setClientSender(payload -> {
-			sentChunks.add(payload.payload());
-			return true;
-		});
-		CompletableFuture<Void> future = ServerConfigRuntime.requestUpdate(
-			testSchema.schema(),
-			List.of(new ConfigValueUpdate<>(testSchema.enabled(), false))
-		);
-		ServerConfigPayloadReassembler reassembler = new ServerConfigPayloadReassembler();
-		byte[] encoded = sentChunks.stream()
-			.map(reassembler::accept)
-			.flatMap(java.util.Optional::stream)
-			.findFirst()
-			.orElseThrow();
-		ServerConfigUpdatePayload sent = ServerConfigPayloadCodec.decodeUpdate(encoded);
-
-		ServerConfigRuntime.handleSync(new ServerConfigSyncPayload(
-			new ServerConfigKey("different_mod", "server.ini"),
-			sent.requestId(),
-			true,
-			false,
-			"",
-			List.of()
-		));
-
-		CompletionException exception = assertThrows(CompletionException.class, future::join);
-		assertTrue(exception.getCause().getMessage().contains("does not match"));
-	}
-
 	@Test
 	public void registrationEnforcesServerSnapshotValueCount() {
 		ConfigManager manager = createConfigManager();
@@ -169,15 +75,15 @@ public class ServerConfigRuntimeTest {
 		ConfigSchema largeSnapshot = createStringServerSchema(
 				new ServerConfigKey("large_snapshot", "server.ini"),
 				() -> Optional.empty(),
-				3,
-				"x".repeat(160 * 1024)
+				4,
+				"x".repeat(220 * 1024)
 			)
 			.schema();
 		ConfigSchema excessiveSnapshot = createStringServerSchema(
 				new ServerConfigKey("excessive_snapshot", "server.ini"),
 				() -> Optional.empty(),
-				3,
-				"x".repeat(180 * 1024)
+				5,
+				"x".repeat(220 * 1024)
 			)
 			.schema();
 
@@ -192,13 +98,13 @@ public class ServerConfigRuntimeTest {
 			() -> manager.registerSchema(excessiveSnapshot)
 		);
 
-		assertTrue(valueException.getMessage().contains("serialized effective value"));
+		assertTrue(valueException.getMessage().contains("serialized value"));
 		assertTrue(totalException.getMessage().contains("maximum length"));
 		assertEquals(List.of(maximumValue, largeSnapshot), List.copyOf(manager.getSchemas()));
 	}
 
 	@Test
-	public void oversizedServerUpdateIsRejectedBeforeMutation(@TempDir Path tempDir) {
+	public void oversizedAuthoritativeUpdateIsRejectedBeforeMutation(@TempDir Path tempDir) {
 		TestStringSchema testSchema = createStringServerSchema(
 			new ServerConfigKey("update_test", "server.ini"),
 			() -> Optional.of(tempDir.resolve("server.ini")),
@@ -209,10 +115,10 @@ public class ServerConfigRuntimeTest {
 
 		IllegalArgumentException exception = assertThrows(
 			IllegalArgumentException.class,
-			() -> testSchema.schema().applyServerUpdates(List.of(new ConfigValueUpdate<>(
+			() -> testSchema.schema().batchUpdate(updater -> updater.set(
 				testSchema.values().getFirst(),
 				"x".repeat(ServerConfigPayloadCodec.MAX_SERIALIZED_VALUE_BYTES + 1)
-			)))
+			))
 		);
 
 		assertTrue(exception.getMessage().contains("cannot be synchronized"));
@@ -221,41 +127,10 @@ public class ServerConfigRuntimeTest {
 	}
 
 	@Test
-	public void remoteUpdateRequestRejectsOversizedSnapshotBeforeSending() {
-		TestStringSchema testSchema = createStringServerSchema(
-			new ServerConfigKey("remote_update_test", "server.ini"),
-			() -> Optional.empty(),
-			1,
-			"original"
-		);
-		testSchema.schema().applyRemoteSnapshot(
-			List.of(new ServerConfigValueData("general", "value_0", "original")),
-			true
-		);
-		AtomicInteger sentFragments = new AtomicInteger();
-		ServerConfigNetworking.setClientSender(payload -> {
-			sentFragments.incrementAndGet();
-			return true;
-		});
-
-		IllegalArgumentException exception = assertThrows(
-			IllegalArgumentException.class,
-			() -> testSchema.schema().requestBatchUpdate(updater -> updater.set(
-				testSchema.values().getFirst(),
-				"x".repeat(ServerConfigPayloadCodec.MAX_SERIALIZED_VALUE_BYTES + 1)
-			))
-		);
-
-		assertTrue(exception.getMessage().contains("cannot be synchronized"));
-		assertEquals(0, sentFragments.get());
-		assertEquals("original", testSchema.values().getFirst().getValue());
-	}
-
-	@Test
 	public void updateRejectsSnapshotThatWouldBeOversizedAfterRestart(@TempDir Path tempDir) {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		List<ConfigValue<String>> values = new ArrayList<>();
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < 5; i++) {
 			values.add(builder.addString("value_" + i, "x".repeat(80 * 1024))
 				.setRestartRequirement(ConfigValueRestartRequirement.WORLD_RESTART)
 				.build());
@@ -270,13 +145,10 @@ public class ServerConfigRuntimeTest {
 			new ServerConfigKey("restart_test", "server.ini")
 		);
 		schema.register(null, false);
-		String prospectiveValue = "x".repeat(180 * 1024);
-		List<ConfigValueUpdate<?>> updates = new ArrayList<>();
-		values.forEach(value -> updates.add(new ConfigValueUpdate<>(value, prospectiveValue)));
-
+		String prospectiveValue = "x".repeat(220 * 1024);
 		IllegalArgumentException exception = assertThrows(
 			IllegalArgumentException.class,
-			() -> schema.applyServerUpdates(updates)
+			() -> schema.batchUpdate(updater -> values.forEach(value -> updater.set(value, prospectiveValue)))
 		);
 
 		assertTrue(exception.getMessage().contains("maximum length"));
@@ -334,22 +206,6 @@ public class ServerConfigRuntimeTest {
 		assertTrue(Files.readString(path).contains(oversizedValue));
 	}
 
-	private static TestSchema createRemoteServerSchema() {
-		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
-		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
-			.build();
-		ConfigSchema schema = new ConfigSchema(
-			"test_mod",
-			() -> java.util.Optional.empty(),
-			List.of(builder),
-			List.of(builder),
-			(command, delay) -> CompletableFuture.completedFuture(null),
-			ConfigSchemaType.SERVER,
-			new ServerConfigKey("test_mod", "server.ini")
-		);
-		return new TestSchema(schema, enabled);
-	}
-
 	private static TestStringSchema createStringServerSchema(
 		ServerConfigKey key,
 		ConfigSchemaPathResolver pathResolver,
@@ -381,8 +237,6 @@ public class ServerConfigRuntimeTest {
 			ConfigFileWatcherSettings.serverDefaults().withEnabled(false)
 		);
 	}
-
-	private record TestSchema(ConfigSchema schema, ConfigValue<Boolean> enabled) {}
 
 	private record TestStringSchema(ConfigSchema schema, List<ConfigValue<String>> values) {}
 }
