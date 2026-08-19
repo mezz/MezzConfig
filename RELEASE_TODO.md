@@ -374,16 +374,16 @@ mistaken for a requirement without supporting evidence.
 The release gate must exercise packaged artifacts and the high-risk behaviors
 identified above, not only internal helpers.
 
-- [ ] Run `spotlessCheck`, `build`, CommonApi Javadocs, API compatibility
+- [x] Run `spotlessCheck`, `build`, CommonApi Javadocs, API compatibility
       checking, and `validatePublishing` from a clean checkout.
-- [ ] Run NeoForge server GameTests and the new Fabric and Forge smoke tests.
+- [x] Run NeoForge server GameTests and the new Fabric and Forge smoke tests.
 - [ ] Test dedicated-server, integrated-server, and remote-client config flows.
-- [ ] Test oversized snapshot rejection and confirm authoritative state never
+- [x] Test oversized snapshot rejection and confirm authoritative state never
       changes on failure.
-- [ ] Test throwing custom serializers and malformed-file recovery.
-- [ ] Test conventional and explicit locations across every supported schema type.
-- [ ] Test schema, sorting, and cross-location path-collision rejection.
-- [ ] Test category order and all listener scopes through public APIs.
-- [ ] Inspect generated jars and POMs and compile a standalone CommonApi
+- [x] Test throwing custom serializers and malformed-file recovery.
+- [x] Test conventional and explicit locations across every supported schema type.
+- [x] Test schema, sorting, and cross-location path-collision rejection.
+- [x] Test category order and all listener scopes through public APIs.
+- [x] Inspect generated jars and POMs and compile a standalone CommonApi
       consumer against the validated publication repository.
 - [ ] Confirm the worktree is clean before tagging the release.
