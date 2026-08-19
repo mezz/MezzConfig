@@ -31,3 +31,6 @@ jobs:
 
       - name: Run NeoForge server GameTests
         run: ./gradlew --stacktrace :NeoForge:runGameTestServer
+
+      - name: Run Fabric and Forge loader smoke tests
+        run: ./gradlew --stacktrace --no-configuration-cache :Fabric:runServerSmokeTest :Forge:runServerSmokeTest

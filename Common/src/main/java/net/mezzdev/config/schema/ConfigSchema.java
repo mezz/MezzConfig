@@ -215,12 +215,13 @@ public class ConfigSchema implements IConfigSchema {
 	public synchronized void loadIfNeeded() {
 		LoadResult loadResult = loadIfNeededWithoutNotifying();
 		notifyChanges(loadResult.effectiveChanges(), loadResult.pendingChanges());
-		InitialSave initialSave = loadResult.initialSave();
-		if (registered && initialSave != null) {
-			if (mode.synchronousFileAccess()) {
-				saveInitialFile(initialSave);
-			} else {
-				saveInitialFileAfterLocalizationLoads(initialSave, 0);
+		if (registered) {
+			for (InitialSave initialSave : loadResult.initialSaves()) {
+				if (mode.synchronousFileAccess()) {
+					saveInitialFile(initialSave);
+				} else {
+					saveInitialFileAfterLocalizationLoads(initialSave, 0);
+				}
 			}
 		}
 	}
@@ -244,7 +245,7 @@ public class ConfigSchema implements IConfigSchema {
 		if (isSynchronizedServerSchema() && remotelyActive && path == null) {
 			transitionActivePaths(defaultPath, null, previousDefaultPath, previousPath);
 			needsLoad.set(false);
-			return createLoadResult(previousEffectiveValues, previousPendingValues, null);
+			return createLoadResult(previousEffectiveValues, previousPendingValues, List.of());
 		}
 		if (path != null) {
 			remotelyActive = false;
@@ -259,9 +260,9 @@ public class ConfigSchema implements IConfigSchema {
 
 		if (resolvedPath.isEmpty()) {
 			boolean shouldInitializeDefault = needsLoad.getAndSet(false);
-			InitialSave initialSave = null;
+			List<InitialSave> initialSaves = List.of();
 			if (shouldInitializeDefault) {
-				initialSave = getInitialSave(defaultPath, null, activePathChanged, false);
+				initialSaves = getInitialSaves(defaultPath, null, activePathChanged, false);
 			}
 			if (previousPath != null) {
 				resetValuesToDefaults();
@@ -271,7 +272,7 @@ public class ConfigSchema implements IConfigSchema {
 					previousRestartValuesInitialized,
 					previousRemotelyActive,
 					previousRemoteCanEdit,
-					initialSave
+					initialSaves
 				);
 			}
 			if (shouldInitializeDefault) {
@@ -281,17 +282,17 @@ public class ConfigSchema implements IConfigSchema {
 					previousRestartValuesInitialized,
 					previousRemotelyActive,
 					previousRemoteCanEdit,
-					initialSave
+					initialSaves
 				);
 			}
-			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSave);
+			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSaves);
 		}
 
 		if (!needsLoad.compareAndSet(true, false)) {
 			if (pathsChanged) {
-				return createLoadResult(previousEffectiveValues, previousPendingValues, null);
+				return createLoadResult(previousEffectiveValues, previousPendingValues, List.of());
 			}
-			return createLoadResult(previousEffectiveValues, previousPendingValues, null);
+			return createLoadResult(previousEffectiveValues, previousPendingValues, List.of());
 		}
 
 		resetValuesToDefaults();
@@ -307,7 +308,7 @@ public class ConfigSchema implements IConfigSchema {
 			previousRestartValuesInitialized,
 			previousRemotelyActive,
 			previousRemoteCanEdit,
-			getInitialSave(defaultPath, path, activePathChanged, isSynchronizedServerSchema())
+			getInitialSaves(defaultPath, path, activePathChanged, isSynchronizedServerSchema())
 		);
 	}
 
@@ -317,14 +318,14 @@ public class ConfigSchema implements IConfigSchema {
 		boolean previousRestartValuesInitialized,
 		boolean previousRemotelyActive,
 		boolean previousRemoteCanEdit,
-		@Nullable InitialSave initialSave
+		List<InitialSave> initialSaves
 	) {
 		if (!isSynchronizedServerSchema()) {
-			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSave);
+			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSaves);
 		}
 		try {
 			validateCurrentServerSnapshot();
-			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSave);
+			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSaves);
 		} catch (RuntimeException e) {
 			restoreValues(previousEffectiveValues, previousPendingValues);
 			restartValuesInitialized = previousRestartValuesInitialized;
@@ -338,19 +339,19 @@ public class ConfigSchema implements IConfigSchema {
 				activePath,
 				e
 			);
-			return createLoadResult(previousEffectiveValues, previousPendingValues, null);
+			return createLoadResult(previousEffectiveValues, previousPendingValues, List.of());
 		}
 	}
 
 	private LoadResult createLoadResult(
 		Map<ConfigValue<?>, Object> previousEffectiveValues,
 		Map<ConfigValue<?>, Object> previousPendingValues,
-		@Nullable InitialSave initialSave
+		List<InitialSave> initialSaves
 	) {
 		return new LoadResult(
 			getEffectiveChanges(previousEffectiveValues),
 			getPendingChanges(previousPendingValues),
-			initialSave
+			List.copyOf(initialSaves)
 		);
 	}
 
@@ -365,21 +366,22 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
-	private static @Nullable InitialSave getInitialSave(
+	private static List<InitialSave> getInitialSaves(
 		@Nullable Path defaultPath,
 		@Nullable Path activePath,
 		boolean activePathChanged,
 		boolean createActiveFileOnActivation
 	) {
+		List<InitialSave> initialSaves = new ArrayList<>(2);
 		if (defaultPath != null && !Files.exists(defaultPath)) {
-			return new InitialSave(defaultPath, true);
+			initialSaves.add(new InitialSave(defaultPath, true));
 		}
-		if (activePath != null && activePathChanged &&
+		if (activePath != null && !activePath.equals(defaultPath) && activePathChanged &&
 			(createActiveFileOnActivation || defaultPath == null || Files.exists(activePath))
 		) {
-			return new InitialSave(activePath, false);
+			initialSaves.add(new InitialSave(activePath, false));
 		}
-		return null;
+		return List.copyOf(initialSaves);
 	}
 
 	private Map<ConfigValue<?>, Object> getEffectiveValues() {
@@ -1264,7 +1266,7 @@ public class ConfigSchema implements IConfigSchema {
 	private record LoadResult(
 		List<AppliedConfigValueChange<?>> effectiveChanges,
 		List<AppliedConfigValueChange<?>> pendingChanges,
-		@Nullable InitialSave initialSave
+		List<InitialSave> initialSaves
 	) {}
 
 	private record ResolvedServerConfigValue(

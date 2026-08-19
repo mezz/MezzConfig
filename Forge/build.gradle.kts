@@ -40,6 +40,15 @@ val testModProject: Project = project(":ForgeTest")
 val testModSourceSet = testModProject.sourceSets.main.get()
 val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
 val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
+val serverSmokeTestRunDir = layout.buildDirectory.dir("run/server-smoke")
+val serverSmokeTestSuccessFile = serverSmokeTestRunDir.map { it.file("smoke-test-passed") }
+val configModRunSourceSet = sourceSets.create("configModRun") {
+	java.setSrcDirs(emptyList<String>())
+	resources.setSrcDirs(emptyList<String>())
+	val outputDir = layout.buildDirectory.file("sourcesSets/$name").get().asFile
+	output.setResourcesDir(outputDir)
+	java.destinationDirectory.set(outputDir)
+}
 fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
 	zipTree(archiveTask.flatMap { it.archiveFile })
 
@@ -80,15 +89,21 @@ dependencies {
 	compileOnly("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
 	compileOnly("org.apache.logging.log4j:log4j-api:$log4jVersion")
 	compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
-	runtimeOnly(project(commonProject.path)) {
-		attributes {
-			attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.SHADOWED))
-		}
-	}
 	compileOnly(configApiProject)
 	dependencyProjects.forEach {
 		compileOnly(it)
 	}
+}
+
+val prepareConfigModRun = tasks.register<Sync>("prepareConfigModRun") {
+	from(sourceSets.main.get().output)
+	from(configApiProject.sourceSets.main.get().output)
+	from(zipTreeArchive(commonModShadeJarTask))
+	into(configModRunSourceSet.java.destinationDirectory)
+}
+
+tasks.named(configModRunSourceSet.classesTaskName) {
+	dependsOn(prepareConfigModRun)
 }
 
 minecraft {
@@ -106,35 +121,60 @@ minecraft {
 			workingDirectory(file("run/client/Dev"))
 			mods {
 				create(configModId) {
-					source(sourceSets.main.get())
-					source(configApiProject.sourceSets.main.get())
+					source(configModRunSourceSet)
 				}
 				create(forgeTestModId) {
 					source(testModSourceSet)
 				}
 			}
 		}
-		create("server") {
+		val server = create("server") {
 			taskName("Server")
 			property("forge.logging.console.level", "debug")
 			workingDirectory(file("run/server"))
 			mods {
 				create(configModId) {
-					source(sourceSets.main.get())
-					source(configApiProject.sourceSets.main.get())
+					source(configModRunSourceSet)
 				}
 				create(forgeTestModId) {
 					source(testModSourceSet)
 				}
 			}
 		}
+		create("serverSmokeTest") {
+			parent(server)
+			taskName("runServerSmokeTest")
+			property("forge.logging.console.level", "info")
+			property("com.mojang.eula.agree", "true")
+			property("mezzConfig.loaderSmokeTest.successFile", serverSmokeTestSuccessFile.get().asFile.absolutePath)
+			args("--nogui")
+			workingDirectory(serverSmokeTestRunDir.get().asFile)
+		}
 	}
 }
 
 val testModClassesTask = testModProject.tasks.named(testModSourceSet.classesTaskName)
-val testModRunTasks = setOf("runClientDev", "Server")
+val testModRunTasks = setOf("runClientDev", "Server", "runServerSmokeTest")
 tasks.matching { it.name in testModRunTasks }.configureEach {
 	dependsOn(testModClassesTask)
+}
+
+tasks.matching { it.name == "runServerSmokeTest" }.configureEach {
+	doNotTrackState("ForgeGradle run configurations are not serializable")
+	outputs.file(serverSmokeTestSuccessFile)
+	outputs.upToDateWhen { false }
+	doFirst {
+		val successFile = outputs.files.singleFile
+		successFile.parentFile.mkdirs()
+		successFile.resolveSibling("eula.txt").writeText("eula=true\n")
+		successFile.resolveSibling("server.properties").writeText("online-mode=false\nserver-port=0\n")
+		successFile.delete()
+	}
+	doLast {
+		if (!outputs.files.singleFile.isFile) {
+			throw GradleException("The Forge loader smoke test did not report success.")
+		}
+	}
 }
 
 tasks.jar {

@@ -1220,9 +1220,20 @@ public class ConfigSchemaTest {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		builder.addBoolean("enabled", true)
 			.build();
+		ConfigSchemaPathResolver pathResolver = new ConfigSchemaPathResolver() {
+			@Override
+			public Optional<Path> resolvePath() {
+				return activePath.get();
+			}
+
+			@Override
+			public Optional<Path> resolveDefaultPath() {
+				return activePath.get().map(ignored -> defaultPath);
+			}
+		};
 		ConfigSchema schema = new ConfigSchema(
 			"test_mod",
-			new LayeredConfigSchemaPathResolver(defaultPath, () -> activePath.get()),
+			pathResolver,
 			List.of(builder),
 			List.of(builder),
 			(command, delay) -> {

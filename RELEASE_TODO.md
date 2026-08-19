@@ -313,18 +313,18 @@ mistaken for a requirement without supporting evidence.
 
 ### Add Loader Runtime Smoke Coverage
 
-- [ ] Add minimal Fabric and Forge runtime smoke tests for registration and
+- [x] Add minimal Fabric and Forge runtime smoke tests for registration and
       startup behavior.
 
   **Reason:** Shared unit tests and NeoForge GameTests cover most behavior, but
   Fabric- and Forge-specific initialization, services, and networking adapters
   currently receive compile-time validation only.
 
-  - [ ] Verify the runtime provider is discoverable.
-  - [ ] Build and load one client schema and one server schema where the loader
+  - [x] Verify the runtime provider is discoverable.
+  - [x] Build and load one client schema and one server schema where the loader
         supports the scenario.
-  - [ ] Verify a dedicated server keeps client declarations inert.
-  - [ ] Keep the smoke tests small; shared behavior remains covered in Common.
+  - [x] Verify a dedicated server keeps client declarations inert.
+  - [x] Keep the smoke tests small; shared behavior remains covered in Common.
 
 ## P2 — Documentation and Supported Boundaries
 

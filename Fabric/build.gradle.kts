@@ -50,6 +50,8 @@ val testModProject: Project = project(":FabricTest")
 val testModSourceSet = testModProject.sourceSets.main.get()
 val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
 val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
+val serverSmokeTestRunDir = layout.buildDirectory.dir("run/server-smoke")
+val serverSmokeTestSuccessFile = serverSmokeTestRunDir.map { it.file("smoke-test-passed") }
 fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
     zipTree(archiveTask.flatMap { it.archiveFile })
 
@@ -132,6 +134,17 @@ loom {
                 "-Dfabric.log.level=info"
             )
         }
+        create("serverSmokeTest") {
+            server()
+            configName = "MezzConfig Fabric Server Smoke Test"
+            runDir("build/run/server-smoke")
+            programArgs("--nogui")
+            vmArgs(
+                "-Dfabric.classPathGroups=${classPathGroupsString}",
+                "-Dfabric.log.level=info",
+                "-DmezzConfig.loaderSmokeTest.successFile=${serverSmokeTestSuccessFile.get().asFile.absolutePath}"
+            )
+        }
     }
 }
 
@@ -194,12 +207,29 @@ tasks.assemble {
 
 val testModClassesTask = testModProject.tasks.named(testModSourceSet.classesTaskName)
 val testModPath = testModProject.layout.buildDirectory.dir("resources/main").get().asFile.absolutePath
-val testModRunTasks = setOf("runClient", "runServer")
+val testModRunTasks = setOf("runClient", "runServer", "runServerSmokeTest")
 tasks.matching { it.name in testModRunTasks }.configureEach {
     dependsOn(testModClassesTask)
     if (this is JavaExec) {
         classpath(testModSourceSet.output)
         jvmArgs("-Dfabric.addMods=$testModPath")
+    }
+}
+
+tasks.matching { it.name == "runServerSmokeTest" }.configureEach {
+    outputs.file(serverSmokeTestSuccessFile)
+    outputs.upToDateWhen { false }
+    doFirst {
+        val successFile = outputs.files.singleFile
+        successFile.parentFile.mkdirs()
+        successFile.resolveSibling("eula.txt").writeText("eula=true\n")
+        successFile.resolveSibling("server.properties").writeText("online-mode=false\nserver-port=0\n")
+        successFile.delete()
+    }
+    doLast {
+        if (!outputs.files.singleFile.isFile) {
+            throw GradleException("The Fabric loader smoke test did not report success.")
+        }
     }
 }
 

@@ -73,6 +73,14 @@ pipeline {
             }
         }
 
+        stage('Fabric and Forge Server Smoke Tests') {
+            steps {
+                script {
+                    sh "./gradlew --no-configuration-cache :Fabric:runServerSmokeTest :Forge:runServerSmokeTest ${getReleaseGradleArgs()} --no-daemon"
+                }
+            }
+        }
+
         stage('Archive') {
             steps {
                 junit allowEmptyResults: true, testResults: '*/build/test-results/**/*.xml'

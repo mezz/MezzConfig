@@ -90,3 +90,10 @@ idea {
 		}
 	}
 }
+
+// Required because ForgeGradle expects each development mod's classes and resources in one output directory.
+sourceSets.forEach {
+	val outputDir = layout.buildDirectory.file("sourcesSets/${it.name}").get().asFile
+	it.output.setResourcesDir(outputDir)
+	it.java.destinationDirectory.set(outputDir)
+}
