@@ -127,8 +127,8 @@ public interface IConfigSchema {
 	 * @return saved-value changes that were applied
 	 *
 	 * @throws IllegalArgumentException if a value is invalid, cannot be safely serialized, or does not belong to this schema
-	 * @throws IllegalStateException if this schema has no active local backing file, including synchronized server schemas
-	 * viewed on a remote client
+	 * @throws IllegalStateException if a non-empty batch is applied while this schema has no active local backing file,
+	 * including synchronized server schemas viewed on a remote client
 	 *
 	 * @since 0.1.0
 	 */

@@ -132,6 +132,10 @@ common initialization code but is not returned by `Configs.getSchemas()`.
 ### Malformed-file recovery
 
 Config files are read as bounded UTF-8 text (at most 4 MiB and 100,000 lines).
+The same bounds are checked before MezzConfig creates or replaces a config or
+sort-order file. A schema build, schema update, or file-backed sort reconciliation
+that would exceed them is rejected with `IllegalArgumentException` before its
+public state changes.
 Missing categories and values are valid: they inherit the value from the lower
 layer, or the declared code default when there is no lower layer. Valid entries
 elsewhere in a damaged file are still applied. A partially successful custom
@@ -419,7 +423,8 @@ saved preference against the runtime values supplied to each call.
 `ISortingConfig.setSortedValues(allValues, sortedValues)` takes the complete
 runtime value set with every update, returns `true` only for a change, returns
 `false` for an unchanged order, and rejects duplicates or sorted values outside
-the complete set. Change listeners run synchronously after persistence is
+the complete set. It also rejects an order that cannot fit in a readable
+sort-order file. Change listeners run synchronously after persistence is
 attempted; a failing listener is logged without preventing later listeners from
 running.
 

@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * Storage categories organize {@link IConfigValue}s into config file groups.
- * An {@link IConfigSchema} can contain one or more categories.
+ * An {@link IConfigSchema} contains one or more categories, and each storage category contains one or more values.
  * <p>
  * Add a category to your schema here: {@link IConfigSchemaBuilder#addCategory(String)}.
  * Get registered categories here: {@link IConfigSchema#getCategories()}.

@@ -43,7 +43,10 @@ public interface IConfigSchemaBuilder {
 	 * For a currently active file-backed schema, the initial file load or creation is synchronous.
 	 *
 	 * @return the registered config schema
-	 * @throws IllegalArgumentException when a backing file path is already reserved
+	 * @throws IllegalArgumentException when a backing file path is already reserved or the complete default config cannot
+	 * be safely serialized
+	 * @throws IllegalStateException when the schema has no storage category, a storage category has no config value, or a
+	 * value builder has not been built
 	 * @throws java.io.UncheckedIOException when an active backing file cannot initially be read or created
 	 *
 	 * @since 0.1.0

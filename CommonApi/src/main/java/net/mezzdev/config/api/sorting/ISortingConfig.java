@@ -39,6 +39,8 @@ public interface ISortingConfig<T> {
 	 *
 	 * @param allValues every value that may be sorted
 	 * @return an unmodifiable, duplicate-free snapshot of the sorted visible values
+	 * @throws IllegalArgumentException if the supplied values violate the serializer contract or the reconciled file-backed
+	 * order cannot be safely serialized
 	 *
 	 * @since 0.1.0
 	 */
@@ -69,8 +71,9 @@ public interface ISortingConfig<T> {
 	 * @param sortedValues the non-null, duplicate-free sorted values to save
 	 * @return {@code true} if the sort order changed, or {@code false} if it was equal to the saved sort order
 	 *
-	 * @throws IllegalArgumentException if a collection contains null, {@code sortedValues} contains duplicates, or a
-	 * value in {@code sortedValues} is not present in {@code allValues}
+	 * @throws IllegalArgumentException if a collection contains null, {@code sortedValues} contains duplicates, a value in
+	 * {@code sortedValues} is not present in {@code allValues}, the serializer contract is violated, or the file-backed order
+	 * cannot be safely serialized
 	 *
 	 * @since 0.1.0
 	 */
