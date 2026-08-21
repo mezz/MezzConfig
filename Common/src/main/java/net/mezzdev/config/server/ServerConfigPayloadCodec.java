@@ -41,16 +41,13 @@ final class ServerConfigPayloadCodec {
 
 	private static byte[] encode(IoConsumer<DataOutputStream> encoder) {
 		try {
-			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			ByteArrayOutputStream bytes = new BoundedByteArrayOutputStream(
+				ServerConfigPayloadChunker.MAX_REASSEMBLED_PAYLOAD_LENGTH
+			);
 			try (DataOutputStream output = new DataOutputStream(bytes)) {
 				encoder.accept(output);
 			}
-			byte[] encoded = bytes.toByteArray();
-			if (encoded.length > ServerConfigPayloadChunker.MAX_REASSEMBLED_PAYLOAD_LENGTH) {
-				throw new IllegalArgumentException("Server config payload exceeds the maximum length of " +
-					ServerConfigPayloadChunker.MAX_REASSEMBLED_PAYLOAD_LENGTH + " bytes: " + encoded.length);
-			}
-			return encoded;
+			return bytes.toByteArray();
 		} catch (IOException e) {
 			throw new IllegalStateException("Failed to encode a server config payload.", e);
 		}
@@ -118,15 +115,54 @@ final class ServerConfigPayloadCodec {
 		int maxEncodedLength,
 		String fieldName
 	) throws IOException {
-		if (value.length() > maxEncodedLength) {
-			throw new IllegalArgumentException("Server config " + fieldName + " is too long.");
+		int encodedLength = getUtf8Length(value, maxEncodedLength, fieldName);
+		long payloadLength = (long) output.size() + Integer.BYTES + encodedLength;
+		if (payloadLength > ServerConfigPayloadChunker.MAX_REASSEMBLED_PAYLOAD_LENGTH) {
+			throw payloadTooLarge(payloadLength);
 		}
 		byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
-		if (encoded.length > maxEncodedLength) {
-			throw new IllegalArgumentException("Server config " + fieldName + " exceeds " + maxEncodedLength + " UTF-8 bytes.");
-		}
-		output.writeInt(encoded.length);
+		output.writeInt(encodedLength);
 		output.write(encoded);
+	}
+
+	private static int getUtf8Length(String value, int maxEncodedLength, String fieldName) {
+		if (value.length() > maxEncodedLength) {
+			throw stringTooLarge(fieldName, maxEncodedLength);
+		}
+		int encodedLength = 0;
+		for (int i = 0; i < value.length(); i++) {
+			char character = value.charAt(i);
+			if (character <= 0x7F) {
+				encodedLength++;
+			} else if (character <= 0x7FF) {
+				encodedLength += 2;
+			} else if (Character.isHighSurrogate(character)) {
+				if (i + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(i + 1))) {
+					throw new IllegalArgumentException("Server config " + fieldName + " contains invalid UTF-16.");
+				}
+				i++;
+				encodedLength += 4;
+			} else if (Character.isLowSurrogate(character)) {
+				throw new IllegalArgumentException("Server config " + fieldName + " contains invalid UTF-16.");
+			} else {
+				encodedLength += 3;
+			}
+			if (encodedLength > maxEncodedLength) {
+				throw stringTooLarge(fieldName, maxEncodedLength);
+			}
+		}
+		return encodedLength;
+	}
+
+	private static IllegalArgumentException stringTooLarge(String fieldName, int maxEncodedLength) {
+		return new IllegalArgumentException(
+			"Server config " + fieldName + " exceeds " + maxEncodedLength + " UTF-8 bytes."
+		);
+	}
+
+	private static IllegalArgumentException payloadTooLarge(long length) {
+		return new IllegalArgumentException("Server config payload exceeds the maximum length of " +
+			ServerConfigPayloadChunker.MAX_REASSEMBLED_PAYLOAD_LENGTH + " bytes: " + length);
 	}
 
 	private static String readString(DataInputStream input, int maxEncodedLength, String fieldName) throws IOException {
@@ -157,5 +193,32 @@ final class ServerConfigPayloadCodec {
 	@FunctionalInterface
 	private interface IoFunction<T, R> {
 		R apply(T value) throws IOException;
+	}
+
+	private static final class BoundedByteArrayOutputStream extends ByteArrayOutputStream {
+		private final int maxLength;
+
+		private BoundedByteArrayOutputStream(int maxLength) {
+			super(Math.min(32, maxLength));
+			this.maxLength = maxLength;
+		}
+
+		@Override
+		public synchronized void write(int value) {
+			ensureCapacityFor(1);
+			super.write(value);
+		}
+
+		@Override
+		public synchronized void write(byte[] data, int offset, int length) {
+			ensureCapacityFor(length);
+			super.write(data, offset, length);
+		}
+
+		private void ensureCapacityFor(int additionalLength) {
+			if (additionalLength > maxLength - count) {
+				throw payloadTooLarge((long) count + additionalLength);
+			}
+		}
 	}
 }

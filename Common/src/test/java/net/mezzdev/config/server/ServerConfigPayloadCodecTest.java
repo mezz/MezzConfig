@@ -207,6 +207,23 @@ public class ServerConfigPayloadCodecTest {
 		assertThrows(IllegalArgumentException.class, () -> ServerConfigPayloadCodec.encodeSync(oversizedValue));
 	}
 
+	@Test
+	public void codecRejectsAggregatePayloadsWithIndividuallyValidValues() {
+		String maximumValue = "x".repeat(ServerConfigPayloadCodec.MAX_SERIALIZED_VALUE_BYTES);
+		List<ServerConfigValueData> values = List.of(
+			new ServerConfigValueData("general", "first", maximumValue),
+			new ServerConfigValueData("general", "second", maximumValue),
+			new ServerConfigValueData("general", "third", maximumValue),
+			new ServerConfigValueData("general", "fourth", maximumValue)
+		);
+		ServerConfigSyncPayload payload = new ServerConfigSyncPayload(
+			new ServerConfigKey("test_mod", "server.ini"),
+			values
+		);
+
+		assertThrows(IllegalArgumentException.class, () -> ServerConfigPayloadCodec.encodeSync(payload));
+	}
+
 	private static List<ServerConfigValueData> createLargeValueList() {
 		List<ServerConfigValueData> values = new ArrayList<>();
 		values.add(new ServerConfigValueData("general", "largeText", "設定値".repeat(20_000)));
