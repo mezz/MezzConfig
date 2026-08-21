@@ -35,26 +35,41 @@ mistaken for a requirement without supporting evidence.
   within 64 fragments. These limits are currently enforced only during
   encoding, after authoritative state may already have changed. An oversized
   schema can therefore fail to activate on clients, a reload can leave clients
-  stale, and a local update future can report success even though broadcasting
-  failed.
+  stale, and a local update can commit even though broadcasting fails.
 
   - [x] Centralize validation of a complete prospective snapshot using the
         existing internal protocol limits.
   - [x] Validate a server-owned world schema before registration commits.
   - [x] Validate prospective state before an initial file load or watcher
         reload commits it.
-  - [x] Validate prospective state before local, integrated-server, or remote
-        batch updates commit it.
+  - [x] Validate prospective state before local or integrated-server batch
+        updates commit it.
   - [x] Reject the entire operation and retain the previous authoritative state
         when validation fails.
-  - [x] Reject an unsynchronizable request before sending; an integrated-server
-        race completes its already-created future exceptionally.
+  - [x] Reject unsynchronizable local changes before mutation or broadcast.
   - [x] Keep the numeric limits internal while returning actionable failure
         messages.
   - [x] Test excessive value count, excessive individual values, excessive
         total size, fragment boundaries, registration, reloads, local edits,
-        remote edits, and successful boundary-sized snapshots through schema
-        APIs rather than only through codec tests.
+        and successful boundary-sized snapshots through schema APIs rather than
+        only through codec tests.
+
+### Keep Written Files Within Reader Bounds
+
+- [x] Prevent schema and sorting writers from creating files that the bounded
+      reader will reject on the next load.
+
+  **Reason:** Per-value round-trip validation did not constrain the complete
+  UTF-8 file. A large value, aggregate schema, description, or sort order could
+  exceed 4 MiB or 100,000 lines, save successfully, and then be recovered as a
+  malformed file after restart.
+
+  - [x] Share exact UTF-8 byte and logical-line validation across every writer.
+  - [x] Validate complete schema defaults when a schema is built.
+  - [x] Validate prospective schema and sort-order files before public state
+        changes.
+  - [x] Test exact and excessive byte and line boundaries, including embedded
+        line separators, without replacing an existing file on rejection.
 
 ### Make Custom Serializers Safe at Trust Boundaries
 
@@ -102,16 +117,17 @@ mistaken for a requirement without supporting evidence.
 ### Define the Threading Model
 
 - [x] Specify and implement one threading contract for reads, mutations,
-      listeners, file reloads, and remote updates.
+      listeners, file reloads, and synchronized snapshots.
 
   **Reason:** File watchers, delayed saves, and network updates could race with
   normal access despite the API's synchronous callbacks.
 
   **Resolution:** Built runtime objects are thread-safe, batches are atomic, and
   concurrent operations have no defined order. Listeners remain synchronous on
-  the applying thread; update futures have no guaranteed completion thread.
+  the applying thread.
 
-  - [x] Synchronize schema, value, sorting, reload, and remote-update state.
+  - [x] Synchronize schema, value, sorting, reload, and synchronized-snapshot
+        state.
   - [x] Make listener registration and removal thread-safe.
   - [x] Cover concurrent batches and runtime callback threads with tests.
 
@@ -184,7 +200,7 @@ mistaken for a requirement without supporting evidence.
 
 ### Make Schema Activation Semantics Truthful
 
-- [x] Define `isActive`, `canEdit`, and `getPath` for every supported schema
+- [x] Define `isActive` and `getPath` for every supported schema
       type, runtime context, and physical side.
 
   **Reason:** Registration correctly says client schemas are inert and pathless
@@ -197,7 +213,9 @@ mistaken for a requirement without supporting evidence.
   - [x] Add a compact behavior table to the API guide.
   - [x] Replace the invalid ownership/scope cross-product with concrete schema
         types.
-  - [x] Test active, editable, and path state for each supported schema type.
+  - [x] Test active and path state for each supported schema type. Local
+        editability is represented by an active local backing path; synchronized
+        remote schemas are active and pathless.
 
 ### Keep Both Listener Scopes and Make Them Discoverable
 
@@ -239,26 +257,20 @@ mistaken for a requirement without supporting evidence.
   - [x] Update runtime code to use result presence and diagnostics.
   - [x] Update tests and documentation.
 
-### Expose Only the Needed Asynchronous Contract
+### Keep Remote Editing Outside the Core API
 
-- [x] Resolve cancellation semantics for `requestBatchUpdate` and return
-      `CompletionStage<Void>` unless caller cancellation is intentionally
-      supported.
+- [x] Remove the unreleased `requestBatchUpdate` contract and its asynchronous
+      result types from the supported API.
 
-  **Reason:** The method currently exposes a mutable, cancellable
-  `CompletableFuture`, while its documented contract only promises eventual
-  completion or failure. Local cancellation can stop observation without
-  necessarily stopping a queued or already-sent authoritative update.
+  **Reason:** Client-to-server editing requires authorization, request lifecycle,
+  diagnostics, and integration-specific policy that do not belong in the core
+  schema or one-way synchronization contracts.
 
-  - [x] Make cancellation unsupported because it cannot reliably retract a
-        queued or already-sent authoritative update.
-  - [x] Return `CompletionStage<Void>` and keep
-        the implementation's future private.
-  - [x] Document that cancelling a future derived from the stage only stops
-        that observer and does not cancel the update.
-  - [x] Test that cancelling a derived observer does not cancel an already-sent
-        remote update request.
-  - [x] Document completion-thread behavior as part of the threading contract.
+  - [x] Keep synchronized remote schemas read-only through the core API.
+  - [x] Document how optional editor integrations can validate and apply accepted
+        values on the authoritative server through `batchUpdate`.
+  - [x] Keep the internal one-way synchronization protocol independent of any
+        editor request protocol.
 
 ## P1 — Packaging and Release Gates
 
@@ -359,13 +371,13 @@ mistaken for a requirement without supporting evidence.
 - [x] Update Javadocs and the API guide after the contracts above are settled.
 
   **Reason:** Threading, explicit-location storage, serializer failures, listener
-  scopes, asynchronous completion, and server snapshot rejection affect how
+  scopes, remote editing boundaries, and server snapshot rejection affect how
   callers safely use the API and must not be left as implementation details.
 
   - [x] Document explicit-location failure behavior.
   - [x] Document serializer requirements and diagnostics.
   - [x] Document thread and listener behavior.
-  - [x] Document update-stage completion and cancellation behavior.
+  - [x] Document why remote editing and its request lifecycle are outside the core API.
   - [x] Document server snapshot validation without exposing configurable
         protocol limits.
 
