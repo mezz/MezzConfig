@@ -2,6 +2,7 @@ package net.mezzdev.config.test.sorting;
 
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.file.ConfigFileReader;
 import net.mezzdev.config.file.ConfigFileUtil;
 import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.sorting.SortingConfig;
@@ -12,8 +13,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -242,6 +245,37 @@ public class SortingConfigTest {
 	}
 
 	@Test
+	public void changeListenerRemovalIsIdempotentForDuplicateRegistrations(@TempDir Path tempDir) {
+		Path path = tempDir.resolve("sort-order.txt");
+		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
+		AtomicInteger notifications = new AtomicInteger();
+		Runnable listener = notifications::incrementAndGet;
+		Runnable unsubscribeFirst = sortingConfig.addChangeListener(listener);
+		sortingConfig.addChangeListener(listener);
+
+		unsubscribeFirst.run();
+		unsubscribeFirst.run();
+		assertTrue(sortingConfig.setSortedValues(List.of("first", "second"), List.of("second", "first")));
+
+		assertEquals(1, notifications.get());
+	}
+
+	@Test
+	public void oversizedSortOrderIsRejectedBeforeStateOrFileChanges(@TempDir Path tempDir) {
+		Path path = tempDir.resolve("sort-order.txt");
+		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
+		String oversized = "x".repeat(ConfigFileReader.MAX_FILE_BYTES);
+
+		assertThrows(
+			IllegalArgumentException.class,
+			() -> sortingConfig.setSortedValues(List.of("small", oversized), List.of(oversized, "small"))
+		);
+
+		assertFalse(Files.exists(path));
+		assertEquals(List.of("small"), sortingConfig.getSortedValues(List.of("small")));
+	}
+
+	@Test
 	public void setSortedValuesRejectsDuplicates(@TempDir Path tempDir) {
 		Path path = tempDir.resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
@@ -356,6 +390,56 @@ public class SortingConfigTest {
 		values.sort(comparator);
 
 		assertEquals(List.of("second", "first", "third"), values);
+	}
+
+	@Test
+	public void comparatorLooksUpSavedIndexesWithoutLinearScans() {
+		AtomicInteger equalityChecks = new AtomicInteger();
+		IConfigValueSerializer<CountingValue> serializer = new IConfigValueSerializer<>() {
+			@Override
+			public String serialize(CountingValue value) {
+				return Integer.toString(value.id);
+			}
+
+			@Override
+			public IDeserializeResult<CountingValue> deserialize(String string) {
+				try {
+					return IDeserializeResult.success(new CountingValue(Integer.parseInt(string), equalityChecks));
+				} catch (NumberFormatException e) {
+					return IDeserializeResult.failure("Expected an integer id");
+				}
+			}
+
+			@Override
+			public boolean isValid(CountingValue value) {
+				return value != null;
+			}
+
+			@Override
+			public String getValidValuesDescription() {
+				return "Any integer id";
+			}
+		};
+		SortingConfig<CountingValue> sortingConfig = SortingConfig.inMemory(
+			serializer,
+			Comparator.comparingInt(value -> value.id),
+			false
+		);
+		List<CountingValue> registeredValues = new ArrayList<>();
+		List<CountingValue> valuesToSort = new ArrayList<>();
+		for (int id = 0; id < 1_000; id++) {
+			registeredValues.add(new CountingValue(id, equalityChecks));
+			valuesToSort.add(new CountingValue(id, equalityChecks));
+		}
+		Comparator<CountingValue> comparator = sortingConfig.getComparator(registeredValues);
+		Collections.shuffle(valuesToSort, new Random(1));
+		equalityChecks.set(0);
+
+		valuesToSort.sort(comparator);
+
+		assertTrue(equalityChecks.get() < 50_000, "Comparator performed linear saved-order scans.");
+		assertEquals(0, valuesToSort.getFirst().id);
+		assertEquals(999, valuesToSort.getLast().id);
 	}
 
 	@Test
@@ -540,6 +624,27 @@ public class SortingConfigTest {
 		@Override
 		public boolean equals(Object other) {
 			return other instanceof EquivalentValue value && id == value.id;
+		}
+
+		@Override
+		public int hashCode() {
+			return Integer.hashCode(id);
+		}
+	}
+
+	private static final class CountingValue {
+		private final int id;
+		private final AtomicInteger equalityChecks;
+
+		private CountingValue(int id, AtomicInteger equalityChecks) {
+			this.id = id;
+			this.equalityChecks = equalityChecks;
+		}
+
+		@Override
+		public boolean equals(Object other) {
+			equalityChecks.incrementAndGet();
+			return other instanceof CountingValue value && id == value.id;
 		}
 
 		@Override

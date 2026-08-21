@@ -463,17 +463,7 @@ public final class ConfigSerializer {
 		boolean saveDefaults,
 		Settings settings
 	) throws IOException {
-		List<String> serialized = new ArrayList<>();
-		for (String headerComment : settings.headerComments()) {
-			serialized.add("# " + headerComment);
-		}
-		if (!settings.headerComments().isEmpty()) {
-			serialized.add("");
-		}
-		categories.forEach(category -> {
-			serializeCategory(serialized, category, saveDefaults, settings);
-			serialized.add("");
-		});
+		List<String> serialized = serialize(categories, saveDefaults, settings, Map.of());
 		LOGGER.debug("Saving config file: {}", path);
 		ConfigFileUtil.writeUsingTempFile(path, serialized);
 		try {
@@ -483,6 +473,35 @@ public final class ConfigSerializer {
 			saveTimes.remove(path);
 			LOGGER.warn("Saved config file '{}' but could not record its modified time.", path, e);
 		}
+	}
+
+	public static void validatePendingSave(
+		List<ConfigCategory> categories,
+		Settings settings,
+		Map<ConfigValue<?>, Object> updatedValues
+	) {
+		List<String> serialized = serialize(categories, false, settings, updatedValues);
+		ConfigFileUtil.validateReadableContents(serialized);
+	}
+
+	private static List<String> serialize(
+		List<ConfigCategory> categories,
+		boolean saveDefaults,
+		Settings settings,
+		Map<ConfigValue<?>, Object> updatedValues
+	) {
+		List<String> serialized = new ArrayList<>();
+		for (String headerComment : settings.headerComments()) {
+			serialized.add("# " + headerComment);
+		}
+		if (!settings.headerComments().isEmpty()) {
+			serialized.add("");
+		}
+		categories.forEach(category -> {
+			serializeCategory(serialized, category, saveDefaults, settings, updatedValues);
+			serialized.add("");
+		});
+		return List.copyOf(serialized);
 	}
 
 	public static boolean canLocalizeComments() {
@@ -499,12 +518,13 @@ public final class ConfigSerializer {
 		List<String> serialized,
 		ConfigCategory category,
 		boolean saveDefaults,
-		Settings settings
+		Settings settings,
+		Map<ConfigValue<?>, Object> updatedValues
 	) {
 		addNameAndDescription(serialized, category.getLocalizationKey(), "", settings);
 		serialized.add("[%s]".formatted(category.getName()));
 		for (ConfigValue<?> value : category.getConfigValues()) {
-			serializeConfigValue(serialized, value, saveDefaults, settings);
+			serializeConfigValue(serialized, value, saveDefaults, settings, updatedValues);
 			serialized.add("");
 		}
 	}
@@ -513,7 +533,8 @@ public final class ConfigSerializer {
 		List<String> serialized,
 		ConfigValue<T> configValue,
 		boolean saveDefaults,
-		Settings settings
+		Settings settings,
+		Map<ConfigValue<?>, Object> updatedValues
 	) {
 		String name = configValue.getName();
 		IConfigValueSerializer<T> serializer = configValue.getSerializer();
@@ -537,10 +558,19 @@ public final class ConfigSerializer {
 
 		T value = defaultValue;
 		if (!saveDefaults) {
-			value = configValue.getPendingValueWithoutLoading();
+			value = getPendingValue(configValue, updatedValues);
 		}
 		String valueString = ConfigFileValueAdapter.serialize(serializer, value);
 		serialized.add("\t%s = %s".formatted(name, valueString));
+	}
+
+	private static <T> T getPendingValue(ConfigValue<T> configValue, Map<ConfigValue<?>, Object> updatedValues) {
+		if (!updatedValues.containsKey(configValue)) {
+			return configValue.getPendingValueWithoutLoading();
+		}
+		@SuppressWarnings("unchecked")
+		T updatedValue = (T) updatedValues.get(configValue);
+		return updatedValue;
 	}
 
 	private static String getConfigFileValidValuesDescription(IConfigValueSerializer<?> serializer) {

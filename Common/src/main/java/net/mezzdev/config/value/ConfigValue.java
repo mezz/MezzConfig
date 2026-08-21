@@ -15,6 +15,7 @@ import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.util.ConfigNameUtil;
 import net.mezzdev.config.util.ErrorUtil;
+import net.mezzdev.config.util.ListenerList;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -24,7 +25,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
 
 public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
@@ -38,10 +38,10 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	private final ConfigValueRestartRequirement restartRequirement;
 	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders;
 	private List<ConfigEditorCategory> editorCategories = List.of();
-	private final List<IConfigValueChangeListener<T>> listeners = new CopyOnWriteArrayList<>();
-	private final List<IConfigValueBatchChangeListener> batchListeners = new CopyOnWriteArrayList<>();
-	private final List<IConfigValueChangeListener<T>> pendingListeners = new CopyOnWriteArrayList<>();
-	private final List<IConfigValueBatchChangeListener> pendingBatchListeners = new CopyOnWriteArrayList<>();
+	private final ListenerList<IConfigValueChangeListener<T>> listeners = new ListenerList<>();
+	private final ListenerList<IConfigValueBatchChangeListener> batchListeners = new ListenerList<>();
+	private final ListenerList<IConfigValueChangeListener<T>> pendingListeners = new ListenerList<>();
+	private final ListenerList<IConfigValueBatchChangeListener> pendingBatchListeners = new ListenerList<>();
 	private volatile T effectiveValue;
 	private volatile T pendingValue;
 	@Nullable
@@ -367,50 +367,60 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 			return List.of();
 		}
 		List<AppliedConfigValueChange<?>> immutableChanges = List.copyOf(changes);
-		for (AppliedConfigValueChange<?> change : immutableChanges) {
-			if (pending) {
-				change.configValue()
-					.notifyPendingListeners(immutableChanges);
-			} else {
-				change.configValue()
-					.notifyListeners(immutableChanges);
-			}
-		}
+		List<Runnable> notifications = immutableChanges.stream()
+			.map(change -> change.configValue().snapshotNotifications(immutableChanges, pending))
+			.toList();
+		notifications.forEach(Runnable::run);
 		return immutableChanges;
 	}
 
-	public void notifyListeners(List<? extends AppliedConfigValueChange<?>> changes) {
+	private Runnable snapshotNotifications(List<? extends AppliedConfigValueChange<?>> changes, boolean pending) {
 		AppliedConfigValueChange<T> change = getChange(changes);
-		for (IConfigValueChangeListener<T> listener : listeners) {
-			try {
-				listener.onConfigValueChanged(change);
-			} catch (RuntimeException e) {
-				LOGGER.error("Config value listener failed for '{}'.", name, e);
-			}
+		List<IConfigValueChangeListener<T>> listenerSnapshot;
+		List<IConfigValueBatchChangeListener> batchListenerSnapshot;
+		String listenerDescription;
+		String batchListenerDescription;
+		if (pending) {
+			listenerSnapshot = pendingListeners.snapshot();
+			batchListenerSnapshot = pendingBatchListeners.snapshot();
+			listenerDescription = "Pending config value listener";
+			batchListenerDescription = "Pending config value batch listener";
+		} else {
+			listenerSnapshot = listeners.snapshot();
+			batchListenerSnapshot = batchListeners.snapshot();
+			listenerDescription = "Config value listener";
+			batchListenerDescription = "Config value batch listener";
 		}
-		for (IConfigValueBatchChangeListener listener : batchListeners) {
-			try {
-				listener.onConfigValuesChanged(changes);
-			} catch (RuntimeException e) {
-				LOGGER.error("Config value batch listener failed for '{}'.", name, e);
-			}
-		}
+		return () -> notifyListeners(
+			change,
+			changes,
+			listenerSnapshot,
+			batchListenerSnapshot,
+			listenerDescription,
+			batchListenerDescription
+		);
 	}
 
-	private void notifyPendingListeners(List<? extends AppliedConfigValueChange<?>> changes) {
-		AppliedConfigValueChange<T> change = getChange(changes);
-		for (IConfigValueChangeListener<T> listener : pendingListeners) {
+	private void notifyListeners(
+		AppliedConfigValueChange<T> change,
+		List<? extends AppliedConfigValueChange<?>> changes,
+		List<IConfigValueChangeListener<T>> listenerSnapshot,
+		List<IConfigValueBatchChangeListener> batchListenerSnapshot,
+		String listenerDescription,
+		String batchListenerDescription
+	) {
+		for (IConfigValueChangeListener<T> listener : listenerSnapshot) {
 			try {
 				listener.onConfigValueChanged(change);
 			} catch (RuntimeException e) {
-				LOGGER.error("Pending config value listener failed for '{}'.", name, e);
+				LOGGER.error("{} failed for '{}'.", listenerDescription, name, e);
 			}
 		}
-		for (IConfigValueBatchChangeListener listener : pendingBatchListeners) {
+		for (IConfigValueBatchChangeListener listener : batchListenerSnapshot) {
 			try {
 				listener.onConfigValuesChanged(changes);
 			} catch (RuntimeException e) {
-				LOGGER.error("Pending config value batch listener failed for '{}'.", name, e);
+				LOGGER.error("{} failed for '{}'.", batchListenerDescription, name, e);
 			}
 		}
 	}
@@ -434,28 +444,24 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	@Override
 	public Runnable addListener(IConfigValueChangeListener<T> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		this.listeners.add(listener);
-		return () -> this.listeners.remove(listener);
+		return this.listeners.add(listener);
 	}
 
 	@Override
 	public Runnable addPendingListener(IConfigValueChangeListener<T> listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		this.pendingListeners.add(listener);
-		return () -> this.pendingListeners.remove(listener);
+		return this.pendingListeners.add(listener);
 	}
 
 	@Override
 	public Runnable addBatchListener(IConfigValueBatchChangeListener listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		this.batchListeners.add(listener);
-		return () -> this.batchListeners.remove(listener);
+		return this.batchListeners.add(listener);
 	}
 
 	@Override
 	public Runnable addPendingBatchListener(IConfigValueBatchChangeListener listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		this.pendingBatchListeners.add(listener);
-		return () -> this.pendingBatchListeners.remove(listener);
+		return this.pendingBatchListeners.add(listener);
 	}
 }

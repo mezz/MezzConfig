@@ -9,6 +9,7 @@ import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
+import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.IConfigKeyValueSerializer;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
@@ -16,6 +17,7 @@ import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.value.PackedColor;
 import net.mezzdev.config.file.ConfigSerializer;
+import net.mezzdev.config.file.ConfigFileReader;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
@@ -56,6 +58,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigSchemaTest {
+	@Test
+	public void schemasAndStorageCategoriesMustNotBeEmpty() {
+		assertThrows(IllegalStateException.class, () -> createSchema(List.of(), List.of()));
+
+		ConfigCategoryBuilder emptyCategory = new ConfigCategoryBuilder("mezz_config.config.test", "empty");
+		assertThrows(IllegalStateException.class, () -> createSchema(emptyCategory));
+	}
+
+	@Test
+	public void oversizedDefaultFileIsRejectedWhenTheSchemaIsBuilt() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		builder.addString("text", "x".repeat(ConfigFileReader.MAX_FILE_BYTES))
+			.build();
+
+		assertThrows(IllegalArgumentException.class, () -> createSchema(builder));
+	}
+
 	@Test
 	public void addEnumListSupportsEmptyDefaultLists() {
 		// Setup: an enum list can have no default entries, so the enum class must provide the element type.
@@ -594,6 +613,88 @@ public class ConfigSchemaTest {
 
 		// Assertions: the schema listener only receives changes before its unsubscribe callback is run.
 		assertEquals(1, notifications.get());
+	}
+
+	@Test
+	public void schemaUnsubscribeIsIdempotentForDuplicateListenerRegistrations() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		AtomicInteger notifications = new AtomicInteger();
+		IConfigValueBatchChangeListener listener = ignored -> notifications.incrementAndGet();
+		Runnable unsubscribeFirst = schema.addBatchListener(listener);
+		schema.addBatchListener(listener);
+
+		unsubscribeFirst.run();
+		unsubscribeFirst.run();
+		assertTrue(enabled.set(false));
+
+		assertEquals(1, notifications.get());
+	}
+
+	@Test
+	public void listenerChangesDuringAValueCallbackDoNotChangeTheCurrentBatchSnapshot() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> first = builder.addBoolean("first", true)
+			.build();
+		ConfigValue<Boolean> second = builder.addBoolean("second", true)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		List<String> notifications = new ArrayList<>();
+		AtomicReference<Runnable> removeFirstBatch = new AtomicReference<>();
+		AtomicReference<Runnable> removeSecond = new AtomicReference<>();
+		AtomicReference<Runnable> removeSchema = new AtomicReference<>();
+		AtomicReference<Boolean> listenersReplaced = new AtomicReference<>(false);
+		first.addListener(ignored -> {
+			notifications.add("first single");
+			if (!listenersReplaced.getAndSet(true)) {
+				removeFirstBatch.get().run();
+				removeSecond.get().run();
+				removeSchema.get().run();
+				first.addBatchListener(changes -> notifications.add("first batch new"));
+				second.addListener(change -> notifications.add("second single new"));
+				schema.addBatchListener(changes -> notifications.add("schema new"));
+			}
+		});
+		removeFirstBatch.set(first.addBatchListener(changes -> notifications.add("first batch old")));
+		removeSecond.set(second.addListener(change -> notifications.add("second single old")));
+		removeSchema.set(schema.addBatchListener(changes -> notifications.add("schema old")));
+
+		schema.batchUpdate(updater -> {
+			updater.set(first, false);
+			updater.set(second, false);
+		});
+		assertEquals(
+			List.of("first single", "first batch old", "second single old", "schema old"),
+			notifications
+		);
+
+		notifications.clear();
+		schema.batchUpdate(updater -> {
+			updater.set(first, true);
+			updater.set(second, true);
+		});
+		assertEquals(
+			List.of("first single", "first batch new", "second single new", "schema new"),
+			notifications
+		);
+	}
+
+	@Test
+	public void oversizedProspectiveFileIsRejectedBeforeMutation(@TempDir Path tempDir) {
+		Path path = tempDir.resolve("test.ini");
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<String> text = builder.addString("text", "small")
+			.build();
+		createSchema(path, builder);
+		String oversized = "x".repeat(ConfigFileReader.MAX_FILE_BYTES);
+
+		assertThrows(IllegalArgumentException.class, () -> text.set(oversized));
+
+		assertEquals("small", text.getValue());
+		assertEquals("small", text.getPendingValue());
+		assertFalse(Files.exists(path));
 	}
 
 	@Test

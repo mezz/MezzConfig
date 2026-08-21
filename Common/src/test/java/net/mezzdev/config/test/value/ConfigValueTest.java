@@ -3,6 +3,7 @@ package net.mezzdev.config.test.value;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.ConfigValueEditMode;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.IConfigValueChangeListener;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.IntegerSerializer;
 import net.mezzdev.config.value.ConfigValue;
@@ -200,6 +201,26 @@ public class ConfigValueTest {
 
 		assertEquals(0, removedNotifications.get());
 		assertEquals(1, retainedNotifications.get());
+	}
+
+	@Test
+	public void unsubscribeIsIdempotentForDuplicateListenerRegistrations() {
+		ConfigValue<Boolean> value = new ConfigValue<>(
+			"mezz_config.config.test.category",
+			"enabled",
+			false,
+			BooleanSerializer.INSTANCE
+		);
+		AtomicInteger notifications = new AtomicInteger();
+		IConfigValueChangeListener<Boolean> listener = ignored -> notifications.incrementAndGet();
+		Runnable unsubscribeFirst = value.addListener(listener);
+		value.addListener(listener);
+
+		unsubscribeFirst.run();
+		unsubscribeFirst.run();
+		assertTrue(value.set(true));
+
+		assertEquals(1, notifications.get());
 	}
 
 	@Test

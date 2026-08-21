@@ -1,10 +1,12 @@
 package net.mezzdev.config.file;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 public final class ConfigFileUtil {
 	public static final int MAX_BACKUPS = 5;
@@ -13,7 +15,8 @@ public final class ConfigFileUtil {
 	private ConfigFileUtil() {
 	}
 
-	public static void writeUsingTempFile(Path path, Iterable<? extends CharSequence> lines) throws IOException {
+	public static void writeUsingTempFile(Path path, List<? extends CharSequence> lines) throws IOException {
+		validateReadableContents(lines);
 		Path tempFileDirectory = createParentDirectories(path);
 		Path tempFile = Files.createTempFile(tempFileDirectory, null, null);
 		try {
@@ -24,6 +27,49 @@ public final class ConfigFileUtil {
 				Files.delete(tempFile);
 			}
 		}
+	}
+
+	public static void validateReadableContents(List<? extends CharSequence> lines) {
+		if (lines.size() > ConfigFileReader.MAX_FILE_LINES) {
+			throw excessiveLineCount();
+		}
+		int lineSeparatorBytes = System.lineSeparator().getBytes(StandardCharsets.UTF_8).length;
+		long totalLines = lines.size();
+		long totalBytes = 0;
+		for (CharSequence line : lines) {
+			totalLines += countEmbeddedLineSeparators(line);
+			if (totalLines > ConfigFileReader.MAX_FILE_LINES) {
+				throw excessiveLineCount();
+			}
+			totalBytes += line.toString().getBytes(StandardCharsets.UTF_8).length + lineSeparatorBytes;
+			if (totalBytes > ConfigFileReader.MAX_FILE_BYTES) {
+				throw new IllegalArgumentException(
+					"Serialized config file exceeds the maximum supported size of " + ConfigFileReader.MAX_FILE_BYTES + " bytes."
+				);
+			}
+		}
+	}
+
+	private static long countEmbeddedLineSeparators(CharSequence line) {
+		long count = 0;
+		for (int index = 0; index < line.length(); index++) {
+			char character = line.charAt(index);
+			if (character == '\r') {
+				count++;
+				if (index + 1 < line.length() && line.charAt(index + 1) == '\n') {
+					index++;
+				}
+			} else if (character == '\n') {
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private static IllegalArgumentException excessiveLineCount() {
+		return new IllegalArgumentException(
+			"Serialized config file exceeds the maximum supported line count of " + ConfigFileReader.MAX_FILE_LINES + "."
+		);
 	}
 
 	public static void moveAtomicReplace(Path source, Path target) throws IOException {

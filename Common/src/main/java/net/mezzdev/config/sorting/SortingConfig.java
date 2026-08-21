@@ -9,6 +9,7 @@ import net.mezzdev.config.file.ConfigFileUtil;
 import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.file.ConfigFileValueCodec;
 import net.mezzdev.config.serializers.StringSerializer;
+import net.mezzdev.config.util.ListenerList;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -26,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class SortingConfig<T> implements ISortingConfig<T> {
 	private static final Logger LOGGER = LogManager.getLogger();
@@ -41,7 +41,7 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 	private final Comparator<T> defaultSortOrder;
 	private final boolean supportsLegacyStringValues;
 	private final boolean allowsRemovingValues;
-	private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
+	private final ListenerList<Runnable> changeListeners = new ListenerList<>();
 	@Nullable
 	private SavedValues<T> savedValues;
 	private boolean savedValuesNeedWrite;
@@ -106,6 +106,7 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		validateSerializedIdentities(previousSavedValues, allValuesSnapshot);
 		SavedValues<T> reconciledSavedValues = addDiscoveredValues(previousSavedValues, allValuesSnapshot);
 		if (savedValuesNeedWrite || !previousSavedValues.equals(reconciledSavedValues)) {
+			validateSavedValuesForWrite(reconciledSavedValues);
 			this.savedValues = reconciledSavedValues;
 			this.savedValuesNeedWrite = !save(reconciledSavedValues);
 		}
@@ -133,6 +134,7 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		SavedValues<T> updatedSavedValues = updateSavedValues(previousSavedValues, allValuesSnapshot, sortedValuesCopy);
 		boolean changed = !previousSavedValues.equals(updatedSavedValues);
 		if (savedValuesNeedWrite || changed) {
+			validateSavedValuesForWrite(updatedSavedValues);
 			this.savedValues = updatedSavedValues;
 			this.savedValuesNeedWrite = !save(updatedSavedValues);
 		}
@@ -259,6 +261,11 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 	}
 
 	private void write(Path path, SavedValues<T> savedValues) throws IOException {
+		List<String> serialized = serialize(savedValues);
+		ConfigFileUtil.writeUsingTempFile(path, serialized);
+	}
+
+	private List<String> serialize(SavedValues<T> savedValues) {
 		List<String> serialized = new ArrayList<>();
 		serialized.add(VISIBLE_SECTION);
 		savedValues.visibleValues().stream()
@@ -268,7 +275,13 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		savedValues.hiddenValues().stream()
 			.map(this::encodeValue)
 			.forEach(serialized::add);
-		ConfigFileUtil.writeUsingTempFile(path, serialized);
+		return List.copyOf(serialized);
+	}
+
+	private void validateSavedValuesForWrite(SavedValues<T> savedValues) {
+		if (path != null) {
+			ConfigFileUtil.validateReadableContents(serialize(savedValues));
+		}
 	}
 
 	private void writeDefaultIfMissing(List<T> allValues) {
@@ -520,17 +533,14 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		return summary;
 	}
 
-	private static int indexOfSort(int index) {
-		if (index < 0) {
-			return Integer.MAX_VALUE;
-		}
-		return index;
-	}
-
 	@Override
 	public synchronized Comparator<T> getComparator(Collection<T> allValues) {
 		List<T> sortedValues = getSortedValues(allValues);
-		Comparator<T> savedOrder = Comparator.comparingInt(value -> indexOfSort(sortedValues.indexOf(value)));
+		Map<T, Integer> savedIndexes = new HashMap<>();
+		for (int index = 0; index < sortedValues.size(); index++) {
+			savedIndexes.put(sortedValues.get(index), index);
+		}
+		Comparator<T> savedOrder = Comparator.comparingInt(value -> savedIndexes.getOrDefault(value, Integer.MAX_VALUE));
 		return savedOrder.thenComparing(defaultSortOrder);
 	}
 
@@ -549,12 +559,11 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 	@Override
 	public Runnable addChangeListener(Runnable listener) {
 		Objects.requireNonNull(listener, "listener");
-		this.changeListeners.add(listener);
-		return () -> this.changeListeners.remove(listener);
+		return this.changeListeners.add(listener);
 	}
 
 	private void notifyListeners() {
-		for (Runnable listener : changeListeners) {
+		for (Runnable listener : changeListeners.snapshot()) {
 			try {
 				listener.run();
 			} catch (RuntimeException e) {

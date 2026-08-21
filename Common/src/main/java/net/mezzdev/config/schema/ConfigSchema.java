@@ -15,6 +15,7 @@ import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigValueData;
 import net.mezzdev.config.util.ErrorUtil;
+import net.mezzdev.config.util.ListenerList;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.AppliedConfigValueChange;
 import net.mezzdev.config.value.ConfigValueUpdate;
@@ -39,7 +40,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -68,8 +68,8 @@ public class ConfigSchema implements IConfigSchema {
 	private @Nullable Path pendingSavePath;
 	private @Nullable Runnable removeDefaultFileWatcherCallback;
 	private @Nullable Runnable removeFileWatcherCallback;
-	private final List<IConfigValueBatchChangeListener> batchListeners = new CopyOnWriteArrayList<>();
-	private final List<IConfigValueBatchChangeListener> pendingBatchListeners = new CopyOnWriteArrayList<>();
+	private final ListenerList<IConfigValueBatchChangeListener> batchListeners = new ListenerList<>();
+	private final ListenerList<IConfigValueBatchChangeListener> pendingBatchListeners = new ListenerList<>();
 	private boolean registered;
 	private boolean registrationInProgress;
 	private boolean restartValuesInitialized;
@@ -196,6 +196,9 @@ public class ConfigSchema implements IConfigSchema {
 		this.mode = ConfigSchemaMode.forSchema(type);
 		this.serverKey = serverKey;
 		validateServerKey(type, serverKey);
+		if (categoryBuilders.isEmpty()) {
+			throw new IllegalStateException("Config schema must have at least one storage category.");
+		}
 		Map<ConfigCategoryBuilder, ConfigCategory> categoryMap = new IdentityHashMap<>();
 		Map<ConfigEditorCategoryBuilder, ConfigEditorCategory> editorCategoryMap = new IdentityHashMap<>();
 		List<ConfigCategory> categories = new ArrayList<>();
@@ -217,6 +220,7 @@ public class ConfigSchema implements IConfigSchema {
 		categoryBuilders.forEach(categoryBuilder -> categoryBuilder.resolveEditorCategories(editorCategoryBuilders, editorCategoryMap));
 		this.categories = List.copyOf(categories);
 		this.editorCategories = List.copyOf(editorCategories);
+		ConfigSerializer.validatePendingSave(this.categories, mode.serializationSettings(), Map.of());
 		this.delayedSave = new DeduplicatingRunner(SAVE_DELAY_TIME, scheduler);
 	}
 
@@ -830,7 +834,9 @@ public class ConfigSchema implements IConfigSchema {
 			throw new IllegalStateException("Config schema has no active backing file.");
 		}
 		validateUpdates(updates);
-		validateProspectiveServerSnapshot(updates);
+		Map<ConfigValue<?>, Object> updatedValues = getUpdatedValues(updates);
+		ConfigSerializer.validatePendingSave(categories, mode.serializationSettings(), updatedValues);
+		validateProspectiveServerSnapshot(updatedValues);
 
 		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
 		List<AppliedConfigValueChange<?>> pendingChanges = applyUpdatesAtomically(updates);
@@ -896,18 +902,22 @@ public class ConfigSchema implements IConfigSchema {
 			.anyMatch(value -> value == configValue);
 	}
 
+	private static Map<ConfigValue<?>, Object> getUpdatedValues(List<? extends ConfigValueUpdate<?>> updates) {
+		Map<ConfigValue<?>, Object> updatedValues = new IdentityHashMap<>();
+		updates.forEach(update -> updatedValues.put(update.configValue(), update.newValue()));
+		return updatedValues;
+	}
+
 	@Override
 	public Runnable addBatchListener(IConfigValueBatchChangeListener listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		this.batchListeners.add(listener);
-		return () -> this.batchListeners.remove(listener);
+		return this.batchListeners.add(listener);
 	}
 
 	@Override
 	public Runnable addPendingBatchListener(IConfigValueBatchChangeListener listener) {
 		ErrorUtil.checkNotNull(listener, "listener");
-		this.pendingBatchListeners.add(listener);
-		return () -> this.pendingBatchListeners.remove(listener);
+		return this.pendingBatchListeners.add(listener);
 	}
 
 	private void notifyChanges(
@@ -919,12 +929,14 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		changeVersion.incrementAndGet();
 		if (!pendingChanges.isEmpty()) {
+			List<IConfigValueBatchChangeListener> listenerSnapshot = pendingBatchListeners.snapshot();
 			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyPendingChangedValues(pendingChanges);
-			notifyListeners(immutableChanges, pendingBatchListeners, "pending config schema");
+			notifyListeners(immutableChanges, listenerSnapshot, "pending config schema");
 		}
 		if (!effectiveChanges.isEmpty()) {
+			List<IConfigValueBatchChangeListener> listenerSnapshot = batchListeners.snapshot();
 			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(effectiveChanges);
-			notifyListeners(immutableChanges, batchListeners, "config schema");
+			notifyListeners(immutableChanges, listenerSnapshot, "config schema");
 			if (registered && isSynchronizedServerSchema()) {
 				ServerConfigRuntime.onServerSchemaChanged(this);
 			}
@@ -1042,12 +1054,10 @@ public class ConfigSchema implements IConfigSchema {
 		validateServerSnapshots(Map.of());
 	}
 
-	private void validateProspectiveServerSnapshot(List<? extends ConfigValueUpdate<?>> updates) {
+	private void validateProspectiveServerSnapshot(Map<ConfigValue<?>, Object> updatedValues) {
 		if (!isSynchronizedServerSchema()) {
 			return;
 		}
-		Map<ConfigValue<?>, Object> updatedValues = new IdentityHashMap<>();
-		updates.forEach(update -> updatedValues.put(update.configValue(), update.newValue()));
 		validateServerSnapshots(updatedValues);
 	}
 

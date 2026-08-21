@@ -132,6 +132,9 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	@Override
 	public ConfigSchema build() {
 		checkNotBuilt();
+		if (categoryBuilders.isEmpty()) {
+			throw new IllegalStateException("Config schema must have at least one storage category.");
+		}
 		built = true;
 		ConfigSchema schema = new ConfigSchema(
 			id,

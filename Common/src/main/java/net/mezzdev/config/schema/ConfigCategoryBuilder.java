@@ -228,6 +228,9 @@ public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implement
 
 	public ConfigCategory build(ConfigSchema schema) {
 		checkNotBuilt();
+		if (valueBuilders.isEmpty()) {
+			throw new IllegalStateException("Config category must have at least one config value: " + getName());
+		}
 		List<String> unbuiltValueNames = valueBuilders.stream()
 			.filter(valueBuilder -> !valueBuilder.isBuilt())
 			.map(ConfigValueBuilder::getName)
