@@ -33,6 +33,19 @@ public interface IConfigRegistration {
 	IConfigSchemaBuilder createClientSchemaBuilder(String configFileName, String localizationPath);
 
 	/**
+	 * Create a server-authoritative config schema builder for the active world.
+	 * The server loads the distributable default from the conventional config directory and the authoritative values from
+	 * the active world's server config directory. Connected clients receive the server's effective values in memory.
+	 *
+	 * @param configFileName relative file name inside the mod's server config directories
+	 * @param localizationPath translation key prefix for the config file
+	 * @return server-owned schema builder
+	 *
+	 * @since 0.3.0
+	 */
+	IConfigSchemaBuilder createServerSchemaBuilder(String configFileName, String localizationPath);
+
+	/**
 	 * Create a context-specific client config schema builder with separate values for each singleplayer world or
 	 * multiplayer server.
 	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
@@ -63,19 +76,6 @@ public interface IConfigRegistration {
 	 * @since 0.3.0
 	 */
 	IConfigSchemaBuilder createClientSchemaBuilderAtLocation(Path configFile, String localizationPath);
-
-	/**
-	 * Create a server-authoritative config schema builder for the active world.
-	 * The server loads the distributable default from the conventional config directory and the authoritative values from
-	 * the active world's server config directory. Connected clients receive the server's effective values in memory.
-	 *
-	 * @param configFileName relative file name inside the mod's server config directories
-	 * @param localizationPath translation key prefix for the config file
-	 * @return server-owned schema builder
-	 *
-	 * @since 0.3.0
-	 */
-	IConfigSchemaBuilder createServerSchemaBuilder(String configFileName, String localizationPath);
 
 	/**
 	 * Create an installation-scoped, string-backed client sort order.

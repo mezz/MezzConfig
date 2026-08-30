@@ -22,19 +22,6 @@ import java.util.List;
 @ApiStatus.NonExtendable
 public interface IConfigCategoryBuilder extends IConfigEditorCategoryBuilder {
 	/**
-	 * Create a builder for a config value with a custom serializer.
-	 * Use this method with an {@link IConfigListValueSerializer} for custom list validation and editor metadata.
-	 * The value type must be effectively immutable with stable equality.
-	 *
-	 * @param name stable storage name for the value
-	 * @param defaultValue default value
-	 * @param serializer serializer for reading, writing, and validation
-	 *
-	 * @since 0.1.0
-	 */
-	<T> IConfigValueBuilder<T> addValue(String name, T defaultValue, IConfigValueSerializer<T> serializer);
-
-	/**
 	 * Create a builder for a boolean config value.
 	 *
 	 * @param name stable storage name for the value
@@ -277,6 +264,19 @@ public interface IConfigCategoryBuilder extends IConfigEditorCategoryBuilder {
 		List<T> defaultValue,
 		List<T> validValues
 	);
+
+	/**
+	 * Create a builder for a config value with a custom serializer.
+	 * Use this method with an {@link IConfigListValueSerializer} for custom list validation and editor metadata.
+	 * The value type must be effectively immutable with stable equality.
+	 *
+	 * @param name stable storage name for the value
+	 * @param defaultValue default value
+	 * @param serializer serializer for reading, writing, and validation
+	 *
+	 * @since 0.1.0
+	 */
+	<T> IConfigValueBuilder<T> addValue(String name, T defaultValue, IConfigValueSerializer<T> serializer);
 
 	/**
 	 * Create a builder for a list config value using a serializer for each list element.

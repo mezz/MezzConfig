@@ -4,12 +4,15 @@ import com.google.gson.JsonElement;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigBatchUpdater;
 import net.mezzdev.config.api.schema.ConfigSchemaType;
+import net.mezzdev.config.api.migration.ConfigMigrationStatus;
 import net.mezzdev.config.api.value.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.file.ConfigFileValueCodec;
+import net.mezzdev.config.file.ConfigFileTransaction;
+import net.mezzdev.config.file.ConfigFileUtil;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigRuntime;
@@ -19,6 +22,7 @@ import net.mezzdev.config.util.ListenerList;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.AppliedConfigValueChange;
 import net.mezzdev.config.value.ConfigValueUpdate;
+import net.mezzdev.config.sorting.SortingConfig;
 import net.mezzdev.deduplicatingrunner.DeduplicatingRunner;
 import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
 import net.mezzdev.filewatcher.FileWatcher;
@@ -35,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -59,6 +64,7 @@ public class ConfigSchema implements IConfigSchema {
 	private final @Nullable ServerConfigKey serverKey;
 	private final List<ConfigCategory> categories;
 	private final List<ConfigEditorCategory> editorCategories;
+	private final @Nullable ConfigMigrationSpec migrationSpec;
 	private final AtomicBoolean needsLoad = new AtomicBoolean(true);
 	private final AtomicLong changeVersion = new AtomicLong();
 	private final DeduplicatingRunner delayedSave;
@@ -76,6 +82,7 @@ public class ConfigSchema implements IConfigSchema {
 	private boolean logUntranslatedKeys;
 	private boolean translationKeysChecked;
 	private volatile boolean remotelyActive;
+	private boolean migrationCompleted;
 	private Consumer<? super Collection<Path>> pathReservation = NO_PATH_RESERVATION;
 
 	public ConfigSchema(
@@ -189,12 +196,37 @@ public class ConfigSchema implements IConfigSchema {
 		ConfigSchemaType type,
 		@Nullable ServerConfigKey serverKey
 	) {
+		this(
+			id,
+			modId,
+			pathResolver,
+			categoryBuilders,
+			editorCategoryBuilders,
+			scheduler,
+			type,
+			serverKey,
+			null
+		);
+	}
+
+	public ConfigSchema(
+		String id,
+		String modId,
+		ConfigSchemaPathResolver pathResolver,
+		List<ConfigCategoryBuilder> categoryBuilders,
+		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
+		DelayedTaskScheduler scheduler,
+		ConfigSchemaType type,
+		@Nullable ServerConfigKey serverKey,
+		@Nullable ConfigMigrationSpec migrationSpec
+	) {
 		this.id = validateId(id);
 		this.modId = validateModId(modId);
 		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
 		this.type = ErrorUtil.checkNotNull(type, "type");
 		this.mode = ConfigSchemaMode.forSchema(type);
 		this.serverKey = serverKey;
+		this.migrationSpec = migrationSpec;
 		validateServerKey(type, serverKey);
 		if (categoryBuilders.isEmpty()) {
 			throw new IllegalStateException("Config schema must have at least one storage category.");
@@ -288,6 +320,9 @@ public class ConfigSchema implements IConfigSchema {
 			.map(Path::normalize);
 		Path path = resolvedPath.orElse(null);
 		updatePathReservations(defaultPath, path, previousDefaultPath, previousPath);
+		if (resolvedPath.isEmpty()) {
+			completeInactiveMigration();
+		}
 		if (isSynchronizedServerSchema() && remotelyActive && path == null) {
 			transitionActivePaths(defaultPath, null, previousDefaultPath, previousPath);
 			needsLoad.set(false);
@@ -308,7 +343,7 @@ public class ConfigSchema implements IConfigSchema {
 			boolean shouldInitializeDefault = needsLoad.getAndSet(false);
 			List<InitialSave> initialSaves = List.of();
 			if (shouldInitializeDefault) {
-				initialSaves = getInitialSaves(defaultPath, null, activePathChanged, false);
+				initialSaves = getInitialSaves(defaultPath, null, activePathChanged, false, true);
 			}
 			if (previousPath != null) {
 				resetValuesToDefaults();
@@ -341,7 +376,10 @@ public class ConfigSchema implements IConfigSchema {
 
 		resetValuesToDefaults();
 		load(defaultPath);
-		load(path);
+		MigrationAttempt migrationAttempt = attemptMigration(path);
+		if (migrationAttempt != MigrationAttempt.MIGRATED) {
+			load(path);
+		}
 		if (!restartValuesInitialized) {
 			promotePendingValuesWithoutNotifying(ConfigValueRestartRequirement.GAME_RESTART);
 			restartValuesInitialized = true;
@@ -351,8 +389,176 @@ public class ConfigSchema implements IConfigSchema {
 			previousPendingValues,
 			previousRestartValuesInitialized,
 			previousRemotelyActive,
-			getInitialSaves(defaultPath, path, activePathChanged, isSynchronizedServerSchema())
+			getInitialSaves(
+				defaultPath,
+				path,
+				activePathChanged,
+				isSynchronizedServerSchema(),
+				migrationAttempt != MigrationAttempt.FAILED
+			)
 		);
+	}
+
+	private MigrationAttempt attemptMigration(Path destinationPath) {
+		ConfigMigrationSpec migrationSpec = this.migrationSpec;
+		if (migrationSpec == null || migrationCompleted) {
+			return MigrationAttempt.NOT_ATTEMPTED;
+		}
+		destinationPath = destinationPath.toAbsolutePath().normalize();
+		Path legacyPath = null;
+		Path backupPath = null;
+		try {
+			if (Files.exists(destinationPath)) {
+				completeMigration(new ConfigMigrationResult(
+					ConfigMigrationStatus.SKIPPED_DESTINATION_EXISTS,
+					destinationPath,
+					null,
+					null,
+					null
+				));
+				return MigrationAttempt.SKIPPED;
+			}
+
+			legacyPath = migrationSpec.legacyPaths()
+				.stream()
+				.filter(Files::exists)
+				.findFirst()
+				.orElse(null);
+			if (legacyPath == null) {
+				completeMigration(new ConfigMigrationResult(
+					ConfigMigrationStatus.SKIPPED_NO_LEGACY_FILE,
+					destinationPath,
+					null,
+					null,
+					null
+				));
+				return MigrationAttempt.SKIPPED;
+			}
+
+			backupPath = ConfigFileUtil.backUpFile(legacyPath);
+			ConfigMigrationContext context = new ConfigMigrationContext(this);
+			try {
+				migrationSpec.migrator().migrate(legacyPath, context);
+			} finally {
+				context.close();
+			}
+			commitMigration(destinationPath, backupPath, context);
+			completeMigration(new ConfigMigrationResult(
+				ConfigMigrationStatus.MIGRATED,
+				destinationPath,
+				legacyPath,
+				backupPath,
+				null
+			));
+			LOGGER.info("Migrated legacy config file '{}' to '{}'; the source was preserved and backed up at '{}'.", legacyPath, destinationPath, backupPath);
+			return MigrationAttempt.MIGRATED;
+		} catch (Exception failure) {
+			if (failure instanceof InterruptedException) {
+				Thread.currentThread().interrupt();
+			}
+			completeMigration(new ConfigMigrationResult(
+				ConfigMigrationStatus.FAILED,
+				destinationPath,
+				legacyPath,
+				backupPath,
+				failure
+			));
+			LOGGER.error("Failed to migrate legacy config file '{}' to '{}'; no migration updates were applied and the source was preserved.", legacyPath, destinationPath, failure);
+			return MigrationAttempt.FAILED;
+		}
+	}
+
+	private void completeMigration(ConfigMigrationResult result) {
+		migrationCompleted = true;
+		try {
+			migrationSpec.migrator().onMigrationComplete(result);
+		} catch (RuntimeException callbackFailure) {
+			LOGGER.error("Failed to handle the completed legacy config migration for '{}'.", id, callbackFailure);
+		}
+	}
+
+	private void commitMigration(
+		Path destinationPath,
+		Path backupPath,
+		ConfigMigrationContext context
+	) throws IOException {
+		List<ConfigValueUpdate<?>> valueUpdates = context.getValueUpdates();
+		validateUpdates(valueUpdates);
+		Map<ConfigValue<?>, Object> updatedValues = getUpdatedValues(valueUpdates);
+		List<String> serializedSchema = ConfigSerializer.serializePendingSave(
+			categories,
+			mode.serializationSettings(),
+			updatedValues
+		);
+		validateProspectiveServerSnapshot(updatedValues);
+
+		List<SortingConfig.MigrationUpdate<?>> sortingUpdates = context.getSortingUpdates();
+		Map<Path, List<String>> outputs = new LinkedHashMap<>();
+		putMigrationOutput(outputs, destinationPath, serializedSchema);
+		for (SortingConfig.MigrationUpdate<?> sortingUpdate : sortingUpdates) {
+			putMigrationOutput(outputs, sortingUpdate.path(), sortingUpdate.serialized());
+		}
+		for (Path legacyPath : migrationSpec.legacyPaths()) {
+			if (outputs.containsKey(legacyPath)) {
+				throw new IllegalArgumentException("Migration updates must not overwrite a registered legacy file: " + legacyPath);
+			}
+		}
+		if (outputs.containsKey(backupPath)) {
+			throw new IllegalArgumentException("Migration updates must not overwrite the legacy file backup: " + backupPath);
+		}
+
+		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
+		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
+		List<SortingConfig.MigrationUpdate<?>> appliedSortingUpdates = new ArrayList<>();
+		boolean schemaUpdatesApplied = false;
+		try {
+			applyUpdatesAtomically(valueUpdates);
+			schemaUpdatesApplied = true;
+			for (SortingConfig.MigrationUpdate<?> sortingUpdate : sortingUpdates) {
+				sortingUpdate.apply();
+				appliedSortingUpdates.add(sortingUpdate);
+			}
+			ConfigFileTransaction.write(outputs, Set.of(destinationPath));
+		} catch (IOException | RuntimeException | Error failure) {
+			for (int index = appliedSortingUpdates.size() - 1; index >= 0; index--) {
+				try {
+					appliedSortingUpdates.get(index).rollback();
+				} catch (RuntimeException | Error rollbackFailure) {
+					failure.addSuppressed(rollbackFailure);
+				}
+			}
+			if (schemaUpdatesApplied) {
+				try {
+					restoreValues(previousEffectiveValues, previousPendingValues);
+				} catch (RuntimeException | Error rollbackFailure) {
+					failure.addSuppressed(rollbackFailure);
+				}
+			}
+			throw failure;
+		}
+
+		for (SortingConfig.MigrationUpdate<?> sortingUpdate : sortingUpdates) {
+			sortingUpdate.notifyIfChanged();
+		}
+	}
+
+	private static void putMigrationOutput(Map<Path, List<String>> outputs, Path path, List<String> serialized) {
+		path = path.toAbsolutePath().normalize();
+		if (outputs.putIfAbsent(path, serialized) != null) {
+			throw new IllegalArgumentException("Migration cannot update the same destination more than once: " + path);
+		}
+	}
+
+	void completeInactiveMigration() {
+		if (migrationSpec != null && !migrationCompleted) {
+			completeMigration(new ConfigMigrationResult(
+				ConfigMigrationStatus.SKIPPED_INACTIVE,
+				null,
+				null,
+				null,
+				null
+			));
+		}
 	}
 
 	private LoadResult completeServerLoad(
@@ -411,13 +617,14 @@ public class ConfigSchema implements IConfigSchema {
 		@Nullable Path defaultPath,
 		@Nullable Path activePath,
 		boolean activePathChanged,
-		boolean createActiveFileOnActivation
+		boolean createActiveFileOnActivation,
+		boolean allowActiveInitialSave
 	) {
 		List<InitialSave> initialSaves = new ArrayList<>(2);
 		if (defaultPath != null && !Files.exists(defaultPath)) {
 			initialSaves.add(new InitialSave(defaultPath, true));
 		}
-		if (activePath != null && !activePath.equals(defaultPath) && activePathChanged &&
+		if (allowActiveInitialSave && activePath != null && !activePath.equals(defaultPath) && activePathChanged &&
 			(createActiveFileOnActivation || defaultPath == null || Files.exists(activePath))
 		) {
 			initialSaves.add(new InitialSave(activePath, false));
@@ -866,11 +1073,11 @@ public class ConfigSchema implements IConfigSchema {
 				}
 			}
 			return List.copyOf(changes);
-		} catch (RuntimeException e) {
+		} catch (RuntimeException | Error e) {
 			for (int i = rollbacks.size() - 1; i >= 0; i--) {
 				try {
 					rollbacks.get(i).apply();
-				} catch (RuntimeException rollbackFailure) {
+				} catch (RuntimeException | Error rollbackFailure) {
 					e.addSuppressed(rollbackFailure);
 				}
 			}
@@ -896,7 +1103,7 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
-	private boolean containsConfigValue(ConfigValue<?> configValue) {
+	boolean containsConfigValue(ConfigValue<?> configValue) {
 		return categories.stream()
 			.flatMap(category -> category.getConfigValues().stream())
 			.anyMatch(value -> value == configValue);
@@ -1258,5 +1465,12 @@ public class ConfigSchema implements IConfigSchema {
 		CURRENT,
 		AFTER_WORLD_RESTART,
 		AFTER_GAME_RESTART
+	}
+
+	private enum MigrationAttempt {
+		NOT_ATTEMPTED,
+		SKIPPED,
+		MIGRATED,
+		FAILED
 	}
 }

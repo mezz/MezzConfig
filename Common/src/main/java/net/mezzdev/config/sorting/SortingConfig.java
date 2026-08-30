@@ -140,6 +140,58 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		return true;
 	}
 
+	public synchronized MigrationUpdate<T> prepareMigrationUpdate(
+		Collection<T> allValues,
+		List<T> sortedValues
+	) {
+		if (path == null) {
+			throw new IllegalStateException("Sorting config has no local backing file.");
+		}
+		List<T> allValuesSnapshot = getDistinctValues(allValues, "allValues");
+		Objects.requireNonNull(sortedValues, "sortedValues");
+		List<T> sortedValuesCopy = copySortedValues(sortedValues);
+		if (!new HashSet<>(allValuesSnapshot).containsAll(sortedValuesCopy)) {
+			throw new IllegalArgumentException("sortedValues must only contain values from allValues.");
+		}
+		SavedValues<T> previousSavedValues = getSavedValues();
+		if (writesBlockedByReadFailure) {
+			throw new IllegalStateException("Sorting config cannot be migrated because its current file could not be read: " + path);
+		}
+		validateSerializedIdentities(previousSavedValues, sortedValuesCopy, allValuesSnapshot);
+		SavedValues<T> updatedSavedValues = updateSavedValues(previousSavedValues, allValuesSnapshot, sortedValuesCopy);
+		validateSavedValuesForWrite(updatedSavedValues);
+		return new MigrationUpdate<>(
+			this,
+			path,
+			previousSavedValues,
+			updatedSavedValues,
+			serialize(updatedSavedValues),
+			savedValuesNeedWrite,
+			writesBlockedByReadFailure,
+			correctionPath
+		);
+	}
+
+	private synchronized void applyMigrationUpdate(MigrationUpdate<T> migrationUpdate) {
+		if (migrationUpdate.owner != this) {
+			throw new IllegalArgumentException("Migration update belongs to another sorting config.");
+		}
+		this.savedValues = migrationUpdate.updatedSavedValues;
+		this.savedValuesNeedWrite = false;
+		this.writesBlockedByReadFailure = false;
+		this.correctionPath = null;
+	}
+
+	private synchronized void rollbackMigrationUpdate(MigrationUpdate<T> migrationUpdate) {
+		if (migrationUpdate.owner != this) {
+			throw new IllegalArgumentException("Migration update belongs to another sorting config.");
+		}
+		this.savedValues = migrationUpdate.previousSavedValues;
+		this.savedValuesNeedWrite = migrationUpdate.previousSavedValuesNeedWrite;
+		this.writesBlockedByReadFailure = migrationUpdate.previousWritesBlockedByReadFailure;
+		this.correctionPath = migrationUpdate.previousCorrectionPath;
+	}
+
 	private SavedValues<T> addDiscoveredValues(SavedValues<T> savedValues, List<T> allValues) {
 		Set<T> knownValues = getKnownValues(savedValues);
 		List<T> discoveredValues = allValues.stream()
@@ -550,6 +602,68 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 				listener.run();
 			} catch (RuntimeException e) {
 				LOGGER.error("Sort order config listener failed for {}.", path, e);
+			}
+		}
+	}
+
+	public static final class MigrationUpdate<T> {
+		private final SortingConfig<T> owner;
+		private final Path path;
+		private final SavedValues<T> previousSavedValues;
+		private final SavedValues<T> updatedSavedValues;
+		private final List<String> serialized;
+		private final boolean previousSavedValuesNeedWrite;
+		private final boolean previousWritesBlockedByReadFailure;
+		private final @Nullable Path previousCorrectionPath;
+		private boolean applied;
+
+		private MigrationUpdate(
+			SortingConfig<T> owner,
+			Path path,
+			SavedValues<T> previousSavedValues,
+			SavedValues<T> updatedSavedValues,
+			List<String> serialized,
+			boolean previousSavedValuesNeedWrite,
+			boolean previousWritesBlockedByReadFailure,
+			@Nullable Path previousCorrectionPath
+		) {
+			this.owner = owner;
+			this.path = path;
+			this.previousSavedValues = previousSavedValues;
+			this.updatedSavedValues = updatedSavedValues;
+			this.serialized = serialized;
+			this.previousSavedValuesNeedWrite = previousSavedValuesNeedWrite;
+			this.previousWritesBlockedByReadFailure = previousWritesBlockedByReadFailure;
+			this.previousCorrectionPath = previousCorrectionPath;
+		}
+
+		public Path path() {
+			return path;
+		}
+
+		public List<String> serialized() {
+			return serialized;
+		}
+
+		public void apply() {
+			if (applied) {
+				throw new IllegalStateException("Sorting migration update has already been applied.");
+			}
+			owner.applyMigrationUpdate(this);
+			applied = true;
+		}
+
+		public void rollback() {
+			if (!applied) {
+				return;
+			}
+			owner.rollbackMigrationUpdate(this);
+			applied = false;
+		}
+
+		public void notifyIfChanged() {
+			if (!previousSavedValues.equals(updatedSavedValues)) {
+				owner.notifyListeners();
 			}
 		}
 	}

@@ -19,6 +19,47 @@ import java.util.function.Function;
 @ApiStatus.NonExtendable
 public interface IConfigValueBuilder<T> {
 	/**
+	 * Set the edit mode hint for this value.
+	 * <p>
+	 * Config editors can use this to decide when changes should be saved. If this is not called, values use
+	 * {@link ConfigValueEditMode#BATCH}.
+	 *
+	 * @param editMode edit mode hint for config editors
+	 * @return this builder
+	 *
+	 * @since 0.1.0
+	 */
+	IConfigValueBuilder<T> setEditMode(ConfigValueEditMode editMode);
+
+	/**
+	 * Set when saved changes to this value become effective.
+	 * <p>
+	 * Until that lifecycle boundary, {@link IConfigValue#getValue()} retains the effective value and
+	 * {@link IConfigValue#getPendingValue()} returns the saved change. If this is not called, values use
+	 * {@link ConfigValueRestartRequirement#NONE} and update immediately.
+	 *
+	 * @param restartRequirement when saved changes become effective
+	 * @return this builder
+	 *
+	 * @since 0.1.0
+	 */
+	IConfigValueBuilder<T> setRestartRequirement(ConfigValueRestartRequirement restartRequirement);
+
+	/**
+	 * Add a category where config editors should show this value.
+	 * <p>
+	 * Pass an editor category builder or storage category builder from the same schema. The category does not need to
+	 * be built yet. If no editor categories are added, config editors can show the value in its storage category.
+	 * Values may be added to multiple editor categories.
+	 *
+	 * @param categoryBuilder category where config editors should show this value
+	 * @return this builder
+	 *
+	 * @since 0.1.0
+	 */
+	IConfigValueBuilder<T> addEditorCategory(IConfigEditorCategoryBuilder categoryBuilder);
+
+	/**
 	 * Add an old storage name for this value.
 	 * <p>
 	 * Use this when this value has been renamed within the same storage category, but its serialized format has not
@@ -69,47 +110,6 @@ public interface IConfigValueBuilder<T> {
 		IConfigValueSerializer<U> legacySerializer,
 		Function<U, T> migration
 	);
-
-	/**
-	 * Set the edit mode hint for this value.
-	 * <p>
-	 * Config editors can use this to decide when changes should be saved. If this is not called, values use
-	 * {@link ConfigValueEditMode#BATCH}.
-	 *
-	 * @param editMode edit mode hint for config editors
-	 * @return this builder
-	 *
-	 * @since 0.1.0
-	 */
-	IConfigValueBuilder<T> setEditMode(ConfigValueEditMode editMode);
-
-	/**
-	 * Set when saved changes to this value become effective.
-	 * <p>
-	 * Until that lifecycle boundary, {@link IConfigValue#getValue()} retains the effective value and
-	 * {@link IConfigValue#getPendingValue()} returns the saved change. If this is not called, values use
-	 * {@link ConfigValueRestartRequirement#NONE} and update immediately.
-	 *
-	 * @param restartRequirement when saved changes become effective
-	 * @return this builder
-	 *
-	 * @since 0.1.0
-	 */
-	IConfigValueBuilder<T> setRestartRequirement(ConfigValueRestartRequirement restartRequirement);
-
-	/**
-	 * Add a category where config editors should show this value.
-	 * <p>
-	 * Pass an editor category builder or storage category builder from the same schema. The category does not need to
-	 * be built yet. If no editor categories are added, config editors can show the value in its storage category.
-	 * Values may be added to multiple editor categories.
-	 *
-	 * @param categoryBuilder category where config editors should show this value
-	 * @return this builder
-	 *
-	 * @since 0.1.0
-	 */
-	IConfigValueBuilder<T> addEditorCategory(IConfigEditorCategoryBuilder categoryBuilder);
 
 	/**
 	 * Build and add the config value to its category.

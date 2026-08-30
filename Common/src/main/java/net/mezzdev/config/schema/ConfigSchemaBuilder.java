@@ -2,6 +2,7 @@ package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.migration.IConfigMigrator;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.util.ConfigNameUtil;
@@ -26,10 +27,21 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private final ConfigSchemaType type;
 	private final @Nullable ServerConfigKey serverKey;
 	private final boolean registrationEnabled;
+	private @Nullable ConfigMigrationSpec migrationSpec;
 	private boolean built;
 
 	public ConfigSchemaBuilder(Path configFile, String localizationPath, ConfigManager configManager) {
 		this(ConfigSchema.DEFAULT_MOD_ID, new StaticConfigSchemaPathResolver(configFile), localizationPath, configManager);
+	}
+
+	@Override
+	public ConfigSchemaBuilder setLegacyMigration(List<Path> legacyPaths, IConfigMigrator migrator) {
+		checkNotBuilt();
+		if (migrationSpec != null) {
+			throw new IllegalStateException("A legacy migration is already registered for this schema.");
+		}
+		migrationSpec = new ConfigMigrationSpec(legacyPaths, migrator);
+		return this;
 	}
 
 	public ConfigSchemaBuilder(ConfigSchemaPathResolver pathResolver, String localizationPath, ConfigManager configManager) {
@@ -144,10 +156,13 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 			editorCategoryBuilders,
 			configManager.getSaveScheduler(),
 			type,
-			serverKey
+			serverKey,
+			migrationSpec
 		);
 		if (registrationEnabled) {
 			configManager.registerSchema(schema);
+		} else {
+			schema.completeInactiveMigration();
 		}
 		return schema;
 	}

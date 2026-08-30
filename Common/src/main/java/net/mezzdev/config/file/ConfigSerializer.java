@@ -480,8 +480,17 @@ public final class ConfigSerializer {
 		Settings settings,
 		Map<ConfigValue<?>, Object> updatedValues
 	) {
+		serializePendingSave(categories, settings, updatedValues);
+	}
+
+	public static List<String> serializePendingSave(
+		List<ConfigCategory> categories,
+		Settings settings,
+		Map<ConfigValue<?>, Object> updatedValues
+	) {
 		List<String> serialized = serialize(categories, false, settings, updatedValues);
 		ConfigFileUtil.validateReadableContents(serialized);
+		return serialized;
 	}
 
 	private static List<String> serialize(
