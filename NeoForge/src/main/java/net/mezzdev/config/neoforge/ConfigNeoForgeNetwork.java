@@ -9,7 +9,7 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.HandlerThread;
 
 public final class ConfigNeoForgeNetwork {
-	private static final String PROTOCOL_VERSION = "4";
+	private static final String PROTOCOL_VERSION = "1";
 
 	private ConfigNeoForgeNetwork() {
 

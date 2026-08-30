@@ -160,7 +160,7 @@ public class SortingConfigTest {
 	@Test
 	public void missingValuesAreAppendedUsingDefaultOrder(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("sort-order.txt");
-		Files.write(path, List.of("[visible]", "second", "[hidden]"));
+		Files.write(path, List.of("[visible]", "\\=second", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 
 		List<String> sortedValues = sortingConfig.getSortedValues(List.of("third", "first", "second"));
@@ -201,7 +201,7 @@ public class SortingConfigTest {
 	@Test
 	public void savedPreferenceIsReconciledAgainstEveryRuntimeCollection(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("sort-order.txt");
-		Files.write(path, List.of("[visible]", "second", "[hidden]"));
+		Files.write(path, List.of("[visible]", "\\=second", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 
 		List<String> firstResult = sortingConfig.getSortedValues(List.of("third", "first", "second"));
@@ -217,13 +217,13 @@ public class SortingConfigTest {
 	@Test
 	public void duplicatePersistedValuesAreReconciledAndRewritten(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("sort-order.txt");
-		Files.write(path, List.of("[visible]", "second", "second", "first", "[hidden]"));
+		Files.write(path, List.of("[visible]", "\\=second", "\\=second", "\\=first", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 
 		List<String> sortedValues = sortingConfig.getSortedValues(List.of("third", "first", "second"));
 
 		assertEquals(List.of("second", "first", "third"), sortedValues);
-		assertEquals(1, Files.readAllLines(path).stream().filter("second"::equals).count());
+		assertEquals(1, Files.readAllLines(path).stream().filter("\\=second"::equals).count());
 	}
 
 	@Test
@@ -362,27 +362,9 @@ public class SortingConfigTest {
 	}
 
 	@Test
-	public void legacyRawAndEscapedValuesRetainTheirOriginalMeaning(@TempDir Path tempDir) throws IOException {
-		Path path = tempDir.resolve("sort-order.txt");
-		Files.write(path, List.of(
-			"[visible]",
-			"\"quoted\"",
-			" surrounding ",
-			"[other]",
-			"\\[hidden]",
-			"\\\\path",
-			"[hidden]"
-		));
-		List<String> values = List.of("\"quoted\"", " surrounding ", "[other]", "[hidden]", "\\path");
-		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
-
-		assertEquals(values, sortingConfig.getSortedValues(values));
-	}
-
-	@Test
 	public void comparatorUsesSavedOrderAndDefaultOrderForUnknownValues(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("sort-order.txt");
-		Files.write(path, List.of("[visible]", "second", "[hidden]"));
+		Files.write(path, List.of("[visible]", "\\=second", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 		Comparator<String> comparator = sortingConfig.getComparator(List.of("third", "first", "second"));
 
@@ -450,7 +432,7 @@ public class SortingConfigTest {
 
 		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("second", "first")));
 
-		assertEquals(List.of("[visible]", "first", "second", "[hidden]"), Files.readAllLines(defaultPath));
+		assertEquals(List.of("[visible]", "\\=first", "\\=second", "[hidden]"), Files.readAllLines(defaultPath));
 		assertFalse(Files.exists(playerPath));
 	}
 
@@ -458,26 +440,26 @@ public class SortingConfigTest {
 	public void layeredConfigLoadsPlayerOrderWithoutChangingPackDefault(@TempDir Path tempDir) throws IOException {
 		Path defaultPath = tempDir.resolve("sort-order.txt");
 		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
-		Files.write(defaultPath, List.of("[visible]", "second", "first", "[hidden]"));
+		Files.write(defaultPath, List.of("[visible]", "\\=second", "\\=first", "[hidden]"));
 		Files.createDirectories(playerPath.getParent());
-		Files.write(playerPath, List.of("[visible]", "first", "second", "[hidden]"));
+		Files.write(playerPath, List.of("[visible]", "\\=first", "\\=second", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
 
 		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("first", "second")));
 		assertTrue(sortingConfig.setSortedValues(List.of("first", "second"), List.of("second", "first")));
 
-		assertEquals(List.of("[visible]", "second", "first", "[hidden]"), Files.readAllLines(defaultPath));
-		assertEquals(List.of("[visible]", "second", "first", "[hidden]"), Files.readAllLines(playerPath));
+		assertEquals(List.of("[visible]", "\\=second", "\\=first", "[hidden]"), Files.readAllLines(defaultPath));
+		assertEquals(List.of("[visible]", "\\=second", "\\=first", "[hidden]"), Files.readAllLines(playerPath));
 	}
 
 	@Test
 	public void malformedPlayerFileIsBackedUpAndCorrectedWithoutChangingPackDefault(@TempDir Path tempDir) throws IOException {
 		Path defaultPath = tempDir.resolve("sort-order.txt");
 		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
-		List<String> defaultContents = List.of("[visible]", "second", "first", "[hidden]");
+		List<String> defaultContents = List.of("[visible]", "\\=second", "\\=first", "[hidden]");
 		Files.write(defaultPath, defaultContents);
 		Files.createDirectories(playerPath.getParent());
-		Files.write(playerPath, List.of("[visible]", "first", "\\=\"unterminated", "[hidden]"));
+		Files.write(playerPath, List.of("[visible]", "\\=first", "\\=\"unterminated", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
 
 		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("first", "second")));
@@ -485,21 +467,21 @@ public class SortingConfigTest {
 		assertEquals(defaultContents, Files.readAllLines(defaultPath));
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(defaultPath, 1)));
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(playerPath, 1)));
-		assertEquals(List.of("[visible]", "first", "second", "[hidden]"), Files.readAllLines(playerPath));
+		assertEquals(List.of("[visible]", "\\=first", "\\=second", "[hidden]"), Files.readAllLines(playerPath));
 	}
 
 	@Test
 	public void malformedPackDefaultIsCorrectedWithoutCreatingPlayerFile(@TempDir Path tempDir) throws IOException {
 		Path defaultPath = tempDir.resolve("sort-order.txt");
 		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
-		Files.write(defaultPath, List.of("[visible]", "second", "second", "first", "[hidden]"));
+		Files.write(defaultPath, List.of("[visible]", "\\=second", "\\=second", "\\=first", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
 
 		assertEquals(List.of("second", "first"), sortingConfig.getSortedValues(List.of("first", "second")));
 
 		assertFalse(Files.exists(playerPath));
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(defaultPath, 1)));
-		assertEquals(List.of("[visible]", "second", "first", "[hidden]"), Files.readAllLines(defaultPath));
+		assertEquals(List.of("[visible]", "\\=second", "\\=first", "[hidden]"), Files.readAllLines(defaultPath));
 	}
 
 	@Test

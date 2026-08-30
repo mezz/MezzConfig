@@ -8,7 +8,6 @@ import net.mezzdev.config.file.ConfigFileReader;
 import net.mezzdev.config.file.ConfigFileUtil;
 import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.file.ConfigFileValueCodec;
-import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.util.ListenerList;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,7 +38,6 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 	private final @Nullable Path path;
 	private final IConfigValueSerializer<T> serializer;
 	private final Comparator<T> defaultSortOrder;
-	private final boolean supportsLegacyStringValues;
 	private final boolean allowsRemovingValues;
 	private final ListenerList<Runnable> changeListeners = new ListenerList<>();
 	@Nullable
@@ -54,33 +52,25 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		Comparator<T> defaultSortOrder,
 		boolean allowsRemovingValues
 	) {
-		this(null, path, serializer, defaultSortOrder, allowsRemovingValues);
+		this.defaultPath = null;
+		this.path = Objects.requireNonNull(path, "path");
+		this.serializer = Objects.requireNonNull(serializer, "serializer");
+		this.defaultSortOrder = Objects.requireNonNull(defaultSortOrder, "defaultSortOrder");
+		this.allowsRemovingValues = allowsRemovingValues;
 	}
 
 	public SortingConfig(
-		@Nullable Path defaultPath,
+		Path defaultPath,
 		Path path,
 		IConfigValueSerializer<T> serializer,
 		Comparator<T> defaultSortOrder,
 		boolean allowsRemovingValues
 	) {
-		this(defaultPath, path, serializer, defaultSortOrder, allowsRemovingValues, serializer == StringSerializer.INSTANCE);
-	}
-
-	private SortingConfig(
-		@Nullable Path defaultPath,
-		@Nullable Path path,
-		IConfigValueSerializer<T> serializer,
-		Comparator<T> defaultSortOrder,
-		boolean allowsRemovingValues,
-		boolean supportsLegacyStringValues
-	) {
-		this.defaultPath = defaultPath;
-		this.path = path;
+		this.defaultPath = Objects.requireNonNull(defaultPath, "defaultPath");
+		this.path = Objects.requireNonNull(path, "path");
 		this.serializer = Objects.requireNonNull(serializer, "serializer");
 		this.defaultSortOrder = Objects.requireNonNull(defaultSortOrder, "defaultSortOrder");
 		this.allowsRemovingValues = allowsRemovingValues;
-		this.supportsLegacyStringValues = supportsLegacyStringValues;
 	}
 
 	public static <T> SortingConfig<T> inMemory(
@@ -88,14 +78,19 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		Comparator<T> defaultSortOrder,
 		boolean allowsRemovingValues
 	) {
-		return new SortingConfig<>(
-			null,
-			null,
-			serializer,
-			defaultSortOrder,
-			allowsRemovingValues,
-			serializer == StringSerializer.INSTANCE
-		);
+		return new SortingConfig<>(serializer, defaultSortOrder, allowsRemovingValues);
+	}
+
+	private SortingConfig(
+		IConfigValueSerializer<T> serializer,
+		Comparator<T> defaultSortOrder,
+		boolean allowsRemovingValues
+	) {
+		this.defaultPath = null;
+		this.path = null;
+		this.serializer = Objects.requireNonNull(serializer, "serializer");
+		this.defaultSortOrder = Objects.requireNonNull(defaultSortOrder, "defaultSortOrder");
+		this.allowsRemovingValues = allowsRemovingValues;
 	}
 
 	@Override
@@ -398,21 +393,11 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 					}
 					continue;
 				}
-				if (!supportsLegacyStringValues) {
-					addDiagnostic(
-						diagnostics,
-						"Line %s must use an encoded serializer value beginning with %s."
-							.formatted(index + 1, ENCODED_VALUE_PREFIX)
-					);
-					continue;
-				}
-				String stringValue = line;
-				if (line.startsWith("\\")) {
-					stringValue = line.substring(1);
-				}
-				@SuppressWarnings("unchecked")
-				T value = (T) stringValue;
-				currentSection.add(value);
+				addDiagnostic(
+					diagnostics,
+					"Line %s must use an encoded serializer value beginning with %s."
+						.formatted(index + 1, ENCODED_VALUE_PREFIX)
+				);
 				continue;
 			}
 			if (!encounteredSections.add(line)) {
@@ -468,9 +453,6 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 
 	private String encodeValue(T value) {
 		String encoded = getSerializedIdentity(value);
-		if (supportsLegacyStringValues && value instanceof String stringValue && encoded.equals(stringValue)) {
-			return stringValue;
-		}
 		return ENCODED_VALUE_PREFIX + encoded;
 	}
 

@@ -31,9 +31,6 @@ public final class ColorSerializer implements IConfigValueSerializer<PackedColor
 	@Override
 	public DeserializeResult<PackedColor> deserialize(String string) {
 		string = string.trim();
-		if (string.startsWith("\"") && string.endsWith("\"")) {
-			string = string.substring(1, string.length() - 1);
-		}
 		if (!string.regionMatches(true, 0, PREFIX, 0, PREFIX.length())) {
 			return DeserializeResult.failure("Invalid color. Must be: " + getValidValuesDescription());
 		}

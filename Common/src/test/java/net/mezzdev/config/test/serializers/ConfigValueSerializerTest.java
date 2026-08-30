@@ -94,7 +94,6 @@ public class ConfigValueSerializerTest {
 		assertEquals(rgb, deserializeValue(ColorSerializer.INSTANCE, "0x112233"));
 		assertEquals(argb, deserializeValue(ColorSerializer.INSTANCE, "0x80112233"));
 		assertEquals(PackedColor.argb(0x80ABCDEF), deserializeValue(ColorSerializer.INSTANCE, "0x80abcdef"));
-		assertEquals(argb, deserializeValue(ColorSerializer.INSTANCE, "\"0x80112233\""));
 		assertTrue(ColorSerializer.INSTANCE.isValid(rgb));
 		assertFalse(ColorSerializer.INSTANCE.isValid(null));
 	}
@@ -109,6 +108,7 @@ public class ConfigValueSerializerTest {
 		IDeserializeResult<PackedColor> missingPrefix = ColorSerializer.INSTANCE.deserialize("FF112233");
 		IDeserializeResult<PackedColor> shortColor = ColorSerializer.INSTANCE.deserialize("0x12345");
 		IDeserializeResult<PackedColor> invalidHex = ColorSerializer.INSTANCE.deserialize("0xGG112233");
+		IDeserializeResult<PackedColor> quotedColor = ColorSerializer.INSTANCE.deserialize("\"0x112233\"");
 
 		assertTrue(missingPrefix.getResult().isEmpty());
 		assertEquals(
@@ -122,6 +122,7 @@ public class ConfigValueSerializerTest {
 		);
 		assertTrue(invalidHex.getResult().isEmpty());
 		assertTrue(invalidHex.getDiagnostics().getFirst().contains("Unable to parse color: '0xGG112233'"));
+		assertTrue(quotedColor.getResult().isEmpty());
 	}
 
 	@Test
@@ -186,10 +187,11 @@ public class ConfigValueSerializerTest {
 	}
 
 	@Test
-	public void enumSerializerHandlesQuotedNamesAndReportsValidValues() {
+	public void enumSerializerSerializesNamesAndReportsValidValues() {
 		EnumSerializer<TestEnum> serializer = new EnumSerializer<>(TestEnum.class);
 
-		assertEquals(TestEnum.FIRST_VALUE, deserializeValue(serializer, "\"FIRST_VALUE\""));
+		assertEquals("FIRST_VALUE", serializer.serialize(TestEnum.FIRST_VALUE));
+		assertEquals(TestEnum.FIRST_VALUE, deserializeValue(serializer, "FIRST_VALUE"));
 		assertEquals("[FIRST_VALUE, SECOND_VALUE]", serializer.getValidValuesDescription());
 		assertEquals(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE), List.copyOf(serializer.getAllValidValues().orElseThrow()));
 	}
@@ -199,9 +201,11 @@ public class ConfigValueSerializerTest {
 		EnumSerializer<TestEnum> serializer = new EnumSerializer<>(TestEnum.class);
 
 		IDeserializeResult<TestEnum> result = serializer.deserialize("MISSING");
+		IDeserializeResult<TestEnum> quotedResult = serializer.deserialize("\"FIRST_VALUE\"");
 
 		assertTrue(result.getResult().isEmpty());
 		assertTrue(result.getDiagnostics().getFirst().contains("Invalid enum name"));
+		assertTrue(quotedResult.getResult().isEmpty());
 	}
 
 	@Test
@@ -222,12 +226,11 @@ public class ConfigValueSerializerTest {
 	}
 
 	@Test
-	public void listSerializerDeserializesCommaSeparatedAndBracketedValues() {
+	public void listSerializerDeserializesStructuredValues() {
 		ListSerializer<Boolean> serializer = new ListSerializer<>(BooleanSerializer.INSTANCE);
 
-		assertEquals(List.of(true, false, true), deserializeValue(serializer, "true, false, TRUE"));
-		assertEquals(List.of(true, false), deserializeValue(serializer, "[true, false]"));
-		assertEquals(List.of(), deserializeValue(serializer, ""));
+		assertEquals(List.of(true, false, true), deserializeValue(serializer, "[\"true\",\"false\",\"TRUE\"]"));
+		assertEquals(List.of(), deserializeValue(serializer, "[]"));
 		assertEquals("[\"true\",\"false\"]", serializer.serialize(List.of(true, false)));
 		assertTrue(serializer.isValid(List.of(true, false)));
 	}
@@ -247,23 +250,36 @@ public class ConfigValueSerializerTest {
 	public void listSerializerReportsPartialSuccessForRecoveredElements() {
 		ListSerializer<Boolean> serializer = new ListSerializer<>(BooleanSerializer.INSTANCE);
 
-		IDeserializeResult<List<Boolean>> result = serializer.deserialize("true, invalid, false");
+		IDeserializeResult<List<Boolean>> result = serializer.deserialize("[\"true\",\"invalid\",\"false\"]");
 
 		assertEquals(List.of(true, false), result.getResult().orElseThrow());
-		assertEquals(List.of("string must be 'true' or 'false'"), result.getDiagnostics());
+		assertEquals(List.of("Array element 1: string must be 'true' or 'false'"), result.getDiagnostics());
 	}
 
 	@Test
 	public void listSerializerReportsFailureWhenNoElementsAreRecovered() {
 		ListSerializer<Boolean> serializer = new ListSerializer<>(BooleanSerializer.INSTANCE);
 
-		IDeserializeResult<List<Boolean>> result = serializer.deserialize("invalid, also-invalid");
+		IDeserializeResult<List<Boolean>> result = serializer.deserialize("[\"invalid\",\"also-invalid\"]");
 
 		assertTrue(result.getResult().isEmpty());
 		assertEquals(
-			List.of("string must be 'true' or 'false'", "string must be 'true' or 'false'"),
+			List.of(
+				"Array element 0: string must be 'true' or 'false'",
+				"Array element 1: string must be 'true' or 'false'"
+			),
 			result.getDiagnostics()
 		);
+	}
+
+	@Test
+	public void listSerializerRejectsUnstructuredValues() {
+		ListSerializer<Boolean> serializer = new ListSerializer<>(BooleanSerializer.INSTANCE);
+
+		IDeserializeResult<List<Boolean>> result = serializer.deserialize("true, false");
+
+		assertTrue(result.getResult().isEmpty());
+		assertEquals(List.of("Expected a structured array."), result.getDiagnostics());
 	}
 
 	@Test
@@ -274,7 +290,7 @@ public class ConfigValueSerializerTest {
 			ConfigListOrdering.UNORDERED
 		);
 
-		assertEquals(List.of(true, false), deserializeValue(serializer, "true, false"));
+		assertEquals(List.of(true, false), deserializeValue(serializer, "[\"true\",\"false\"]"));
 		assertEquals("[\"true\",\"false\"]", serializer.serialize(List.of(true, false)));
 		assertTrue(serializer instanceof IConfigListValueSerializer<?>);
 		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) serializer;
@@ -287,13 +303,13 @@ public class ConfigValueSerializerTest {
 	public void listSerializerSupportsEnumElementSerializers() {
 		ListSerializer<TestEnum> serializer = new ListSerializer<>(new EnumSerializer<>(TestEnum.class));
 
-		assertEquals(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE), deserializeValue(serializer, "[FIRST_VALUE, SECOND_VALUE]"));
+		assertEquals(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE), deserializeValue(serializer, "[\"FIRST_VALUE\",\"SECOND_VALUE\"]"));
 		assertEquals("[\"FIRST_VALUE\",\"SECOND_VALUE\"]", serializer.serialize(List.of(TestEnum.FIRST_VALUE, TestEnum.SECOND_VALUE)));
 		assertEquals("A list containing values of:\n[FIRST_VALUE, SECOND_VALUE]", serializer.getValidValuesDescription());
 	}
 
 	@Test
-	public void listSerializerReadsLosslessBracketedStringsForFileMigrations() {
+	public void listSerializerReadsLosslessStructuredStrings() {
 		ListSerializer<String> serializer = new ListSerializer<>(StringSerializer.INSTANCE);
 		List<String> expected = List.of("", "a,b", " surrounding ", "[section]", "line one\nline two", "\\path");
 		String encoded = "[\"\", \"a,b\", \" surrounding \", \"[section]\", \"line one\\nline two\", \"\\\\path\"]";

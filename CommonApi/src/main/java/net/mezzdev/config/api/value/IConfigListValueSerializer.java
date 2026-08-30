@@ -19,8 +19,7 @@ import java.util.List;
  * <p>
  * MezzConfig persists and synchronizes lists as structured arrays by applying {@link #getElementSerializer()} to each
  * element recursively. It calls {@link IConfigValueSerializer#isValid(Object)} on the reconstructed complete list. The
- * container-level {@link IConfigValueSerializer#serialize(Object)} representation is not used for structured storage,
- * while {@link #deserialize(String)} is accepted for legacy scalar values.
+ * container-level {@link IConfigValueSerializer#serialize(Object)} representation is not used for structured storage.
  * <p>
  * MezzConfig stores list containers as unmodifiable snapshots. Each element type must still satisfy the effectively
  * immutable value contract from {@link IConfigValueSerializer}.

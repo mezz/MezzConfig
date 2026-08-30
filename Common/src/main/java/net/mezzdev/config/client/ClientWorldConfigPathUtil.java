@@ -9,7 +9,6 @@ import net.minecraft.world.level.storage.LevelResource;
 import net.mezzdev.config.util.ErrorUtil;
 
 import java.net.IDN;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
@@ -37,12 +36,7 @@ public final class ClientWorldConfigPathUtil {
 						.map(levelId -> LOCAL_DIR_PATH.resolve(levelId));
 				}
 				return Optional.ofNullable(minecraft.getCurrentServer())
-					.map(serverData -> getServerPath(
-						configDir,
-						serverData.name,
-						serverData.ip,
-						serverData.isLan()
-					));
+					.map(serverData -> getServerPath(serverData.name, serverData.ip, serverData.isLan()));
 			})
 			.map(configDir::resolve);
 	}
@@ -71,21 +65,7 @@ public final class ClientWorldConfigPathUtil {
 				String addressName = getAddressName(serverAddressAndPort);
 				return getNamedServerPath("%s (%s)".formatted(name, addressName));
 			})
-			.orElseGet(() -> getLegacyServerPath(name, address));
-	}
-
-	public static Path getServerPath(Path configDirectory, String serverName, String serverAddress) {
-		return getServerPath(configDirectory, serverName, serverAddress, false);
-	}
-
-	public static Path getServerPath(Path configDirectory, String serverName, String serverAddress, boolean isLan) {
-		Path configDir = ErrorUtil.checkNotNull(configDirectory, "configDirectory");
-		Path legacyServerPath = getLegacyServerPath(serverName, serverAddress);
-		if (Files.exists(configDir.resolve(legacyServerPath))) {
-			return legacyServerPath;
-		}
-
-		return getServerPath(serverName, serverAddress, isLan);
+			.orElseGet(() -> getNamedServerPath("%s (%s)".formatted(name, address)));
 	}
 
 	public static Path getServerDirPath() {
@@ -160,13 +140,6 @@ public final class ClientWorldConfigPathUtil {
 		return port;
 	}
 
-	private static Path getLegacyServerPath(String serverName, String serverAddress) {
-		String ipHashHex = Integer.toHexString(serverAddress.hashCode());
-		String name = "%s_%s".formatted(serverName, ipHashHex);
-		name = sanitizePathNameLegacy(name);
-		return SERVER_DIR_PATH.resolve(name);
-	}
-
 	private static Path getNamedServerPath(String name) {
 		name = sanitizePathName(name);
 		return SERVER_DIR_PATH.resolve(name);
@@ -183,10 +156,5 @@ public final class ClientWorldConfigPathUtil {
 		}
 		return sanitized;
 	}
-
-	private static String sanitizePathNameLegacy(String filename) {
-		return String.join("_", filename.split("[^\\w-]"));
-	}
-
 	private record ServerAddressAndPort(String host, int port) {}
 }

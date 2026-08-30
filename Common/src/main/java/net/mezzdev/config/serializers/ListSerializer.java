@@ -1,5 +1,6 @@
 package net.mezzdev.config.serializers;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import net.mezzdev.config.api.value.ConfigListOrdering;
 import net.mezzdev.config.api.value.IConfigListValueSerializer;
@@ -9,13 +10,11 @@ import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.file.ConfigFileValueCodec;
 import net.mezzdev.config.util.ErrorUtil;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Serializer for comma-separated list config values.
+ * Serializer for structured list config values.
  */
 public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 	private final IConfigValueSerializer<T> elementSerializer;
@@ -47,42 +46,15 @@ public final class ListSerializer<T> implements IConfigListValueSerializer<T> {
 
 	@Override
 	public DeserializeResult<List<T>> deserialize(String string) {
-		string = string.trim();
-		if (string.startsWith("[")) {
-			IDeserializeResult<JsonElement> decodeResult = ConfigFileValueCodec.deserialize(string);
-			JsonElement value = decodeResult.getResult().orElse(null);
-			if (value == null) {
-				if (string.endsWith("]")) {
-					return deserializeCommaSeparated(string.substring(1, string.length() - 1));
-				}
-				return DeserializeResult.failure(decodeResult.getDiagnostics());
-			}
-			return copyResult(ConfigFileValueAdapter.deserialize(this, value));
+		IDeserializeResult<JsonElement> decodeResult = ConfigFileValueCodec.deserialize(string);
+		JsonElement value = decodeResult.getResult().orElse(null);
+		if (value == null) {
+			return DeserializeResult.failure(decodeResult.getDiagnostics());
 		}
-		return deserializeCommaSeparated(string);
-	}
-
-	private DeserializeResult<List<T>> deserializeCommaSeparated(String string) {
-		String[] split = string.split(",");
-
-		List<String> diagnostics = new ArrayList<>();
-		List<T> results = Arrays.stream(split)
-			.map(String::trim)
-			.filter(s -> !s.isEmpty())
-			.map(value -> ConfigFileValueAdapter.deserializeScalar(elementSerializer, value))
-			.<T>mapMulti((r, c) -> {
-				r.getResult().ifPresent(c);
-				diagnostics.addAll(r.getDiagnostics());
-			})
-			.toList();
-
-		if (diagnostics.isEmpty()) {
-			return DeserializeResult.success(results);
+		if (!(value instanceof JsonArray)) {
+			return DeserializeResult.failure("Expected a structured array.");
 		}
-		if (results.isEmpty()) {
-			return DeserializeResult.failure(diagnostics);
-		}
-		return DeserializeResult.partialSuccess(results, diagnostics);
+		return copyResult(ConfigFileValueAdapter.deserialize(this, value));
 	}
 
 	private static <T> DeserializeResult<T> copyResult(IDeserializeResult<T> result) {

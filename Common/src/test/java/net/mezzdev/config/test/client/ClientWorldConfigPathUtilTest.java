@@ -4,8 +4,6 @@ import net.mezzdev.config.client.ClientWorldConfigPathUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -67,6 +65,19 @@ public class ClientWorldConfigPathUtilTest {
 	}
 
 	@Test
+	public void getServerPathUsesSanitizedAddressWhenAddressIsMalformed() {
+		// Setup: the server address has a port that cannot be parsed.
+		String serverName = "Test Server";
+		String serverAddress = "play.example.com:not-a-port";
+
+		// Operation: build the client-world config directory when normal address parsing fails.
+		Path path = ClientWorldConfigPathUtil.getServerPath(serverName, serverAddress);
+
+		// Assertions: the supplied address still produces a readable, deterministic path.
+		assertEquals(getServerPath("Test Server (play_example_com_not-a-port)"), path);
+	}
+
+	@Test
 	public void getServerPathUsesNameForLanServer() {
 		// Setup: LAN server ports are often dynamic, so the address is not a stable identity.
 		String serverName = "LAN Server";
@@ -80,33 +91,11 @@ public class ClientWorldConfigPathUtilTest {
 	}
 
 	@Test
-	public void getServerPathPreservesExistingLegacyPath() throws IOException {
-		// Setup: an old JEI-style hashed server path already exists under the config directory.
-		String serverName = "Test Server";
-		String serverAddress = "play.example.com";
-		Path legacyPath = getLegacyServerPath(serverName, serverAddress);
-		Files.createDirectories(tempDir.resolve(legacyPath));
-
-		// Operation: build the client-world config directory with a config root available for legacy detection.
-		Path path = ClientWorldConfigPathUtil.getServerPath(tempDir, serverName, serverAddress);
-
-		// Assertions: the existing legacy path wins so migrated projects do not silently split config state.
-		assertEquals(legacyPath, path);
-	}
-
-	@Test
 	public void defaultWorldPathIsSeparateFromPlayerWorlds() {
 		assertEquals(
 			tempDir.resolve("world").resolve("default"),
 			ClientWorldConfigPathUtil.getDefaultWorldPath(tempDir)
 		);
-	}
-
-	private static Path getLegacyServerPath(String serverName, String serverAddress) {
-		String ipHashHex = Integer.toHexString(serverAddress.hashCode());
-		String name = "%s_%s".formatted(serverName, ipHashHex);
-		name = String.join("_", name.split("[^\\w-]"));
-		return getServerPath(name);
 	}
 
 	private static Path getServerPath(String pathName) {

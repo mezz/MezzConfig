@@ -53,7 +53,7 @@ public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer
 
 	@Override
 	public DeserializeResult<T> deserialize(String string) {
-		String enumName = normalizeSerializedEnumName(string);
+		String enumName = string.trim();
 		T enumValue = getEnumValue(enumClass, enumName);
 		if (enumValue != null && isValid(enumValue)) {
 			return DeserializeResult.success(enumValue);
@@ -88,13 +88,5 @@ public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer
 		} catch (IllegalArgumentException e) {
 			return null;
 		}
-	}
-
-	private static String normalizeSerializedEnumName(String string) {
-		string = string.trim();
-		if (string.startsWith("\"") && string.endsWith("\"")) {
-			string = string.substring(1, string.length() - 1);
-		}
-		return string;
 	}
 }

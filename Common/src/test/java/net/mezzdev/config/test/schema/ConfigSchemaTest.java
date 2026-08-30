@@ -93,7 +93,7 @@ public class ConfigSchemaTest {
 		assertEquals(
 			List.of(TestMode.STANDARD, TestMode.ADVANCED),
 			modes.getSerializer()
-				.deserialize("[STANDARD, ADVANCED]")
+				.deserialize("[\"STANDARD\",\"ADVANCED\"]")
 				.getResult()
 				.orElseThrow()
 		);
@@ -116,7 +116,7 @@ public class ConfigSchemaTest {
 		assertEquals(
 			List.of(false, true),
 			flags.getSerializer()
-				.deserialize("false, true")
+				.deserialize("[\"false\",\"true\"]")
 				.getResult()
 				.orElseThrow()
 		);
@@ -158,7 +158,7 @@ public class ConfigSchemaTest {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[category]",
-			"names = first, second"
+			"names = [\"first\",\"second\"]"
 		));
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<List<String>> names = builder.addStringList("names", List.of("default"))
@@ -197,7 +197,7 @@ public class ConfigSchemaTest {
 		);
 		assertEquals(
 			List.of(new ExtensionEntry("first", "one"), new ExtensionEntry("second", "two")),
-			values.getSerializer().deserialize("first=one, second=two").getResult().orElseThrow()
+			values.getSerializer().deserialize("[\"first=one\",\"second=two\"]").getResult().orElseThrow()
 		);
 		assertTrue(values.getSerializer() instanceof IConfigListValueSerializer<?>);
 		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) values.getSerializer();
@@ -244,11 +244,11 @@ public class ConfigSchemaTest {
 
 		// Assertions: each helper wires a serializer that understands its public storage format.
 		assertEquals("configured", name.getSerializer().deserialize("configured").getResult().orElseThrow());
-		assertEquals(List.of("one", "two"), names.getSerializer().deserialize("one, two").getResult().orElseThrow());
-		assertEquals(List.of(false, true), flags.getSerializer().deserialize("false, true").getResult().orElseThrow());
+		assertEquals(List.of("one", "two"), names.getSerializer().deserialize("[\"one\",\"two\"]").getResult().orElseThrow());
+		assertEquals(List.of(false, true), flags.getSerializer().deserialize("[\"false\",\"true\"]").getResult().orElseThrow());
 		assertEquals(Integer.MIN_VALUE, unboundedInteger.getSerializer().getRange().orElseThrow().min());
-		assertEquals(List.of(1, 2), unboundedIntegers.getSerializer().deserialize("1, 2").getResult().orElseThrow());
-		assertEquals(List.of(1, 2), boundedIntegers.getSerializer().deserialize("1, 2").getResult().orElseThrow());
+		assertEquals(List.of(1, 2), unboundedIntegers.getSerializer().deserialize("[\"1\",\"2\"]").getResult().orElseThrow());
+		assertEquals(List.of(1, 2), boundedIntegers.getSerializer().deserialize("[\"1\",\"2\"]").getResult().orElseThrow());
 		assertTrue(colors.getSerializer() instanceof IConfigListValueSerializer<?>);
 		IConfigListValueSerializer<?> colorsSerializer = (IConfigListValueSerializer<?>) colors.getSerializer();
 		assertEquals(PackedColor.rgb(0x112233), colorsSerializer.getElementSerializer().deserialize("0x112233").getResult().orElseThrow());
@@ -256,16 +256,16 @@ public class ConfigSchemaTest {
 		assertEquals(PackedColor.argb(0xFF445566), color.getSerializer().deserialize("0xFF445566").getResult().orElseThrow());
 		assertEquals(
 			List.of(PackedColor.rgb(0x112233), PackedColor.argb(0x80445566)),
-			colors.getSerializer().deserialize("0x112233, 0x80445566").getResult().orElseThrow()
+			colors.getSerializer().deserialize("[\"0x112233\",\"0x80445566\"]").getResult().orElseThrow()
 		);
 		assertEquals(10L, boundedLong.getSerializer().getRange().orElseThrow().max());
-		assertEquals(List.of(1L, 2L), unboundedLongs.getSerializer().deserialize("1, 2").getResult().orElseThrow());
-		assertEquals(List.of(1L, 2L), boundedLongs.getSerializer().deserialize("1, 2").getResult().orElseThrow());
+		assertEquals(List.of(1L, 2L), unboundedLongs.getSerializer().deserialize("[\"1\",\"2\"]").getResult().orElseThrow());
+		assertEquals(List.of(1L, 2L), boundedLongs.getSerializer().deserialize("[\"1\",\"2\"]").getResult().orElseThrow());
 		assertEquals(10.0, boundedDouble.getSerializer().getRange().orElseThrow().max());
-		assertEquals(List.of(1.5, 2.5), unboundedDoubles.getSerializer().deserialize("1.5, 2.5").getResult().orElseThrow());
-		assertEquals(List.of(1.5, 2.5), boundedDoubles.getSerializer().deserialize("1.5, 2.5").getResult().orElseThrow());
+		assertEquals(List.of(1.5, 2.5), unboundedDoubles.getSerializer().deserialize("[\"1.5\",\"2.5\"]").getResult().orElseThrow());
+		assertEquals(List.of(1.5, 2.5), boundedDoubles.getSerializer().deserialize("[\"1.5\",\"2.5\"]").getResult().orElseThrow());
 		assertEquals(TestMode.STANDARD, restrictedEnum.getSerializer().deserialize("STANDARD").getResult().orElseThrow());
-		assertEquals(List.of(TestMode.STANDARD), restrictedEnums.getSerializer().deserialize("STANDARD").getResult().orElseThrow());
+		assertEquals(List.of(TestMode.STANDARD), restrictedEnums.getSerializer().deserialize("[\"STANDARD\"]").getResult().orElseThrow());
 
 		// Assertions: built-in list helpers expose element serializers for GUI integrations.
 		assertListElementSerializer(names, "configured", "configured");
@@ -280,12 +280,12 @@ public class ConfigSchemaTest {
 		assertListElementSerializer(restrictedEnums, "STANDARD", TestMode.STANDARD);
 
 		// Assertions: bounded and restricted helpers reject values outside their declared valid range.
-		assertTrue(boundedIntegers.getSerializer().deserialize("11").getDiagnostics().getFirst().contains("Invalid integer"));
+		assertTrue(boundedIntegers.getSerializer().deserialize("[\"11\"]").getDiagnostics().getFirst().contains("Invalid integer"));
 		assertTrue(color.getSerializer().deserialize("112233").getDiagnostics().getFirst().contains("Invalid color"));
-		assertTrue(boundedLongs.getSerializer().deserialize("11").getDiagnostics().getFirst().contains("Invalid long"));
-		assertTrue(boundedDoubles.getSerializer().deserialize("11.0").getDiagnostics().getFirst().contains("Invalid double"));
+		assertTrue(boundedLongs.getSerializer().deserialize("[\"11\"]").getDiagnostics().getFirst().contains("Invalid long"));
+		assertTrue(boundedDoubles.getSerializer().deserialize("[\"11.0\"]").getDiagnostics().getFirst().contains("Invalid double"));
 		assertTrue(restrictedEnum.getSerializer().deserialize("ADVANCED").getDiagnostics().getFirst().contains("Invalid enum name"));
-		assertTrue(restrictedEnums.getSerializer().deserialize("ADVANCED").getDiagnostics().getFirst().contains("Invalid enum name"));
+		assertTrue(restrictedEnums.getSerializer().deserialize("[\"ADVANCED\"]").getDiagnostics().getFirst().contains("Invalid enum name"));
 	}
 
 	@Test
