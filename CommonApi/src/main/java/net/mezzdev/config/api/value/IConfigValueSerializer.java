@@ -7,23 +7,17 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Serialization and validation helper for config values.
+ * Teaches MezzConfig how to store, validate, and describe a mod-specific value type.
  * <p>
- * Pass your serializer to
- * {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)}
- * or as the element serializer in
- * {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)}.
+ * Prefer built-in value methods when possible. For a custom type, implement this interface and pass it to
+ * {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)}. Implement
+ * {@link IConfigListValueSerializer} when editors should work with list elements individually, or
+ * {@link IConfigKeyValueSerializer} when editors should work with two components of an entry.
  * <p>
- * For list config values that should expose their element serializer, implement {@link IConfigListValueSerializer}.
- * For values composed of independently editable key and value components, implement {@link IConfigKeyValueSerializer}.
- * <p>
- * Config values must be effectively immutable while held by MezzConfig, and their {@link Object#equals(Object)} result
- * must remain stable. Custom serializers must return immutable values from {@link #deserialize(String)}, and callers
- * must not pass mutable values to config value builders or updates.
- * Shared custom serializer instances must be thread-safe. For every value accepted by {@link #isValid(Object)},
- * serialization must be deterministic, non-null, and round-trip to an equal value without diagnostics. Deserialization
- * must return a non-null result without throwing for every non-null input; every returned value must pass
- * {@link #isValid(Object)}. MezzConfig rejects contract violations at registration, update, file, and network boundaries.
+ * Accepted values must be effectively immutable with stable equality. Serialization must be deterministic, and every
+ * accepted value must deserialize back to an equal value without diagnostics. Deserialization must report invalid input
+ * through {@link IDeserializeResult} rather than throw; every returned value must pass {@link #isValid(Object)}. Shared
+ * serializer instances must be thread-safe.
  *
  * @param <T> effectively immutable value type with stable equality
  *
@@ -31,34 +25,28 @@ import java.util.Optional;
  */
 public interface IConfigValueSerializer<T> {
 	/**
-	 * Serialize a valid config value to deterministic, non-null text without throwing.
+	 * Convert a valid value to its stable text representation.
 	 *
 	 * @since 0.1.0
 	 */
 	String serialize(T value);
 
 	/**
-	 * Deserialize the config value from a string.
-	 * This must return a non-null result without throwing for arbitrary non-null input. The result must obey the state
-	 * invariants documented by {@link IDeserializeResult}; every present value must be accepted by {@link #isValid(Object)}.
+	 * Parse stored text, returning diagnostics instead of throwing when the input is invalid.
 	 *
 	 * @since 0.1.0
 	 */
 	IDeserializeResult<T> deserialize(String string);
 
 	/**
-	 * Check without throwing whether a given value is valid for this config value.
+	 * Return whether this value can be safely stored.
 	 *
 	 * @since 0.1.0
 	 */
 	boolean isValid(T value);
 
 	/**
-	 * If this config value should be edited as a bounded range,
-	 * this returns its inclusive lower and upper bounds.
-	 * <p>
-	 * If this config value does not have a range, this will return
-	 * {@link Optional#empty()}.
+	 * Describe an inclusive range that config editors can present with a bounded control.
 	 *
 	 * @since 0.1.0
 	 */
@@ -67,11 +55,10 @@ public interface IConfigValueSerializer<T> {
 	}
 
 	/**
-	 * If this config value only has a limited number of valid values,
-	 * this returns them all in a stable presentation order.
+	 * List every valid choice when config editors should present a fixed selection.
 	 * <p>
 	 * The returned list must be unmodifiable and duplicate-free. Its order must remain stable while the set of valid
-	 * values is unchanged. If there are many or unlimited valid values, this will return {@link Optional#empty()}.
+	 * values is unchanged. Return {@link Optional#empty()} for open-ended value types.
 	 *
 	 * @since 0.1.0
 	 */
@@ -81,7 +68,7 @@ public interface IConfigValueSerializer<T> {
 	}
 
 	/**
-	 * Get the description of what values are valid for this config value.
+	 * Describe valid input for config editors and error messages.
 	 *
 	 * @since 0.1.0
 	 */

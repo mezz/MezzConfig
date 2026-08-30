@@ -13,35 +13,23 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
- * Represents one declared config schema.
- * A schema may be inactive or may hold synchronized server values without a local backing file; use {@link #isActive()}
- * and {@link #getPath()} to inspect its current runtime state.
+ * Provides runtime access to a group of config values stored and activated together.
  * <p>
- * Config schemas contain one or more {@link IConfigCategory},
- * and each category has one or more {@link IConfigValue}.
+ * Get an instance from {@link IConfigSchemaBuilder#build()}. Most mods keep the {@link IConfigValue} objects they build and
+ * use the schema when several values must change atomically. Config screens and other integrations can discover schemas
+ * through {@link Configs#getSchemas()} and inspect their categories.
  * <p>
- * Create and register your schema here: {@link IConfigSchemaBuilder#build()}.
- * Get registered schemas here: {@link Configs#getSchemas()}.
- * <p>
- * Runtime methods are thread-safe and batches are atomic; concurrent operations are unordered. Listeners run
- * synchronously on the applying thread and are not dispatched to a game thread.
- * <p>
- * Listener notifications use immutable change lists and run after the complete applicable state is committed. Local
- * update batches schedule persistence before notifying; loads and synchronized snapshots notify after applying their
- * complete state. When one operation has both pending and effective changes, pending notifications run first.
- * Within either notification kind, each changed value's single-value listeners and then its value-scoped batch listeners
- * run in batch order; schema batch listeners run last. Listeners at the same scope run in registration order. Listener
- * failures are logged and do not prevent later listeners. Removal callbacks are idempotent and affect later notification
- * snapshots; listeners may register or remove listeners during a callback without changing the current snapshot.
- * Reentrant updates are allowed and synchronously dispatch a separate nested batch before the outer notification resumes;
- * callers must guard against reentrant update cycles.
+ * Runtime methods are thread-safe. Listeners run synchronously after a complete change has been applied; listener failures
+ * are logged, and reentrant updates start a separate nested notification. Pending listeners run before effective listeners
+ * for the same operation. Within either kind, single-value listeners run before value-scoped batch listeners, and schema
+ * batch listeners run last. Listener changes made during a callback affect the next notification.
  *
  * @since 0.1.0
  */
 @ApiStatus.NonExtendable
 public interface IConfigSchema {
 	/**
-	 * Get the stable identifier for this schema within its owning mod and schema type.
+	 * Get the stable storage identifier for integrations that need to distinguish this schema.
 	 * <p>
 	 * Automatically located schemas use their normalized relative config file name. Explicit-location schemas use their
 	 * normalized absolute configured path. Treat this as an opaque storage identity rather than display text.
@@ -67,7 +55,7 @@ public interface IConfigSchema {
 	ConfigSchemaType getType();
 
 	/**
-	 * Return whether this schema currently has effective values for the current context.
+	 * Return whether this schema currently supplies values for the running game context.
 	 * <p>
 	 * {@link ConfigSchemaType#CLIENT} schemas are active on a physical client and inert on a dedicated server.
 	 * {@link ConfigSchemaType#CLIENT_PER_WORLD} schemas are active on a physical client only while a singleplayer world or
@@ -80,7 +68,7 @@ public interface IConfigSchema {
 	boolean isActive();
 
 	/**
-	 * Get the current path of this config schema.
+	 * Get the current local backing file path, if one exists.
 	 * <p>
 	 * Client schemas have a path on a physical client. Client-per-world and locally authoritative server schemas have a
 	 * path while their world or connection context is active. Inert client declarations on a dedicated server and schemas
@@ -88,9 +76,7 @@ public interface IConfigSchema {
 	 * optional because its backing file belongs to the server; use {@link #isActive()} to distinguish it from an inactive
 	 * schema.
 	 * <p>
-	 * Note that config values will read from this file automatically,
-	 * and updating config values will save the file automatically,
-	 * so you should not read or write this file yourself.
+	 * MezzConfig owns this file; mods should use {@link IConfigValue} rather than reading or writing it directly.
 	 *
 	 * @since 0.1.0
 	 */
@@ -117,11 +103,11 @@ public interface IConfigSchema {
 	List<? extends IConfigEditorCategory> getEditorCategories();
 
 	/**
-	 * Apply several config value updates together.
+	 * Change several values as one atomic user action.
 	 * <p>
-	 * Queue updates inside the callback. Queued values are snapshotted immediately and the complete batch is validated
-	 * before any state changes. Saved values are persisted together. Values without a restart requirement become effective
-	 * immediately; restart-required values remain pending. If the callback throws, no queued updates are applied.
+	 * Use this for related settings that must not expose a partially updated state. Call
+	 * {@link IConfigBatchUpdater#set(IConfigValue, Object)} inside the callback. If any update is invalid or the callback
+	 * throws, none of them are applied.
 	 *
 	 * @param updateBatch callback that queues updates
 	 * @return saved-value changes that were applied
@@ -136,10 +122,10 @@ public interface IConfigSchema {
 	List<? extends IAppliedConfigValueChange<?>> batchUpdate(Consumer<IConfigBatchUpdater> updateBatch);
 
 	/**
-	 * Add a listener called exactly once for every non-empty batch of effective-value changes applied to this schema.
-	 * This includes local updates, file loads and reloads, context changes, remote snapshots, disconnect resets, and restart
-	 * promotions when they change effective values. Pending-only and unchanged batches do not invoke this listener.
-	 * The listener receives the complete immutable effective batch after participating value listeners.
+	 * Listen for any effective values in this schema changing together.
+	 * <p>
+	 * Use this when derived state depends on multiple settings. Pending restart-required edits are reported later, when they
+	 * become effective.
 	 *
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener
@@ -149,12 +135,9 @@ public interface IConfigSchema {
 	Runnable addBatchListener(IConfigValueBatchChangeListener listener);
 
 	/**
-	 * Add a listener called exactly once for every non-empty batch of pending saved-value changes applied to this schema.
+	 * Listen for any saved values in this schema changing together, including changes waiting for a restart.
 	 * <p>
-	 * Values without a restart requirement appear in both effective and pending notifications. Restart-required values
-	 * appear in pending notifications when saved and effective notifications later when the applicable restart promotes
-	 * them. Pending notifications run before effective notifications from the same operation. Unchanged batches do not
-	 * invoke this listener. The listener receives the complete immutable pending batch after participating value listeners.
+	 * Use this for editors or diagnostics that need to display what is saved rather than only what is currently effective.
 	 *
 	 * @param listener callback accepting the pending changes
 	 * @return a callback that removes this listener

@@ -6,7 +6,11 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * Structured outcome of a schema's registered legacy migration.
+ * Reports the final outcome of a registered legacy migration.
+ * <p>
+ * Inspect this from {@link IConfigMigrator#onMigrationComplete(IConfigMigrationResult)} when the mod wants to log a
+ * failure, tell the user what was imported, or locate the preserved backup. This also reports outcomes that the migration
+ * callback cannot observe itself, such as a skipped migration or a failure after it returns.
  *
  * @since 0.3.0
  */
@@ -22,7 +26,7 @@ public interface IConfigMigrationResult {
 	ConfigMigrationStatus getStatus();
 
 	/**
-	 * Get the normalized absolute destination considered by the migration.
+	 * Get the new MezzConfig file that migration targeted.
 	 * This is empty when the schema had no active local destination.
 	 *
 	 * @return migration destination, if one was available
@@ -32,7 +36,7 @@ public interface IConfigMigrationResult {
 	Optional<Path> getDestinationPath();
 
 	/**
-	 * Get the first existing legacy path selected from the registered ordered paths.
+	 * Get the old config file that was selected for import.
 	 *
 	 * @return selected normalized absolute legacy path, if one was found
 	 *
@@ -41,7 +45,7 @@ public interface IConfigMigrationResult {
 	Optional<Path> getLegacyPath();
 
 	/**
-	 * Get the backup created from the selected legacy file before the migrator ran.
+	 * Get the preserved backup that can be shown to the user or used for recovery.
 	 * A failed migration may still have a backup when failure happened after backup creation.
 	 *
 	 * @return normalized absolute backup path, if a backup was created
@@ -51,7 +55,7 @@ public interface IConfigMigrationResult {
 	Optional<Path> getBackupPath();
 
 	/**
-	 * Get the failure reported for {@link ConfigMigrationStatus#FAILED}.
+	 * Get the reason an attempted migration failed.
 	 *
 	 * @return migration failure, or empty for non-failure outcomes
 	 *

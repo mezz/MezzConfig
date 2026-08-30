@@ -3,11 +3,10 @@ package net.mezzdev.config.api.schema;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
- * A category where config editors can show config values.
+ * Describes a visual group that config screens can use to present related values.
  * <p>
- * Create editor-only categories here: {@link IConfigSchemaBuilder#addEditorCategory(String)}.
- * Storage categories from {@link IConfigSchemaBuilder#addCategory(String)} are also editor categories.
- * Get registered editor categories here: {@link IConfigSchema#getEditorCategories()}.
+ * Get editor categories from {@link IConfigSchema#getEditorCategories()}. Every storage category is also an editor
+ * category; schemas can add editor-only categories when the most useful screen layout differs from the config file.
  *
  * @since 0.1.0
  */

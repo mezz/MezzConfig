@@ -5,30 +5,21 @@ import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import java.util.List;
 
 /**
- * Serialization and validation helper for list config values.
+ * Describes a list whose elements config editors can validate, add, remove, or reorder individually.
  * <p>
- * Use this when code needs to understand the list elements individually, for example to render each element,
- * validate newly-added elements, or reorder values while preserving the list's storage format.
+ * Built-in list helpers already provide this metadata. Implement it for custom list validation or when declaring a list
+ * through {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)}. Element serializers may also
+ * implement {@link IConfigKeyValueSerializer} to present entries as editable key-value rows.
  * <p>
- * Pass your serializer to {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)} for custom
- * list validation and editor metadata. Values created with
- * {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)} use a list serializer that exposes the
- * element serializer this way.
- * Element serializers may implement {@link IConfigKeyValueSerializer} to expose map-style rows without changing the
- * list to a map.
- * <p>
- * MezzConfig persists and synchronizes lists as structured arrays by applying {@link #getElementSerializer()} to each
- * element recursively. It calls {@link IConfigValueSerializer#isValid(Object)} on the reconstructed complete list. The
- * container-level {@link IConfigValueSerializer#serialize(Object)} representation is not used for structured storage.
- * <p>
- * MezzConfig stores list containers as unmodifiable snapshots. Each element type must still satisfy the effectively
- * immutable value contract from {@link IConfigValueSerializer}.
+ * MezzConfig stores the list element-by-element with {@link #getElementSerializer()}; the inherited container-level text
+ * representation is not used for structured file storage. Returned list values are unmodifiable snapshots, and their
+ * elements must follow the immutable value contract.
  *
  * @since 0.1.0
  */
 public interface IConfigListValueSerializer<T> extends IConfigValueSerializer<List<T>> {
 	/**
-	 * Get whether the order of entries changes the meaning of this config value.
+	 * Tell config editors whether reordering entries changes the setting's meaning.
 	 * <p>
 	 * MezzConfig preserves the physical order in the config file either way. Integrations can use this metadata to
 	 * decide whether reordering controls are useful.
@@ -42,7 +33,7 @@ public interface IConfigListValueSerializer<T> extends IConfigValueSerializer<Li
 	}
 
 	/**
-	 * Get the serializer for each list element.
+	 * Get the serializer config editors should use for individual elements.
 	 *
 	 * @since 0.1.0
 	 */

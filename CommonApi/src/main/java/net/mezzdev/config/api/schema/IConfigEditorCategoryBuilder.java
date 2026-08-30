@@ -3,12 +3,10 @@ package net.mezzdev.config.api.schema;
 import org.jetbrains.annotations.ApiStatus;
 
 /**
- * Builds an editor-only category.
+ * Identifies a config-screen category while a schema is being declared.
  * <p>
- * An instance is returned when a schema creates an editor-only category here:
- * {@link IConfigSchemaBuilder#addEditorCategory(String)}.
- * Storage category builders from {@link IConfigSchemaBuilder#addCategory(String)} can also be used as editor
- * categories.
+ * Get an instance from {@link IConfigSchemaBuilder#addEditorCategory(String)}, then pass it to config value builders to
+ * place values in that category. Storage category builders can be used in the same way.
  *
  * @since 0.1.0
  */

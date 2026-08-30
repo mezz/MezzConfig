@@ -1,7 +1,5 @@
 package net.mezzdev.config.api.value;
 
-import net.mezzdev.config.api.schema.IConfigCategory;
-import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import org.jetbrains.annotations.ApiStatus;
@@ -11,18 +9,14 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Represents a config value.
- * Config values can be read or updated by mods.
+ * Provides runtime access to one config setting.
  * <p>
- * Config values are automatically synchronized with their backing file. A restart-required value distinguishes the
- * value currently in effect from the saved value selected for the next applicable restart.
+ * Keep the instance returned by {@link IConfigValueBuilder#build()}. Use {@link #getValue()} for the setting currently in
+ * effect and {@link #set(Object)} to validate, save, and apply a new value. For settings that require a restart,
+ * {@link #getPendingValue()} reports what is saved for the next restart while {@code getValue()} continues to report the
+ * active value.
  * <p>
- * Add a value to your category with the add methods on {@link IConfigCategoryBuilder}.
- * Get registered values here: {@link IConfigCategory#getConfigValues()}.
- * Listener registration and removal are thread-safe, and listener callbacks follow the synchronous ordering, failure
- * isolation, stable-snapshot, and reentrancy contract documented by {@link IConfigSchema}.
- * <p>
- * Runtime methods are thread-safe. Listener behavior follows {@link IConfigSchema}.
+ * Runtime methods and listener registration are thread-safe. Listeners run synchronously after a change is applied.
  *
  * @param <T> an effectively immutable value type with stable {@link Object#equals(Object)} behavior
  *
@@ -31,7 +25,7 @@ import java.util.function.Consumer;
 @ApiStatus.NonExtendable
 public interface IConfigValue<T> {
 	/**
-	 * Get the name of this config value.
+	 * Get the stable storage name of this config value.
 	 *
 	 * @since 0.1.0
 	 */
@@ -54,7 +48,7 @@ public interface IConfigValue<T> {
 	T getValue();
 
 	/**
-	 * Get the saved value selected by the most recent edit or file load.
+	 * Get the saved value, including a restart-required change that is not effective yet.
 	 * <p>
 	 * This equals {@link #getValue()} when no restart is required or no change is pending. Setting this back to the
 	 * effective value cancels a pending change. Synchronized remote server schemas replicate effective values only, so
@@ -102,13 +96,10 @@ public interface IConfigValue<T> {
 	List<? extends IConfigEditorCategory> getEditorCategories();
 
 	/**
-	 * Set the config value to the given value.
-	 * This automatically saves the new value. If a restart is required, the new value remains pending until that lifecycle
-	 * boundary and {@link #getValue()} remains unchanged.
-	 * Built-in list values are copied to an unmodifiable snapshot before this method returns.
+	 * Validate and save a new value.
 	 * <p>
-	 * Use {@link IConfigSchema#batchUpdate(Consumer)} to update
-	 * several config values together.
+	 * The value becomes effective immediately unless this setting has a restart requirement. Use
+	 * {@link IConfigSchema#batchUpdate(Consumer)} when several settings must change together.
 	 *
 	 * @param value new value
 	 * @return {@code true} if the saved value changed, or {@code false} if it was valid but already pending
@@ -122,8 +113,10 @@ public interface IConfigValue<T> {
 	boolean set(T value);
 
 	/**
-	 * Add a listener that is called when this config value's effective value changes. Pending changes do not invoke this
-	 * listener. It runs once for this value before its value-scoped batch listeners and the schema batch listeners.
+	 * Run code when this setting's effective value changes.
+	 * <p>
+	 * Use this to refresh behavior that depends on the active value. A restart-required edit invokes this listener only when
+	 * the saved value becomes effective.
 	 * @param listener callback accepting the applied change
 	 * @return a callback that removes this listener
 	 *
@@ -132,11 +125,9 @@ public interface IConfigValue<T> {
 	Runnable addListener(IConfigValueChangeListener<T> listener);
 
 	/**
-	 * Add a listener that is called when this config value's pending saved value changes.
+	 * Run code when this setting's saved value changes, even if it is waiting for a restart.
 	 * <p>
-	 * Values without a restart requirement invoke both effective and pending listeners. Restart-required values invoke
-	 * pending listeners when saved and effective listeners later when the applicable restart promotes the value. It runs
-	 * once for this value before its pending value-scoped and schema batch listeners.
+	 * Use this for editors or diagnostics that display the saved selection.
 	 *
 	 * @param listener callback accepting the pending change
 	 * @return a callback that removes this listener
@@ -146,12 +137,9 @@ public interface IConfigValue<T> {
 	Runnable addPendingListener(IConfigValueChangeListener<T> listener);
 
 	/**
-	 * Add a listener that is called with all effective-value changes from a batch containing this config value. Pending
-	 * changes do not invoke this listener.
+	 * Observe the complete effective-value batch whenever it includes this setting.
 	 * <p>
-	 * Use this when the listener needs to observe other config values updated in the same batch. It runs exactly once when
-	 * this value participates in a non-empty effective batch, after this value's single-value listeners and before schema
-	 * batch listeners. A batch that changes only other values does not invoke it.
+	 * Use this when reacting correctly requires the other settings changed by the same operation.
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener
 	 *
@@ -160,11 +148,9 @@ public interface IConfigValue<T> {
 	Runnable addBatchListener(IConfigValueBatchChangeListener listener);
 
 	/**
-	 * Add a listener that is called with all pending-value changes from a batch containing this config value.
+	 * Observe the complete saved-value batch whenever it includes this setting.
 	 * <p>
-	 * Use this when the listener needs to observe other pending values updated in the same batch. It runs exactly once when
-	 * this value participates in a non-empty pending batch, after this value's single-value listeners and before schema
-	 * pending batch listeners. A batch that changes only other values does not invoke it.
+	 * Use this when an editor or diagnostic view needs all saved selections from the same operation.
 	 *
 	 * @param listener callback accepting the pending changes
 	 * @return a callback that removes this listener
@@ -174,7 +160,7 @@ public interface IConfigValue<T> {
 	Runnable addPendingBatchListener(IConfigValueBatchChangeListener listener);
 
 	/**
-	 * Get the helper for serializing values to and from Strings, and validating values.
+	 * Get this setting's serializer for validation or custom editor integration.
 	 *
 	 * @since 0.1.0
 	 */

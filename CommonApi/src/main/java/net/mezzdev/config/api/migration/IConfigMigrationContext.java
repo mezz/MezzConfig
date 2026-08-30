@@ -8,18 +8,18 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * Collects typed updates for one legacy config migration transaction.
+ * Imports converted legacy settings without exposing MezzConfig's file format.
  * <p>
- * Use only the context passed to {@link IConfigMigrator#migrate}. Values are snapshotted and validated when queued.
- * MezzConfig validates the complete transaction after the migrator returns, persists it synchronously in MezzConfig's
- * current formats, and applies it only if every update can be committed.
+ * MezzConfig passes this to {@link IConfigMigrator#migrate(java.nio.file.Path, IConfigMigrationContext)}. Use
+ * {@link #set(IConfigValue, Object)} for schema values and {@link #setSortedValues(ISortingConfig, Collection, List)} for
+ * persistent sort orders. All updates from one migration succeed or fail together.
  *
  * @since 0.3.0
  */
 @ApiStatus.NonExtendable
 public interface IConfigMigrationContext {
 	/**
-	 * Set a value in the schema being migrated.
+	 * Import a converted value into the destination schema.
 	 * If the same value is set more than once, the last value is used.
 	 *
 	 * @param configValue config value to update
@@ -35,7 +35,7 @@ public interface IConfigMigrationContext {
 	<T> IConfigMigrationContext set(IConfigValue<T> configValue, T value);
 
 	/**
-	 * Set a sorting config's known values and visible order in this migration transaction.
+	 * Import a saved order, including any values the user had hidden.
 	 * <p>
 	 * The collections have the same meaning and validation rules as
 	 * {@link ISortingConfig#setSortedValues(Collection, List)}. They are copied before this method returns. The sorting

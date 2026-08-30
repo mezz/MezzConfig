@@ -1,7 +1,7 @@
 package net.mezzdev.config.api.value;
 
 /**
- * Listener for one applied config value change.
+ * Reacts when one config value changes.
  *
  * @param <T> config value type
  *

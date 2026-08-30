@@ -10,12 +10,13 @@ import org.jetbrains.annotations.ApiStatus;
 import java.util.List;
 
 /**
- * Builds config values for one config category.
+ * Declares the settings stored in one config category.
  * <p>
- * Create a builder for your category here: {@link IConfigSchemaBuilder#addCategory(String)}.
- * Value methods return a builder. Add any optional legacy migrations, then call {@link IConfigValueBuilder#build()}.
- * List value helpers create values whose serializers implement {@link IConfigListValueSerializer}.
- * Their default lists are copied immediately and stored as unmodifiable snapshots.
+ * Get an instance from {@link IConfigSchemaBuilder#addCategory(String)}. Prefer the built-in methods for common value
+ * types. Use {@link #addValue(String, Object, IConfigValueSerializer)} for a mod-specific type and
+ * {@link #addList(String, List, IConfigValueSerializer)} for a list of mod-specific elements. Each method returns a value
+ * builder for optional behavior such as restart requirements; call {@link IConfigValueBuilder#build()} to add that value
+ * to the category.
  *
  * @since 0.1.0
  */

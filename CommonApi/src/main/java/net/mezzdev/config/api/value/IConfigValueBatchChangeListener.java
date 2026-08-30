@@ -3,7 +3,7 @@ package net.mezzdev.config.api.value;
 import java.util.List;
 
 /**
- * Listener for an immutable batch of applied config value changes.
+ * Reacts to related config value changes after the complete batch is available.
  *
  * @since 0.3.0
  */

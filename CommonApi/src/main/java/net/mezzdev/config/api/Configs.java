@@ -9,7 +9,10 @@ import java.util.Iterator;
 import java.util.ServiceLoader;
 
 /**
- * Entry point for registering config schemas and sort orders.
+ * Entry point for registering configs with MezzConfig.
+ * <p>
+ * Get an {@link IConfigRegistration} with {@link #forMod(String)}, then use it to create config schemas or persistent sort
+ * orders. Config screens and other integrations can discover built schemas with {@link #getSchemas()}.
  *
  * @since 0.3.0
  */
@@ -17,7 +20,7 @@ public final class Configs {
 	private Configs() {}
 
 	/**
-	 * Create config registration for a mod under the conventional {@code config} directory.
+	 * Get a registration for config schemas and sort orders owned by a mod.
 	 *
 	 * @param modId mod id that owns the registered configs
 	 * @return config registration bound to this mod
@@ -29,7 +32,7 @@ public final class Configs {
 	}
 
 	/**
-	 * Get all registered config schemas.
+	 * Get all config schemas that have been built and registered.
 	 *
 	 * @return an unmodifiable snapshot of registered schemas
 	 *

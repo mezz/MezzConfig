@@ -6,18 +6,17 @@ import org.jetbrains.annotations.ApiStatus;
 import java.util.function.Consumer;
 
 /**
- * Collects config value updates for a batch.
+ * Queues related setting changes for {@link IConfigSchema#batchUpdate(Consumer)}.
  * <p>
- * Use the updater passed to {@link IConfigSchema#batchUpdate(Consumer)}.
- * Values are snapshotted and validated when queued, then the complete batch is validated and applied after the callback
- * returns. Listeners are notified after all changed values have updated and persistence has been scheduled.
+ * Call {@link #set(IConfigValue, Object)} for each desired value. MezzConfig validates and applies the complete group only
+ * after the callback returns, so listeners never observe a partially updated batch.
  *
  * @since 0.1.0
  */
 @ApiStatus.NonExtendable
 public interface IConfigBatchUpdater {
 	/**
-	 * Set a config value when this batch is applied.
+	 * Add or replace a value change in this batch.
 	 * <p>
 	 * If the same config value is set more than once, the last value is used.
 	 * Built-in list values are copied to an unmodifiable snapshot when queued.

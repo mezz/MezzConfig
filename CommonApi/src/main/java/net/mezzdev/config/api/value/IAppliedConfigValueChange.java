@@ -1,18 +1,12 @@
 package net.mezzdev.config.api.value;
 
-import net.mezzdev.config.api.schema.IConfigSchema;
 import org.jetbrains.annotations.ApiStatus;
 
-import java.util.function.Consumer;
-
 /**
- * One config value state change that has already been applied.
+ * Describes one setting before and after an applied change.
  * <p>
- * Get changes from {@link IConfigSchema#batchUpdate(Consumer)} and the effective- or pending-change listeners on
- * {@link IConfigValue} and {@link IConfigSchema}. Batch update results and pending listeners describe saved values;
- * effective listeners describe values currently in effect.
- * Old and new values satisfy the immutable value contract of {@link IConfigValue}; built-in lists are unmodifiable
- * snapshots and cannot be used to mutate config state.
+ * Batch updates and listeners provide these objects so mods can react without re-reading every setting. Pending listeners
+ * describe saved selections; effective listeners describe values currently used by the game.
  *
  * @param <T> config value type
  *

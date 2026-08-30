@@ -9,20 +9,26 @@ import java.nio.file.Path;
 import java.util.Comparator;
 
 /**
- * Creates config schemas and sort orders owned by one mod.
- * Every file-backed schema and sorting config must have a unique normalized absolute path. A path collision is rejected
- * before the conflicting config reads, creates, or modifies the file. In-memory sorting configs on a dedicated server
- * do not reserve a file path.
+ * Creates config schemas and persistent sort orders for one mod.
+ * <p>
+ * Get an instance from {@link Configs#forMod(String)}. Use a client schema for preferences shared across worlds, a
+ * client-per-world schema for preferences that should vary by world or multiplayer server, or a server schema for
+ * world-owned settings shared with connected clients. Add categories and values to the returned builder, then call
+ * {@link IConfigSchemaBuilder#build()}.
+ * <p>
+ * Sorting configs are for persistent user-defined ordering of values discovered at runtime.
+ * Each schema and sorting config must use its own file; MezzConfig rejects duplicate paths before accessing them.
  *
  * @since 0.3.0
  */
 @ApiStatus.NonExtendable
 public interface IConfigRegistration {
 	/**
-	 * Create an always-active client config schema builder at the conventional location.
+	 * Create a client config shared across worlds and server connections.
+	 * <p>
+	 * MezzConfig stores it in the mod's conventional client config directory. The schema loads synchronously when built.
 	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
 	 * inactive, default-backed, and is not registered or connected to a file.
-	 * The schema loads synchronously when built.
 	 *
 	 * @param configFileName relative file name inside the mod's client config directory
 	 * @param localizationPath translation key prefix for the config file
@@ -33,7 +39,8 @@ public interface IConfigRegistration {
 	IConfigSchemaBuilder createClientSchemaBuilder(String configFileName, String localizationPath);
 
 	/**
-	 * Create a server-authoritative config schema builder for the active world.
+	 * Create a server-owned config stored with each world and synchronized to connected clients.
+	 * <p>
 	 * The server loads the distributable default from the conventional config directory and the authoritative values from
 	 * the active world's server config directory. Connected clients receive the server's effective values in memory.
 	 *
@@ -46,8 +53,9 @@ public interface IConfigRegistration {
 	IConfigSchemaBuilder createServerSchemaBuilder(String configFileName, String localizationPath);
 
 	/**
-	 * Create a context-specific client config schema builder with separate values for each singleplayer world or
-	 * multiplayer server.
+	 * Create a client config with separate values for each singleplayer world or multiplayer server.
+	 * <p>
+	 * Use this for client preferences that should follow the current world or server instead of the whole installation.
 	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
 	 * inactive, default-backed, and is not registered or connected to a file.
 	 *
@@ -60,7 +68,10 @@ public interface IConfigRegistration {
 	IConfigSchemaBuilder createClientPerWorldSchemaBuilder(String configFileName, String localizationPath);
 
 	/**
-	 * Create an always-active client config schema builder backed by one explicit file.
+	 * Create a client config stored at an explicit file path.
+	 * <p>
+	 * Use this when the conventional client config directory is not appropriate. Otherwise, prefer
+	 * {@link #createClientSchemaBuilder(String, String)}.
 	 * The supplied path is the complete config file location; MezzConfig does not append the mod id, ownership, or file
 	 * name. Relative paths are captured as normalized absolute paths when this method is called.
 	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
@@ -78,7 +89,7 @@ public interface IConfigRegistration {
 	IConfigSchemaBuilder createClientSchemaBuilderAtLocation(Path configFile, String localizationPath);
 
 	/**
-	 * Create an installation-scoped, string-backed client sort order.
+	 * Create a persistent user-defined order for strings discovered at runtime.
 	 * On a dedicated server, the sort order remains in memory and does not access a file.
 	 *
 	 * @param configFileName relative file name inside the mod's client config directory
@@ -96,7 +107,7 @@ public interface IConfigRegistration {
 	);
 
 	/**
-	 * Create an installation-scoped, serializer-backed client sort order.
+	 * Create a persistent user-defined order for mod-specific values discovered at runtime.
 	 * On a dedicated server, the sort order remains in memory and does not access a file.
 	 * Every sortable value must be valid for the serializer and round-trip to an equal value without diagnostics. The
 	 * serialized text is its persistent identity, so equal values must serialize identically and unequal values must not

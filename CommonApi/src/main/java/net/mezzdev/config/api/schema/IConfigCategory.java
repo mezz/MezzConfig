@@ -7,11 +7,10 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.List;
 
 /**
- * Storage categories organize {@link IConfigValue}s into config file groups.
- * An {@link IConfigSchema} contains one or more categories, and each storage category contains one or more values.
+ * A named group of values stored together in a config file.
  * <p>
- * Add a category to your schema here: {@link IConfigSchemaBuilder#addCategory(String)}.
- * Get registered categories here: {@link IConfigSchema#getCategories()}.
+ * Get the categories for a built schema from {@link IConfigSchema#getCategories()}. Config screens can use them for their
+ * default visual grouping, or use {@link IConfigSchema#getEditorCategories()} when the schema defines a separate layout.
  *
  * @since 0.1.0
  */

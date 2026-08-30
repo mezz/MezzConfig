@@ -8,17 +8,18 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Builds one config schema.
+ * Declares the settings stored in one config file or synchronized as one server config.
  * <p>
- * Create a builder with one of the schema factory methods on {@link IConfigRegistration}. Each factory selects a
- * complete supported schema type and storage location before returning the builder.
+ * Obtain a builder from {@link IConfigRegistration}, add storage categories, build every value, then call {@link #build()}
+ * during mod initialization. Add editor-only categories only when the config screen should organize values differently
+ * from the file.
  *
  * @since 0.1.0
  */
 @ApiStatus.NonExtendable
 public interface IConfigSchemaBuilder {
 	/**
-	 * Add a storage category to this config schema.
+	 * Add a named group of values to the config file.
 	 * Categories are returned from {@link IConfigSchema#getCategories()} in the order they are added here.
 	 *
 	 * @param name stable storage name for the category
@@ -28,7 +29,7 @@ public interface IConfigSchemaBuilder {
 	IConfigCategoryBuilder addCategory(String name);
 
 	/**
-	 * Add a category for config editors without adding a category to the config file.
+	 * Add a config-screen category without changing how values are grouped in the file.
 	 * Editor categories are returned from {@link IConfigSchema#getEditorCategories()} in the order they are added here.
 	 *
 	 * @param name stable editor category name
@@ -38,18 +39,17 @@ public interface IConfigSchemaBuilder {
 	IConfigEditorCategoryBuilder addEditorCategory(String name);
 
 	/**
-	 * Register a one-time migration from the first existing file in an ordered list of legacy locations.
+	 * Import a config file that the mod used before adopting MezzConfig.
 	 * <p>
-	 * Relative paths are captured as normalized absolute paths when this method is called. When this schema is built with
-	 * an active local destination, MezzConfig attempts migration only if that destination is absent. The migrator runs
-	 * after every value declared on this builder has been built and may queue typed value and sorting updates. MezzConfig
-	 * backs up the selected legacy file, validates the complete transaction, and synchronously persists it in MezzConfig's
-	 * current formats. The legacy source is never modified or removed.
+	 * Use this for a whole-file import when adopting MezzConfig. To rename, move, or convert a value already stored by
+	 * MezzConfig, use the legacy methods on {@link net.mezzdev.config.api.value.IConfigValueBuilder} instead.
 	 * <p>
-	 * The migrator receives the final structured outcome through
-	 * {@link IConfigMigrator#onMigrationComplete(net.mezzdev.config.api.migration.IConfigMigrationResult)} before
-	 * {@link #build()} returns. If migration fails, no queued update is applied and the missing schema destination is not
-	 * created automatically, allowing another attempt on the next launch unless a later config edit creates it.
+	 * Declare and build the destination values first so the migrator can update them. The paths are checked in order, which
+	 * supports mods that used more than one old location. Migration is considered only when the new config does not exist.
+	 * <p>
+	 * The migrator parses the old format and supplies typed values; MezzConfig preserves and backs up the source, validates
+	 * the complete import, and writes the new format atomically. See the {@link net.mezzdev.config.api.migration migration
+	 * package} for an example.
 	 *
 	 * @param legacyPaths ordered candidate legacy file paths; must not be empty
 	 * @param migrator callback that parses the selected legacy file and queues typed updates
@@ -63,13 +63,12 @@ public interface IConfigSchemaBuilder {
 	IConfigSchemaBuilder setLegacyMigration(List<Path> legacyPaths, IConfigMigrator migrator);
 
 	/**
-	 * Build and register the config schema.
-	 * A builder may only be built once.
-	 * Build client and server schemas from the mod's primary initializer or constructor. On a dedicated server, client
-	 * schemas are built as inactive, default-backed objects and are not registered. Register schemas before client
-	 * config-screen setup when using automatically generated config screens. MezzConfigGUI's Forge and NeoForge
-	 * config-screen factories include the schemas registered when client setup runs.
-	 * For a currently active file-backed schema, the initial file load or creation is synchronous.
+	 * Finish the declaration, register the schema, and load its initial values.
+	 * <p>
+	 * Call this once during mod initialization, after every value builder has been built. Build before registering generated
+	 * config screens so integrations can discover the schema. Client schemas built on a dedicated server remain inactive
+	 * and default-backed, which allows the same declaration code to run on both sides. Active local files are loaded or
+	 * created before this method returns.
 	 *
 	 * @return the registered config schema
 	 * @throws IllegalArgumentException when a backing file path is already reserved or the complete default config cannot

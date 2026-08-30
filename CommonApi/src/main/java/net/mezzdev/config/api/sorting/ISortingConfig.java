@@ -1,7 +1,6 @@
 package net.mezzdev.config.api.sorting;
 
 import net.mezzdev.config.api.IConfigRegistration;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -10,20 +9,15 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Stores and applies a user-configurable sort order for values discovered at runtime.
+ * Stores a user's preferred order for values discovered at runtime.
  * <p>
- * Create and register a string sort order with
- * {@link IConfigRegistration#createSortingConfig(String, Comparator, boolean)}, or a generic sort order with
- * {@link IConfigRegistration#createSortingConfig(String, IConfigValueSerializer, Comparator, boolean)}.
+ * Pass the currently available values to {@link #getSortedValues(Collection)} whenever they need to be displayed. New
+ * values are inserted using the default comparator, missing values are ignored, and any user-hidden values remain hidden.
+ * Save edits with {@link #setSortedValues(Collection, List)}.
  * <p>
- * Values must be non-null and effectively immutable while held by the sorting config. Their
- * {@link Object#equals(Object)} and {@link Object#hashCode()} results must remain stable, because equality identifies
- * the same sortable value across saved preferences and runtime value collections.
- * Generic sort orders also use the serializer's deterministic text as persistent identity. Equal values must serialize
- * identically, unequal values must not share serialized text, and every value must round-trip without diagnostics.
- * <p>
- * Methods are thread-safe, but concurrent operations have no defined order. Listeners run synchronously after an update
- * is committed.
+ * Create one through {@link IConfigRegistration#createSortingConfig(String, Comparator, boolean)}. Use the serializer
+ * overload for mod-specific value types; those values must be immutable and have stable equality and serialization.
+ * Runtime methods and listener registration are thread-safe.
  *
  * @param <T> effectively immutable value type with stable equality and hash codes
  *
@@ -32,10 +26,7 @@ import java.util.List;
 @ApiStatus.NonExtendable
 public interface ISortingConfig<T> {
 	/**
-	 * Get the sorted visible values from the given complete value set.
-	 * The saved preference is reconciled against the values supplied to each call, so newly added and removed runtime
-	 * values are reflected in the result. Newly discovered values are visible by default, including when
-	 * {@link #allowsRemovingValues()} is {@code true}; only values that have been explicitly removed remain hidden.
+	 * Apply the saved user preference to the values currently available.
 	 *
 	 * @param allValues every value that may be sorted
 	 * @return an unmodifiable, duplicate-free snapshot of the sorted visible values
@@ -48,7 +39,7 @@ public interface ISortingConfig<T> {
 	List<T> getSortedValues(Collection<T> allValues);
 
 	/**
-	 * Get the default sorted visible values from the given complete value set.
+	 * Sort the currently available values without applying the user's saved preference.
 	 *
 	 * @param allValues every value that may be sorted
 	 * @return an unmodifiable, duplicate-free snapshot of the default sorted visible values
@@ -59,13 +50,10 @@ public interface ISortingConfig<T> {
 	List<T> getDefaultSortedValues(Collection<T> allValues);
 
 	/**
-	 * Set and persist a new sorted value list.
-	 * Both collections are copied to unmodifiable snapshots before this method returns. Every value in
-	 * {@code sortedValues} must be present in {@code allValues}.
+	 * Save the user's preferred order for the values currently available.
 	 * <p>
-	 * When removal is allowed, a value from {@code allValues} is explicitly hidden when it is omitted from
-	 * {@code sortedValues}. Previously hidden values are made visible again when they are included. When removal is not
-	 * allowed, omitted values are appended in their default order.
+	 * When removal is allowed, omitting an available value hides it. Otherwise omitted values remain visible and are
+	 * appended in default order.
 	 *
 	 * @param allValues every value that may be sorted
 	 * @param sortedValues the non-null, duplicate-free sorted values to save
@@ -80,7 +68,7 @@ public interface ISortingConfig<T> {
 	boolean setSortedValues(Collection<T> allValues, List<T> sortedValues);
 
 	/**
-	 * Get a comparator that follows this sort order.
+	 * Get a comparator that applies the saved preference to the currently available values.
 	 *
 	 * @param allValues every value that may be sorted
 	 * @return a comparator using this sort order
@@ -90,7 +78,7 @@ public interface ISortingConfig<T> {
 	Comparator<T> getComparator(Collection<T> allValues);
 
 	/**
-	 * Return whether the given value is present in this sort order.
+	 * Return whether the user-visible order currently includes a value.
 	 *
 	 * @param allValues every value that may be sorted
 	 * @param value value to check
@@ -101,20 +89,16 @@ public interface ISortingConfig<T> {
 	boolean isVisible(Collection<T> allValues, T value);
 
 	/**
-	 * Return whether values may be removed from this sort order.
-	 * Explicitly removed values are not returned by {@link #getSortedValues(Collection)} until they are added back with
-	 * {@link #setSortedValues(Collection, List)}. Values discovered after an order was saved remain visible by default.
+	 * Return whether users may hide values by removing them from their saved order.
 	 *
 	 * @since 0.1.0
 	 */
 	boolean allowsRemovingValues();
 
 	/**
-	 * Register a callback invoked when this sort order changes.
+	 * Run code after the user's saved order changes.
 	 * <p>
-	 * Callbacks run synchronously on the thread calling {@link #setSortedValues(Collection, List)}, after the new in-memory
-	 * order is committed and persistence has been attempted. Registration and removal are thread-safe. A runtime exception
-	 * is logged without preventing later callbacks.
+	 * Use this to refresh a view that displays the sorted values. Callbacks run synchronously after the new order is active.
 	 *
 	 * @param listener callback to run after the sort order changes
 	 * @return a callback that removes this listener

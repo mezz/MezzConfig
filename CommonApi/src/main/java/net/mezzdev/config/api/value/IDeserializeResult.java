@@ -9,17 +9,15 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The result of deserializing a config value.
+ * Reports whether a custom serializer could use stored text and what was wrong with it.
  * <p>
- * A result always has exactly one of these outcomes:
+ * Return one of these outcomes from {@link IConfigValueSerializer#deserialize(String)}:
  * <ul>
  *     <li>success: a non-null result and no diagnostics;</li>
  *     <li>partial success: a non-null, usable result and one or more diagnostics;</li>
  *     <li>failure: no result and one or more diagnostics.</li>
  * </ul>
- * Create a result with {@link #success(Object)}, {@link #partialSuccess(Object, String)},
- * {@link #partialSuccess(Object, List)}, {@link #failure(String)}, or {@link #failure(List)} and return it from
- * {@link IConfigValueSerializer#deserialize(String)}.
+ * Partial success lets a mod preserve a usable value while explaining a repair or ignored portion of the input.
  *
  * @param <T> effectively immutable deserialized value type
  *
@@ -106,14 +104,14 @@ public interface IDeserializeResult<T> {
 	}
 
 	/**
-	 * The usable deserialization result, or {@link Optional#empty()} if deserialization failed.
+	 * Get the usable value, or an empty optional when parsing failed.
 	 *
 	 * @since 0.1.0
 	 */
 	Optional<T> getResult();
 
 	/**
-	 * Diagnostics produced while deserializing.
+	 * Get messages that explain a repaired or rejected input.
 	 * <p>
 	 * This is empty for success and non-empty for partial success and failure.
 	 *

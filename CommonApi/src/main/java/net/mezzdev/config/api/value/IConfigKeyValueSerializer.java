@@ -1,24 +1,14 @@
 package net.mezzdev.config.api.value;
 
-import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
-
-import java.util.List;
 import java.util.Map;
 
 /**
- * Serialization and validation helper for a config value that represents a key-value entry.
+ * Lets config editors treat a mod-specific value as separately editable key and value components.
  * <p>
- * Use this when integrations should be able to edit both components independently while preserving the entry's
- * type and its serialized format. For example, an ordered list can use this as its element serializer to expose
- * map-style rows without changing the config value to a {@link Map}.
- * <p>
- * Pass an implementation to {@link IConfigCategoryBuilder#addValue(String, Object, IConfigValueSerializer)} or
- * {@link IConfigCategoryBuilder#addList(String, List, IConfigValueSerializer)}.
- * <p>
- * For every entry accepted by {@link #isValid(Object)}, the extracted key and value must be accepted by their component
- * serializers. Rebuilding an entry from those extracted components must return an equal entry. {@link #createEntry(Object,
- * Object)} must not throw for components accepted by their serializers, and the returned entry must preserve the supplied
- * components; integrations may still use {@link #isValid(Object)} to reject combinations that are not valid together.
+ * This is useful for map-like entries in an ordered list, where changing the Java type to {@link Map} would lose entry
+ * order or other domain data. Each component serializer defines its own editor and validation behavior; rebuilding an
+ * unchanged entry must produce an equal value. Every accepted entry must have valid components, and
+ * {@link #createEntry(Object, Object)} must accept every component pair allowed by the component serializers.
  *
  * @param <T> entry type
  * @param <K> key type

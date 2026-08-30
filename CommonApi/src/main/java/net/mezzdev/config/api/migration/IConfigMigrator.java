@@ -3,18 +3,23 @@ package net.mezzdev.config.api.migration;
 import java.nio.file.Path;
 
 /**
- * Reads one caller-owned legacy file and queues typed updates for MezzConfig.
+ * Imports a config file from the format a mod used before adopting MezzConfig.
  * <p>
- * The migrator owns parsing its legacy format. It must not create or serialize MezzConfig destination files. MezzConfig
- * backs up the selected source before invoking the migrator and preserves the source whether migration succeeds or fails.
+ * Register a migrator with
+ * {@link net.mezzdev.config.api.schema.IConfigSchemaBuilder#setLegacyMigration(java.util.List, IConfigMigrator)}. Parse
+ * the old file in {@link #migrate(Path, IConfigMigrationContext)} and pass converted values to the migration context.
+ * MezzConfig handles backup, validation, and writing the new config, so migrators never need to understand MezzConfig's
+ * file format.
  *
  * @since 0.3.0
  */
 @FunctionalInterface
 public interface IConfigMigrator {
 	/**
-	 * Read a legacy file and queue all migrated updates in the supplied transaction context.
-	 * Throwing aborts the complete transaction.
+	 * Import values from the selected legacy file.
+	 * <p>
+	 * Read the old format from {@code legacyPath} and call the context's typed update methods for every setting to import.
+	 * Throw an exception when the old file cannot be interpreted; MezzConfig will leave the new config unchanged.
 	 *
 	 * @param legacyPath normalized absolute path to the selected legacy file
 	 * @param context context for typed config value and sorting updates
@@ -25,10 +30,11 @@ public interface IConfigMigrator {
 	void migrate(Path legacyPath, IConfigMigrationContext context) throws Exception;
 
 	/**
-	 * Handle the final outcome of this registered migration.
+	 * Receive the final migration outcome for logging, diagnostics, or user-facing feedback.
 	 * <p>
-	 * MezzConfig calls this exactly once after it finishes migration processing, including when migration is skipped or
-	 * fails. An exception thrown by this method is logged and does not change the completed migration outcome.
+	 * Override this when the mod needs to handle skipped migrations or failures that happen after {@link #migrate} returns.
+	 * Lambdas may ignore it. MezzConfig calls it once for every registered migration after reaching a final outcome. An
+	 * exception from this method is logged and does not change that outcome.
 	 *
 	 * @param result final structured migration result
 	 *
