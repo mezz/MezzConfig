@@ -1,7 +1,7 @@
 package net.mezzdev.config.registration;
 
+import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.IConfigRegistration;
-import net.mezzdev.config.api.internal.IConfigProvider;
 import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
@@ -28,7 +28,7 @@ import java.util.Iterator;
 import java.util.Optional;
 import java.util.ServiceLoader;
 
-public final class ConfigProvider implements IConfigProvider {
+public final class ConfigProvider implements Configs.IConfigProvider {
 	private static final ConfigPhysicalSideProvider PHYSICAL_SIDE_PROVIDER = loadPhysicalSideProvider();
 	private static final boolean CLIENT_CONFIGS_AVAILABLE = PHYSICAL_SIDE_PROVIDER.isPhysicalClient();
 	private static final ConfigManager CONFIG_MANAGER = createConfigManager();

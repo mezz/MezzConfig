@@ -1,7 +1,7 @@
 package net.mezzdev.config.api;
 
-import net.mezzdev.config.api.internal.IConfigProvider;
 import net.mezzdev.config.api.schema.IConfigSchema;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Collection;
@@ -40,6 +40,20 @@ public final class Configs {
 		return ProviderHolder.PROVIDER.getSchemas();
 	}
 
+	/**
+	 * @hidden
+	 */
+	@ApiStatus.Internal
+	public interface IConfigProvider {
+		IConfigRegistration createRegistration(String modId);
+
+		Collection<? extends IConfigSchema> getSchemas();
+	}
+
+	/**
+	 * @hidden
+	 */
+	@ApiStatus.Internal
 	private static final class ProviderHolder {
 		private static final IConfigProvider PROVIDER = loadProvider();
 
