@@ -18,8 +18,10 @@
  * The parser only needs to understand the old format. MezzConfig backs up the source, validates all migrated values, and
  * writes its current format without exposing that format to the mod.
  * <p>
- * To rename, move, or convert a value already stored by MezzConfig, use the legacy methods on
- * {@link net.mezzdev.config.api.value.IConfigValueBuilder} instead.
+ * To load a MezzConfig file from an older location, use
+ * {@link net.mezzdev.config.api.schema.IConfigSchemaBuilder#setLegacySources(java.util.List)}. To rename, move, or convert
+ * a value inside an existing MezzConfig file, use the legacy methods on
+ * {@link net.mezzdev.config.api.value.IConfigValueBuilder}.
  */
 @NullMarked
 package net.mezzdev.config.api.migration;

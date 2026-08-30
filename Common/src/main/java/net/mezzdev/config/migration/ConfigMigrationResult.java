@@ -1,4 +1,4 @@
-package net.mezzdev.config.schema;
+package net.mezzdev.config.migration;
 
 import net.mezzdev.config.api.migration.ConfigMigrationStatus;
 import net.mezzdev.config.api.migration.IConfigMigrationResult;
@@ -7,14 +7,14 @@ import org.jetbrains.annotations.Nullable;
 import java.nio.file.Path;
 import java.util.Optional;
 
-record ConfigMigrationResult(
+public record ConfigMigrationResult(
 	ConfigMigrationStatus status,
 	@Nullable Path destinationPath,
 	@Nullable Path legacyPath,
 	@Nullable Path backupPath,
 	@Nullable Exception failure
 ) implements IConfigMigrationResult {
-	ConfigMigrationResult {
+	public ConfigMigrationResult {
 		destinationPath = normalize(destinationPath);
 		legacyPath = normalize(legacyPath);
 		backupPath = normalize(backupPath);

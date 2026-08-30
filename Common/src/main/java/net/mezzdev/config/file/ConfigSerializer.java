@@ -10,6 +10,7 @@ import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.AppliedConfigValueChange;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
+import net.mezzdev.config.value.ConfigValueUpdate;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
@@ -172,14 +173,57 @@ public final class ConfigSerializer {
 			recoverMalformedFile(path, categories, new FailureFingerprint(e.fingerprint()), 1, settings);
 			return List.of();
 		}
-		List<String> lines = contents.lines();
+		ParsedConfigFile parsedFile = parse(path, categories, contents.lines(), true);
+		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
+		parsedFile.values().forEach(value -> value.apply(changes));
+		if (parsedFile.problemCount() > 0) {
+			recoverMalformedFile(
+				path,
+				categories,
+				new FailureFingerprint(contents.fingerprint()),
+				parsedFile.problemCount(),
+				settings
+			);
+		} else {
+			recoveryAttempts.remove(path.toAbsolutePath().normalize());
+		}
+		return List.copyOf(changes);
+	}
 
+	public static List<ConfigValueUpdate<?>> parseMigrationUpdates(
+		Path path,
+		List<ConfigCategory> categories
+	) throws IOException, ConfigFileReader.MalformedFileException {
+		LOGGER.debug("Loading legacy MezzConfig source: {}", path);
+		ConfigFileReader.Contents contents = ConfigFileReader.read(path);
+		ParsedConfigFile parsedFile = parse(path, categories, contents.lines(), false);
+		Map<ConfigValue<?>, ConfigValueUpdate<?>> updates = new LinkedHashMap<>();
+		for (ParsedConfigValue<?> value : parsedFile.values()) {
+			value.createUpdate()
+				.ifPresent(update -> updates.put(update.configValue(), update));
+		}
+		if (parsedFile.problemCount() > 0) {
+			LOGGER.warn(
+				"Legacy MezzConfig source '{}' had {} problem(s); usable values will be imported and the source will remain unchanged.",
+				path,
+				parsedFile.problemCount()
+			);
+		}
+		return List.copyOf(updates.values());
+	}
+
+	private static ParsedConfigFile parse(
+		Path path,
+		List<ConfigCategory> categories,
+		List<String> lines,
+		boolean reportLegacyMappings
+	) {
 		Map<String, ConfigCategory> categoriesMap = new LinkedHashMap<>();
 		for (ConfigCategory category : categories) {
 			categoriesMap.put(category.getName(), category);
 		}
 
-		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
+		List<ParsedConfigValue<?>> parsedValues = new ArrayList<>();
 		Set<ConfigValue<?>> encounteredValues = Collections.newSetFromMap(new IdentityHashMap<>());
 		ProblemTracker problems = new ProblemTracker(path);
 		String categoryName = "";
@@ -195,9 +239,9 @@ public final class ConfigSerializer {
 				categoryName = categoryMatcher.group("category");
 				category = categoriesMap.get(categoryName);
 				if (category == null) {
-					if (hasMovedValues(categoryName, categories)) {
+					if (hasMovedValues(categoryName, categories) && reportLegacyMappings) {
 						problems.log(lineNumber, line, "Legacy config category '[%s]' will be migrated.".formatted(categoryName));
-					} else {
+					} else if (!hasMovedValues(categoryName, categories)) {
 						problems.log(lineNumber, line,
 							"""
 						'[%s]' is not a valid category name.
@@ -247,12 +291,17 @@ public final class ConfigSerializer {
 					if (migrations.isEmpty()) {
 						problems.log(lineNumber, line, getUnknownConfigValueError(category, categoryName, key));
 					} else {
-						problems.log(lineNumber, line, "Legacy config value '%s.%s' will be migrated.".formatted(categoryName, key));
-						int previousChangeCount = changes.size();
+						if (reportLegacyMappings) {
+							problems.log(lineNumber, line, "Legacy config value '%s.%s' will be migrated.".formatted(categoryName, key));
+						}
 						List<String> diagnostics = new ArrayList<>();
-						migrations.forEach(migration -> diagnostics.addAll(migration.migrate(value, changes)));
-						for (int changeIndex = previousChangeCount; changeIndex < changes.size(); changeIndex++) {
-							encounteredValues.add(changes.get(changeIndex).configValue());
+						for (ConfigValueMigration<?> migration : migrations) {
+							ParsedConfigValue<?> parsedValue = parseMigration(migration, value);
+							parsedValues.add(parsedValue);
+							diagnostics.addAll(parsedValue.result().getDiagnostics());
+							if (parsedValue.hasValue()) {
+								encounteredValues.add(parsedValue.configValue());
+							}
 						}
 						if (!diagnostics.isEmpty()) {
 							problems.log(
@@ -268,7 +317,9 @@ public final class ConfigSerializer {
 						problems.log(lineNumber, line, "Config value '%s.%s' was declared more than once; the last usable value wins."
 							.formatted(categoryName, key));
 					}
-					List<String> diagnostics = setFromConfigFileValue(knownValue, value, changes);
+					ParsedConfigValue<?> parsedValue = parseConfigValue(knownValue, value);
+					parsedValues.add(parsedValue);
+					List<String> diagnostics = parsedValue.result().getDiagnostics();
 					if (!diagnostics.isEmpty()) {
 						problems.log(lineNumber, line, getDeserializeDiagnostics(ConfigFileValueCodec.serialize(value), diagnostics));
 					}
@@ -284,27 +335,22 @@ public final class ConfigSerializer {
 				);
 			}
 		}
-		if (problems.count() > 0) {
-			recoverMalformedFile(
-				path,
-				categories,
-				new FailureFingerprint(contents.fingerprint()),
-				problems.count(),
-				settings
-			);
-		} else {
-			recoveryAttempts.remove(path.toAbsolutePath().normalize());
-		}
-		return List.copyOf(changes);
+		return new ParsedConfigFile(parsedValues, problems.count());
 	}
 
-	private static <T> List<String> setFromConfigFileValue(
+	private static <T> ParsedConfigValue<T> parseConfigValue(
 		ConfigValue<T> configValue,
-		JsonElement value,
-		List<AppliedConfigValueChange<?>> changes
+		JsonElement value
 	) {
 		IDeserializeResult<T> result = ConfigFileValueAdapter.deserialize(configValue.getSerializer(), value);
-		return configValue.setFromDeserializedValue(result, changes);
+		return new ParsedConfigValue<>(configValue, result, null);
+	}
+
+	private static <T> ParsedConfigValue<T> parseMigration(
+		ConfigValueMigration<T> migration,
+		JsonElement value
+	) {
+		return new ParsedConfigValue<>(migration.configValue(), migration.deserialize(value), migration);
 	}
 
 	private static void recoverMalformedFile(
@@ -407,6 +453,38 @@ public final class ConfigSerializer {
 			return "…";
 		}
 		return value.substring(0, maxCharacters - 1) + "…";
+	}
+
+	private record ParsedConfigFile(
+		List<ParsedConfigValue<?>> values,
+		int problemCount
+	) {
+		private ParsedConfigFile {
+			values = List.copyOf(values);
+		}
+	}
+
+	private record ParsedConfigValue<T>(
+		ConfigValue<T> configValue,
+		IDeserializeResult<T> result,
+		@Nullable ConfigValueMigration<T> migration
+	) {
+		private boolean hasValue() {
+			return result.getResult().isPresent();
+		}
+
+		private void apply(List<AppliedConfigValueChange<?>> changes) {
+			if (migration == null) {
+				configValue.setFromDeserializedValue(result, changes);
+			} else {
+				migration.apply(result, changes);
+			}
+		}
+
+		private Optional<ConfigValueUpdate<?>> createUpdate() {
+			return result.getResult()
+				.map(value -> new ConfigValueUpdate<>(configValue, value));
+		}
 	}
 
 	private record FailureFingerprint(String value) {}

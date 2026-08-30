@@ -14,6 +14,7 @@ import net.mezzdev.config.file.ConfigFileValueCodec;
 import net.mezzdev.config.file.ConfigFileTransaction;
 import net.mezzdev.config.file.ConfigFileUtil;
 import net.mezzdev.config.file.ConfigSerializer;
+import net.mezzdev.config.migration.ConfigMigrationResult;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigValueData;
@@ -438,7 +439,11 @@ public class ConfigSchema implements IConfigSchema {
 			backupPath = ConfigFileUtil.backUpFile(legacyPath);
 			ConfigMigrationContext context = new ConfigMigrationContext(this);
 			try {
-				migrationSpec.migrator().migrate(legacyPath, context);
+				if (migrationSpec.loadsAlternateSource()) {
+					context.addValueUpdates(ConfigSerializer.parseMigrationUpdates(legacyPath, categories));
+				} else {
+					migrationSpec.migrate(legacyPath, context);
+				}
 			} finally {
 				context.close();
 			}
@@ -471,7 +476,7 @@ public class ConfigSchema implements IConfigSchema {
 	private void completeMigration(ConfigMigrationResult result) {
 		migrationCompleted = true;
 		try {
-			migrationSpec.migrator().onMigrationComplete(result);
+			migrationSpec.onMigrationComplete(result);
 		} catch (RuntimeException callbackFailure) {
 			LOGGER.error("Failed to handle the completed legacy config migration for '{}'.", id, callbackFailure);
 		}

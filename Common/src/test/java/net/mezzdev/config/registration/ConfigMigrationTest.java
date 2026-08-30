@@ -7,8 +7,11 @@ import net.mezzdev.config.api.migration.IConfigMigrationResult;
 import net.mezzdev.config.api.migration.IConfigMigrator;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
+import net.mezzdev.config.api.sorting.ISortingConfigMigrationContext;
+import net.mezzdev.config.api.sorting.ISortingConfigMigrator;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.file.ConfigFileUtil;
+import net.mezzdev.config.serializers.StringSerializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -21,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigMigrationTest {
@@ -76,6 +80,201 @@ public class ConfigMigrationTest {
 		assertTrue(Files.isRegularFile(getClientPath(configRoot, "client.ini")));
 		assertTrue(Files.isRegularFile(getClientPath(configRoot, "sorting.ini")));
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(laterLegacyPath, 1)));
+	}
+
+	@Test
+	public void alternateSourcesUseDeclaredValueMappings(@TempDir Path configRoot) throws IOException {
+		Path missingLegacyPath = configRoot.resolve("old/missing.ini");
+		Path selectedLegacyPath = configRoot.resolve("old/selected.ini");
+		Path laterLegacyPath = configRoot.resolve("old/later.ini");
+		String legacyContents = """
+			[general]
+			oldEnabled = false
+			name = "imported"
+
+			[oldCategory]
+			countText = "7"
+			""";
+		writeFile(selectedLegacyPath, legacyContents);
+		writeFile(laterLegacyPath, "[general]\noldEnabled = true\n");
+
+		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
+		IConfigSchemaBuilder builder = registration.createClientSchemaBuilder("client.ini", "migration_test.client");
+		var general = builder.addCategory("general");
+		IConfigValue<Boolean> enabled = general.addBoolean("enabled", true)
+			.addLegacyName("oldEnabled")
+			.build();
+		IConfigValue<String> name = general.addString("name", "default")
+			.build();
+		IConfigValue<Integer> count = general.addInteger("count", 0)
+			.addLegacyValueMigration("oldCategory", "countText", StringSerializer.INSTANCE, Integer::parseInt)
+			.build();
+		builder.setLegacySources(List.of(missingLegacyPath, selectedLegacyPath, laterLegacyPath));
+
+		builder.build();
+
+		assertFalse(enabled.getValue());
+		assertEquals("imported", name.getValue());
+		assertEquals(7, count.getValue());
+		Path destinationPath = getClientPath(configRoot, "client.ini");
+		assertTrue(Files.isRegularFile(destinationPath));
+		assertEquals(legacyContents, Files.readString(selectedLegacyPath));
+		assertEquals(legacyContents, Files.readString(ConfigFileUtil.getBackupPath(selectedLegacyPath, 1)));
+		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(laterLegacyPath, 1)));
+		List<String> destinationLines = Files.readAllLines(destinationPath);
+		assertTrue(destinationLines.stream().anyMatch(line -> line.strip().equals("enabled = false")));
+		assertTrue(destinationLines.stream().anyMatch(line -> line.strip().equals("count = 7")));
+		assertFalse(destinationLines.stream().anyMatch(line -> line.contains("oldEnabled") || line.contains("oldCategory")));
+	}
+
+	@Test
+	public void malformedAlternateSourcePreservesDefaultsAndDoesNotCreateDestination(@TempDir Path configRoot) throws IOException {
+		Path legacyPath = configRoot.resolve("old/client.ini");
+		Files.createDirectories(legacyPath.getParent());
+		byte[] malformedContents = {(byte) 0xC3, (byte) 0x28};
+		Files.write(legacyPath, malformedContents);
+
+		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
+		IConfigSchemaBuilder builder = registration.createClientSchemaBuilder("client.ini", "migration_test.client");
+		IConfigValue<Boolean> enabled = builder.addCategory("general")
+			.addBoolean("enabled", true)
+			.build();
+		builder.setLegacySources(List.of(legacyPath));
+
+		builder.build();
+
+		assertTrue(enabled.getValue());
+		assertFalse(Files.exists(getClientPath(configRoot, "client.ini")));
+		assertEquals(-1L, Files.mismatch(legacyPath, ConfigFileUtil.getBackupPath(legacyPath, 1)));
+	}
+
+	@Test
+	public void schemaAllowsOnlyOneLegacySourceOrMigrationRegistration(@TempDir Path configRoot) {
+		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
+		IConfigSchemaBuilder builder = registration.createClientSchemaBuilder("client.ini", "migration_test.client");
+		builder.setLegacySources(List.of(configRoot.resolve("old/client.ini")));
+
+		assertThrows(
+			IllegalStateException.class,
+			() -> builder.setLegacyMigration(List.of(configRoot.resolve("older/client.ini")), (path, context) -> {})
+		);
+	}
+
+	@Test
+	public void standaloneSortingMigrationRunsBeforeTheSavedOrderIsLoaded(@TempDir Path configRoot) throws IOException {
+		Path missingLegacyPath = configRoot.resolve("old/missing-order.txt");
+		Path selectedLegacyPath = configRoot.resolve("old/selected-order.txt");
+		Path laterLegacyPath = configRoot.resolve("old/later-order.txt");
+		String legacyContents = "third\nfirst\nsecond\n";
+		writeFile(selectedLegacyPath, legacyContents);
+		writeFile(laterLegacyPath, "second\nfirst\n");
+
+		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
+		ISortingConfig<String> sortingConfig = registration.createSortingConfig(
+			"sorting.ini",
+			Comparator.naturalOrder(),
+			true
+		);
+		AtomicBoolean backupExistedDuringCallback = new AtomicBoolean();
+		RecordingSortingMigrator<String> migrator = new RecordingSortingMigrator<>((path, context) -> {
+			backupExistedDuringCallback.set(Files.isRegularFile(ConfigFileUtil.getBackupPath(path, 1)));
+			List<String> legacyValues = Files.readAllLines(path);
+			context.setSortedValues(legacyValues, legacyValues);
+		});
+		sortingConfig.setLegacyMigration(
+			List.of(missingLegacyPath, selectedLegacyPath, laterLegacyPath),
+			migrator
+		);
+		Path destinationPath = getClientPath(configRoot, "sorting.ini");
+		assertFalse(Files.exists(destinationPath));
+
+		List<String> sortedValues = sortingConfig.getSortedValues(List.of("first", "second", "third", "fourth"));
+
+		assertEquals(List.of("third", "first", "second", "fourth"), sortedValues);
+		assertTrue(backupExistedDuringCallback.get());
+		assertTrue(Files.isRegularFile(destinationPath));
+		assertEquals(legacyContents, Files.readString(selectedLegacyPath));
+		assertEquals(legacyContents, Files.readString(ConfigFileUtil.getBackupPath(selectedLegacyPath, 1)));
+		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(laterLegacyPath, 1)));
+		IConfigMigrationResult result = migrator.getResult();
+		assertEquals(ConfigMigrationStatus.MIGRATED, result.getStatus());
+		assertEquals(destinationPath, result.getDestinationPath().orElseThrow());
+		assertEquals(selectedLegacyPath, result.getLegacyPath().orElseThrow());
+		assertEquals(ConfigFileUtil.getBackupPath(selectedLegacyPath, 1), result.getBackupPath().orElseThrow());
+	}
+
+	@Test
+	public void existingSortingDestinationSkipsStandaloneMigration(@TempDir Path configRoot) throws IOException {
+		Path destinationPath = getClientPath(configRoot, "sorting.ini");
+		Path legacyPath = configRoot.resolve("old/sorting.txt");
+		writeFile(destinationPath, "[visible]\n\\=second\n\\=first\n[hidden]\n");
+		writeFile(legacyPath, "first\nsecond\n");
+		AtomicBoolean called = new AtomicBoolean();
+
+		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
+		ISortingConfig<String> sortingConfig = registration.createSortingConfig(
+			"sorting.ini",
+			Comparator.naturalOrder(),
+			true
+		);
+		RecordingSortingMigrator<String> migrator = new RecordingSortingMigrator<>((path, context) -> called.set(true));
+		sortingConfig.setLegacyMigration(List.of(legacyPath), migrator);
+
+		assertEquals(List.of("second", "first"), sortingConfig.getSortedValues(List.of("first", "second")));
+
+		assertFalse(called.get());
+		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(legacyPath, 1)));
+		IConfigMigrationResult result = migrator.getResult();
+		assertEquals(ConfigMigrationStatus.SKIPPED_DESTINATION_EXISTS, result.getStatus());
+		assertEquals(destinationPath, result.getDestinationPath().orElseThrow());
+		assertTrue(result.getLegacyPath().isEmpty());
+	}
+
+	@Test
+	public void failedStandaloneSortingMigrationDoesNotCreateAPartialDestination(@TempDir Path configRoot) throws IOException {
+		Path legacyPath = configRoot.resolve("old/sorting.txt");
+		String legacyContents = "second\nfirst\n";
+		writeFile(legacyPath, legacyContents);
+
+		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
+		ISortingConfig<String> sortingConfig = registration.createSortingConfig(
+			"sorting.ini",
+			Comparator.naturalOrder(),
+			true
+		);
+		RecordingSortingMigrator<String> migrator = new RecordingSortingMigrator<>((path, context) -> {
+			context.setSortedValues(List.of("first", "second"), List.of("second", "first"));
+			throw new IOException("legacy sorting parser failed");
+		});
+		sortingConfig.setLegacyMigration(List.of(legacyPath), migrator);
+
+		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("second", "first")));
+
+		assertFalse(Files.exists(getClientPath(configRoot, "sorting.ini")));
+		assertEquals(legacyContents, Files.readString(legacyPath));
+		assertEquals(legacyContents, Files.readString(ConfigFileUtil.getBackupPath(legacyPath, 1)));
+		IConfigMigrationResult result = migrator.getResult();
+		assertEquals(ConfigMigrationStatus.FAILED, result.getStatus());
+		assertEquals("legacy sorting parser failed", result.getFailure().orElseThrow().getMessage());
+	}
+
+	@Test
+	public void sortingMigrationMustBeRegisteredBeforeTheSavedOrderLoads(@TempDir Path configRoot) {
+		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
+		ISortingConfig<String> sortingConfig = registration.createSortingConfig(
+			"sorting.ini",
+			Comparator.naturalOrder(),
+			true
+		);
+		sortingConfig.getSortedValues(List.of("first"));
+
+		assertThrows(
+			IllegalStateException.class,
+			() -> sortingConfig.setLegacyMigration(
+				List.of(configRoot.resolve("old/sorting.txt")),
+				(path, context) -> {}
+			)
+		);
 	}
 
 	@Test
@@ -219,6 +418,32 @@ public class ConfigMigrationTest {
 
 		@Override
 		public void migrate(Path legacyPath, IConfigMigrationContext context) throws Exception {
+			delegate.migrate(legacyPath, context);
+		}
+
+		@Override
+		public void onMigrationComplete(IConfigMigrationResult result) {
+			this.result = result;
+		}
+
+		private IConfigMigrationResult getResult() {
+			if (result == null) {
+				throw new IllegalStateException("Migration has not completed.");
+			}
+			return result;
+		}
+	}
+
+	private static final class RecordingSortingMigrator<T> implements ISortingConfigMigrator<T> {
+		private final ISortingConfigMigrator<T> delegate;
+		private IConfigMigrationResult result;
+
+		private RecordingSortingMigrator(ISortingConfigMigrator<T> delegate) {
+			this.delegate = delegate;
+		}
+
+		@Override
+		public void migrate(Path legacyPath, ISortingConfigMigrationContext<T> context) throws Exception {
 			delegate.migrate(legacyPath, context);
 		}
 

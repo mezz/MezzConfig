@@ -1,13 +1,17 @@
 package net.mezzdev.config.sorting;
 
 import com.google.gson.JsonElement;
+import net.mezzdev.config.api.migration.ConfigMigrationStatus;
 import net.mezzdev.config.api.sorting.ISortingConfig;
+import net.mezzdev.config.api.sorting.ISortingConfigMigrator;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.value.IDeserializeResult;
 import net.mezzdev.config.file.ConfigFileReader;
+import net.mezzdev.config.file.ConfigFileTransaction;
 import net.mezzdev.config.file.ConfigFileUtil;
 import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.file.ConfigFileValueCodec;
+import net.mezzdev.config.migration.ConfigMigrationResult;
 import net.mezzdev.config.util.ListenerList;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -45,6 +49,10 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 	private boolean savedValuesNeedWrite;
 	private boolean writesBlockedByReadFailure;
 	private @Nullable Path correctionPath;
+	private @Nullable SortingConfigMigrationSpec<T> migrationSpec;
+	private boolean migrationCompleted;
+	private boolean migrationInProgress;
+	private boolean automaticWritesBlockedByMigrationFailure;
 
 	public SortingConfig(
 		Path path,
@@ -103,7 +111,11 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		if (savedValuesNeedWrite || !previousSavedValues.equals(reconciledSavedValues)) {
 			validateSavedValuesForWrite(reconciledSavedValues);
 			this.savedValues = reconciledSavedValues;
-			this.savedValuesNeedWrite = !save(reconciledSavedValues);
+			if (automaticWritesBlockedByMigrationFailure) {
+				this.savedValuesNeedWrite = true;
+			} else {
+				this.savedValuesNeedWrite = !save(reconciledSavedValues);
+			}
 		}
 		return getCurrentVisibleValues(reconciledSavedValues, allValuesSnapshot);
 	}
@@ -131,6 +143,7 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		if (savedValuesNeedWrite || changed) {
 			validateSavedValuesForWrite(updatedSavedValues);
 			this.savedValues = updatedSavedValues;
+			this.automaticWritesBlockedByMigrationFailure = false;
 			this.savedValuesNeedWrite = !save(updatedSavedValues);
 		}
 		if (!changed) {
@@ -153,7 +166,7 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		if (!new HashSet<>(allValuesSnapshot).containsAll(sortedValuesCopy)) {
 			throw new IllegalArgumentException("sortedValues must only contain values from allValues.");
 		}
-		SavedValues<T> previousSavedValues = getSavedValues();
+		SavedValues<T> previousSavedValues = getSavedValuesWithoutMigration();
 		if (writesBlockedByReadFailure) {
 			throw new IllegalStateException("Sorting config cannot be migrated because its current file could not be read: " + path);
 		}
@@ -349,7 +362,148 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		}
 	}
 
+	private synchronized void attemptMigration() {
+		SortingConfigMigrationSpec<T> migrationSpec = this.migrationSpec;
+		if (migrationSpec == null || migrationCompleted || migrationInProgress) {
+			return;
+		}
+		Path destinationPath = path;
+		if (destinationPath == null) {
+			completeMigration(new ConfigMigrationResult(
+				ConfigMigrationStatus.SKIPPED_INACTIVE,
+				null,
+				null,
+				null,
+				null
+			));
+			return;
+		}
+		destinationPath = destinationPath.toAbsolutePath().normalize();
+		Path legacyPath = null;
+		Path backupPath = null;
+		migrationInProgress = true;
+		try {
+			if (Files.exists(destinationPath)) {
+				completeMigration(new ConfigMigrationResult(
+					ConfigMigrationStatus.SKIPPED_DESTINATION_EXISTS,
+					destinationPath,
+					null,
+					null,
+					null
+				));
+				return;
+			}
+
+			legacyPath = migrationSpec.legacyPaths()
+				.stream()
+				.filter(Files::exists)
+				.findFirst()
+				.orElse(null);
+			if (legacyPath == null) {
+				completeMigration(new ConfigMigrationResult(
+					ConfigMigrationStatus.SKIPPED_NO_LEGACY_FILE,
+					destinationPath,
+					null,
+					null,
+					null
+				));
+				return;
+			}
+
+			backupPath = ConfigFileUtil.backUpFile(legacyPath);
+			SortingConfigMigrationContext<T> context = new SortingConfigMigrationContext<>(this);
+			try {
+				migrationSpec.migrator().migrate(legacyPath, context);
+			} finally {
+				context.close();
+			}
+			commitMigration(destinationPath, backupPath, migrationSpec.legacyPaths(), context.getUpdate());
+			completeMigration(new ConfigMigrationResult(
+				ConfigMigrationStatus.MIGRATED,
+				destinationPath,
+				legacyPath,
+				backupPath,
+				null
+			));
+			LOGGER.info(
+				"Migrated legacy sorting config file '{}' to '{}'; the source was preserved and backed up at '{}'.",
+				legacyPath,
+				destinationPath,
+				backupPath
+			);
+		} catch (Exception failure) {
+			if (failure instanceof InterruptedException) {
+				Thread.currentThread().interrupt();
+			}
+			automaticWritesBlockedByMigrationFailure = true;
+			completeMigration(new ConfigMigrationResult(
+				ConfigMigrationStatus.FAILED,
+				destinationPath,
+				legacyPath,
+				backupPath,
+				failure
+			));
+			LOGGER.error(
+				"Failed to migrate legacy sorting config file '{}' to '{}'; no migration update was applied and the source was preserved.",
+				legacyPath,
+				destinationPath,
+				failure
+			);
+		} finally {
+			migrationInProgress = false;
+		}
+	}
+
+	private void completeMigration(ConfigMigrationResult result) {
+		migrationCompleted = true;
+		try {
+			migrationSpec.migrator().onMigrationComplete(result);
+		} catch (RuntimeException callbackFailure) {
+			LOGGER.error("Failed to handle the completed sorting config migration for '{}'.", path, callbackFailure);
+		}
+	}
+
+	private static void commitMigration(
+		Path destinationPath,
+		Path backupPath,
+		List<Path> legacyPaths,
+		MigrationUpdate<?> update
+	) throws IOException {
+		Path normalizedOutputPath = update.path().toAbsolutePath().normalize();
+		if (!normalizedOutputPath.equals(destinationPath)) {
+			throw new IllegalArgumentException("Sorting migration update belongs to a different destination: " + normalizedOutputPath);
+		}
+		if (legacyPaths.contains(normalizedOutputPath)) {
+			throw new IllegalArgumentException("Migration update must not overwrite a registered legacy file: " + normalizedOutputPath);
+		}
+		if (normalizedOutputPath.equals(backupPath)) {
+			throw new IllegalArgumentException("Migration update must not overwrite the legacy file backup: " + backupPath);
+		}
+
+		boolean applied = false;
+		try {
+			update.apply();
+			applied = true;
+			ConfigFileTransaction.write(Map.of(destinationPath, update.serialized()), Set.of(destinationPath));
+		} catch (IOException | RuntimeException | Error failure) {
+			if (applied) {
+				try {
+					update.rollback();
+				} catch (RuntimeException | Error rollbackFailure) {
+					failure.addSuppressed(rollbackFailure);
+				}
+			}
+			throw failure;
+		}
+		update.notifyIfChanged();
+	}
+
 	private SavedValues<T> getSavedValues() {
+		attemptMigration();
+		return getSavedValuesWithoutMigration();
+	}
+
+	private SavedValues<T> getSavedValuesWithoutMigration() {
 		SavedValues<T> savedValues = this.savedValues;
 		if (savedValues == null) {
 			LoadedSavedValues<T> loaded = loadSavedValuesFromFile();
@@ -594,6 +748,21 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 	public Runnable addChangeListener(Runnable listener) {
 		Objects.requireNonNull(listener, "listener");
 		return this.changeListeners.add(listener);
+	}
+
+	@Override
+	public synchronized SortingConfig<T> setLegacyMigration(
+		List<Path> legacyPaths,
+		ISortingConfigMigrator<T> migrator
+	) {
+		if (migrationSpec != null) {
+			throw new IllegalStateException("A legacy migration is already registered for this sorting config.");
+		}
+		if (savedValues != null || migrationCompleted || migrationInProgress) {
+			throw new IllegalStateException("Legacy migration must be registered before the sorting config loads or changes its saved order.");
+		}
+		migrationSpec = new SortingConfigMigrationSpec<>(legacyPaths, migrator);
+		return this;
 	}
 
 	private void notifyListeners() {

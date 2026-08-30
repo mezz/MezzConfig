@@ -62,6 +62,18 @@ final class ConfigMigrationContext implements IConfigMigrationContext {
 		return List.copyOf(valueUpdates.values());
 	}
 
+	void addValueUpdates(List<ConfigValueUpdate<?>> updates) {
+		checkOpen();
+		for (ConfigValueUpdate<?> update : updates) {
+			if (!schema.containsConfigValue(update.configValue())) {
+				throw new IllegalArgumentException(
+					"Config value does not belong to the schema being migrated: " + update.configValue().getName()
+				);
+			}
+			valueUpdates.put(update.configValue(), update);
+		}
+	}
+
 	List<SortingConfig.MigrationUpdate<?>> getSortingUpdates() {
 		return List.copyOf(sortingUpdates.values());
 	}

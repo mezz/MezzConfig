@@ -12,7 +12,7 @@ public enum ConfigMigrationStatus {
 	SKIPPED_DESTINATION_EXISTS,
 	/** None of the registered legacy files existed, so migration was not attempted. */
 	SKIPPED_NO_LEGACY_FILE,
-	/** The schema had no active local destination when it was registered, so migration was not attempted. */
+	/** The migration target had no active local destination, so migration was not attempted. */
 	SKIPPED_INACTIVE,
 	/** Migration failed without applying any of its updates. */
 	FAILED

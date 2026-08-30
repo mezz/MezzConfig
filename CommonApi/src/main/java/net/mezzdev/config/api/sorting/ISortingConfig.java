@@ -1,9 +1,11 @@
 package net.mezzdev.config.api.sorting;
 
 import net.mezzdev.config.api.IConfigRegistration;
+import net.mezzdev.config.api.migration.IConfigMigrationResult;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
@@ -17,7 +19,9 @@ import java.util.List;
  * <p>
  * Create one through {@link IConfigRegistration#createSortingConfig(String, Comparator, boolean)}. Use the serializer
  * overload for mod-specific value types; those values must be immutable and have stable equality and serialization.
- * Runtime methods and listener registration are thread-safe.
+ * <p>
+ * To import an order from an older file format, register a migrator with {@link #setLegacyMigration} before the saved order
+ * is first used. Runtime methods and listener registration are thread-safe.
  *
  * @param <T> effectively immutable value type with stable equality and hash codes
  *
@@ -106,4 +110,24 @@ public interface ISortingConfig<T> {
 	 * @since 0.1.0
 	 */
 	Runnable addChangeListener(Runnable listener);
+
+	/**
+	 * Import a saved order from an older file when this sorting config does not have a destination file yet.
+	 * <p>
+	 * Register this immediately after creating the sorting config, before calling methods that load or save its order. The
+	 * paths are checked in order when the saved order is first needed. MezzConfig preserves and backs up the selected source,
+	 * validates the migrated order, and saves it atomically in the current sorting format.
+	 *
+	 * @param legacyPaths ordered candidate legacy file paths; must not be empty
+	 * @param migrator callback that parses the selected file and supplies the migrated order
+	 * @return this sorting config
+	 * @throws IllegalArgumentException if the path list is empty, contains null or duplicate normalized paths, or a path
+	 * cannot be converted to an absolute path
+	 * @throws IllegalStateException if migration was already registered or the saved order was already loaded or changed
+	 *
+	 * @see ISortingConfigMigrator#onMigrationComplete(IConfigMigrationResult)
+	 *
+	 * @since 0.3.0
+	 */
+	ISortingConfig<T> setLegacyMigration(List<Path> legacyPaths, ISortingConfigMigrator<T> migrator);
 }

@@ -91,7 +91,9 @@ public interface IConfigValueBuilder<T> {
 	 * Use this for one setting that moved to a new category or name and now uses a different representation. MezzConfig
 	 * reads the old value with {@code legacySerializer} and passes the typed result to {@code migration}.
 	 * <p>
-	 * To import an entire file from before the mod used MezzConfig, use
+	 * To load a MezzConfig file from an older location, use
+	 * {@link net.mezzdev.config.api.schema.IConfigSchemaBuilder#setLegacySources(java.util.List)}. To import a file that was
+	 * not written by MezzConfig, use
 	 * {@link net.mezzdev.config.api.schema.IConfigSchemaBuilder#setLegacyMigration(java.util.List,
 	 * net.mezzdev.config.api.migration.IConfigMigrator)} instead.
 	 *

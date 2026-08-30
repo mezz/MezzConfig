@@ -1,5 +1,6 @@
 package net.mezzdev.config.api.migration;
 
+import net.mezzdev.config.api.sorting.ISortingConfigMigrator;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.nio.file.Path;
@@ -8,9 +9,10 @@ import java.util.Optional;
 /**
  * Reports the final outcome of a registered legacy migration.
  * <p>
- * Inspect this from {@link IConfigMigrator#onMigrationComplete(IConfigMigrationResult)} when the mod wants to log a
- * failure, tell the user what was imported, or locate the preserved backup. This also reports outcomes that the migration
- * callback cannot observe itself, such as a skipped migration or a failure after it returns.
+ * Inspect this from {@link IConfigMigrator#onMigrationComplete(IConfigMigrationResult)} or
+ * {@link ISortingConfigMigrator#onMigrationComplete(IConfigMigrationResult)} when the mod wants to log a failure, tell the
+ * user what was imported, or locate the preserved backup. This also reports outcomes that the migration callback cannot
+ * observe itself, such as a skipped migration or a failure after it returns.
  *
  * @since 0.3.0
  */
@@ -27,7 +29,7 @@ public interface IConfigMigrationResult {
 
 	/**
 	 * Get the new MezzConfig file that migration targeted.
-	 * This is empty when the schema had no active local destination.
+	 * This is empty when the migration target had no active local destination.
 	 *
 	 * @return migration destination, if one was available
 	 *

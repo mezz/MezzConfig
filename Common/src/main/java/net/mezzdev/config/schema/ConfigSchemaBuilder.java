@@ -35,13 +35,24 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	}
 
 	@Override
+	public ConfigSchemaBuilder setLegacySources(List<Path> legacyPaths) {
+		checkCanRegisterMigration();
+		migrationSpec = ConfigMigrationSpec.alternateSources(legacyPaths);
+		return this;
+	}
+
+	@Override
 	public ConfigSchemaBuilder setLegacyMigration(List<Path> legacyPaths, IConfigMigrator migrator) {
+		checkCanRegisterMigration();
+		migrationSpec = ConfigMigrationSpec.custom(legacyPaths, migrator);
+		return this;
+	}
+
+	private void checkCanRegisterMigration() {
 		checkNotBuilt();
 		if (migrationSpec != null) {
-			throw new IllegalStateException("A legacy migration is already registered for this schema.");
+			throw new IllegalStateException("A legacy source or migration is already registered for this schema.");
 		}
-		migrationSpec = new ConfigMigrationSpec(legacyPaths, migrator);
-		return this;
 	}
 
 	public ConfigSchemaBuilder(ConfigSchemaPathResolver pathResolver, String localizationPath, ConfigManager configManager) {

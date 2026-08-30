@@ -1,35 +1,44 @@
 package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.migration.IConfigMigrator;
+import net.mezzdev.config.api.migration.IConfigMigrationResult;
+import net.mezzdev.config.migration.LegacyMigrationPaths;
 import net.mezzdev.config.util.ErrorUtil;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 record ConfigMigrationSpec(
 	List<Path> legacyPaths,
-	IConfigMigrator migrator
+	@Nullable IConfigMigrator migrator
 ) {
 	ConfigMigrationSpec {
-		ErrorUtil.checkNotNull(legacyPaths, "legacyPaths");
-		migrator = ErrorUtil.checkNotNull(migrator, "migrator");
-		if (legacyPaths.isEmpty()) {
-			throw new IllegalArgumentException("legacyPaths must not be empty.");
+		legacyPaths = LegacyMigrationPaths.normalize(legacyPaths);
+	}
+
+	static ConfigMigrationSpec alternateSources(List<Path> legacyPaths) {
+		return new ConfigMigrationSpec(legacyPaths, null);
+	}
+
+	static ConfigMigrationSpec custom(List<Path> legacyPaths, IConfigMigrator migrator) {
+		return new ConfigMigrationSpec(legacyPaths, ErrorUtil.checkNotNull(migrator, "migrator"));
+	}
+
+	boolean loadsAlternateSource() {
+		return migrator == null;
+	}
+
+	void migrate(Path legacyPath, ConfigMigrationContext context) throws Exception {
+		if (migrator == null) {
+			throw new IllegalStateException("Alternate-source migrations are handled by MezzConfig.");
 		}
-		List<Path> normalizedPaths = new ArrayList<>(legacyPaths.size());
-		Set<Path> uniquePaths = new HashSet<>();
-		for (Path path : legacyPaths) {
-			Path normalizedPath = ErrorUtil.checkNotNull(path, "legacyPaths entry")
-				.toAbsolutePath()
-				.normalize();
-			if (!uniquePaths.add(normalizedPath)) {
-				throw new IllegalArgumentException("legacyPaths must not contain duplicate normalized paths: " + normalizedPath);
-			}
-			normalizedPaths.add(normalizedPath);
+		migrator.migrate(legacyPath, context);
+	}
+
+	void onMigrationComplete(IConfigMigrationResult result) {
+		if (migrator != null) {
+			migrator.onMigrationComplete(result);
 		}
-		legacyPaths = List.copyOf(normalizedPaths);
 	}
 }

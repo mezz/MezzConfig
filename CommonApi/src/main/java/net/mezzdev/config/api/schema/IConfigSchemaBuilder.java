@@ -39,10 +39,30 @@ public interface IConfigSchemaBuilder {
 	IConfigEditorCategoryBuilder addEditorCategory(String name);
 
 	/**
+	 * Load this schema from a MezzConfig file at an older location when the destination does not exist yet.
+	 * <p>
+	 * Use this when a mod moves or renames a MezzConfig file. Values are matched by their current storage names and by the
+	 * legacy names and migrations declared on {@link net.mezzdev.config.api.value.IConfigValueBuilder}. The first existing
+	 * source is preserved and backed up, and MezzConfig writes the imported values to the new location in its current format.
+	 * <p>
+	 * To import a file that was not written by MezzConfig, use {@link #setLegacyMigration(List, IConfigMigrator)} instead.
+	 *
+	 * @param legacyPaths ordered candidate MezzConfig source paths; must not be empty
+	 * @return this schema builder
+	 * @throws IllegalArgumentException if the path list is empty, contains null or duplicate normalized paths, or a path
+	 * cannot be converted to an absolute path
+	 * @throws IllegalStateException if a legacy source or migration was already registered or this builder was already built
+	 *
+	 * @since 0.3.0
+	 */
+	IConfigSchemaBuilder setLegacySources(List<Path> legacyPaths);
+
+	/**
 	 * Import a config file that the mod used before adopting MezzConfig.
 	 * <p>
-	 * Use this for a whole-file import when adopting MezzConfig. To rename, move, or convert a value already stored by
-	 * MezzConfig, use the legacy methods on {@link net.mezzdev.config.api.value.IConfigValueBuilder} instead.
+	 * Use this when the old file was not written by MezzConfig. To move a MezzConfig file from another location, use
+	 * {@link #setLegacySources(List)}. To rename, move, or convert values inside an existing MezzConfig schema, use the
+	 * legacy methods on {@link net.mezzdev.config.api.value.IConfigValueBuilder} instead.
 	 * <p>
 	 * Declare and build the destination values first so the migrator can update them. The paths are checked in order, which
 	 * supports mods that used more than one old location. Migration is considered only when the new config does not exist.
@@ -56,7 +76,7 @@ public interface IConfigSchemaBuilder {
 	 * @return this schema builder
 	 * @throws IllegalArgumentException if the path list is empty, contains null or duplicate normalized paths, or a path
 	 * cannot be converted to an absolute path
-	 * @throws IllegalStateException if a migration was already registered or this builder was already built
+	 * @throws IllegalStateException if a legacy source or migration was already registered or this builder was already built
 	 *
 	 * @since 0.3.0
 	 */
