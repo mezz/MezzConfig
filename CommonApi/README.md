@@ -5,14 +5,13 @@ schemas, plus string-backed client sort orders.
 
 ## Supported API boundary
 
-The supported API is the non-internal packages published by the `CommonApi`
-module under `net.mezzdev.config.api`. Packages annotated with
-`@ApiStatus.Internal`, including `net.mezzdev.config.api.internal`, are runtime
-integration details. Public classes in the `Common` implementation module and
-the Fabric, Forge, and NeoForge loader modules are also internal and may change
-without API compatibility guarantees. Depend on those modules through the
-loader artifact, but compile integrations only against the supported
-`CommonApi` types.
+The supported API is the non-internal surface published by the `CommonApi`
+module under `net.mezzdev.config.api`. Types annotated with
+`@ApiStatus.Internal` are runtime integration details. Public classes in the
+`Common` implementation module and the Fabric, Forge, and NeoForge loader
+modules are also internal and may change without API compatibility guarantees.
+Depend on those modules through the loader artifact, but compile integrations
+only against the supported `CommonApi` types.
 
 ## Registering configs
 
@@ -208,8 +207,7 @@ changes independently.
 
 The server-config channel is optional. Connecting to a server without it still
 succeeds, but the client keeps declared defaults instead of receiving server
-values. The current one-way protocol is version 4 and is intentionally
-incompatible with the earlier unreleased editing protocol.
+values.
 
 Supported built-in value helpers include:
 
@@ -240,8 +238,8 @@ so integrations can edit list elements individually without GUI-specific API in
 MezzConfig. Files and server synchronization use canonical structured arrays,
 recursively applying each element serializer. After loading an array, MezzConfig
 validates the reconstructed list with the list serializer's `isValid` method.
-Container-level `serialize` output is not used for structured storage;
-container-level `deserialize` remains supported for legacy scalar values.
+Container-level `serialize` and `deserialize` use the same structured array
+representation for direct serializer calls.
 
 Custom key-value entry types can implement
 `IConfigKeyValueSerializer`. It exposes serializers for both components and
