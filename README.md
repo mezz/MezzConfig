@@ -17,78 +17,16 @@ The current branch targets Minecraft 1.21.1 and Java 21.
 
 ## Add MezzConfig to your mod
 
-Jar-in-Jar is the recommended setup. It gives the development environment the
-full MezzConfig runtime and embeds the matching loader jar in the production
-mod, so players do not need to install MezzConfig separately.
+Jar-in-Jar is recommended so players do not need to install MezzConfig
+separately. Choose the guide for your loader:
 
-Set the version used by every configuration and add the Maven repository:
+- [Fabric Loom](docs/fabric.md)
+- [ForgeGradle](docs/forge.md)
+- [NeoForge ModDevGradle](docs/neoforge.md)
 
-```kotlin
-val mezzConfigVersion = "<version>"
-val mezzConfigVersionRange = "[0.3.0,1.0.0)"
-
-repositories {
-	maven("https://maven.blamejared.com")
-}
-```
-
-The `config-api` artifact is compile-time only. The loader artifact provides the
-local development runtime and is embedded in the final jar. The local-runtime
-configurations keep it out of your mod's published dependency metadata. Keep
-every dependency on the same preferred version.
-
-### Fabric Loom
-
-```kotlin
-dependencies {
-	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
-	modLocalRuntime("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
-	include("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
-}
-```
-
-### ForgeGradle
-
-```kotlin
-val mezzConfigLocalRuntime by configurations.creating {
-	isCanBeConsumed = false
-	isCanBeResolved = false
-}
-configurations.runtimeClasspath {
-	extendsFrom(mezzConfigLocalRuntime)
-}
-
-jarJar.enable()
-
-dependencies {
-	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
-	mezzConfigLocalRuntime(fg.deobf("net.mezzdev.config:mezz_config-1.21.1-forge:$mezzConfigVersion"))
-	jarJar("net.mezzdev.config:mezz_config-1.21.1-forge:$mezzConfigVersionRange") { jarJar.pin(this, mezzConfigVersion) }
-}
-```
-
-Build with `./gradlew jarJar` and distribute the generated `-all.jar`, not the
-plain jar.
-
-### NeoForge ModDevGradle
-
-```kotlin
-dependencies {
-	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
-	additionalRuntimeClasspath("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion")
-	jarJar("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }
-}
-```
-
-For Fabric and NeoForge, the normal `build` task produces the jar with the
-nested dependency. For all loaders, keep `mezz_config` as a required dependency
-in the mod metadata; the nested mod satisfies that dependency and establishes
-load ordering. Widen `mezzConfigVersionRange` only to versions your mod actually
-supports.
-
-See the loader references for [Loom `include`](https://docs.fabricmc.net/develop/loom/#dependency-configurations),
-[ForgeGradle Jar-in-Jar](https://docs.minecraftforge.net/en/fg-6.x/dependencies/jarinjar/),
-and [ModDevGradle Jar-in-Jar](https://docs.neoforged.net/toolchain/docs/plugins/mdg/#jar-in-jar).
+Each guide keeps the public API compile-only, provides a local development
+runtime without leaking it into published dependency metadata, and embeds the
+matching loader jar.
 
 Compile integrations against `net.mezzdev.config.api`. Implementation packages
 and loader internals are not compatibility-guaranteed API.
