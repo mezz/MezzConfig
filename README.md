@@ -15,77 +15,82 @@ right across loaders:
 
 The current branch targets Minecraft 1.21.1 and Java 21.
 
-## Documentation
-
-- [API guide](docs/API.md): a complete first config and an overview of the API.
-- [Config schemas](docs/config-schemas.md): ownership, locations, lifecycle,
-  synchronization, categories, and updates.
-- [Custom values](docs/custom-values.md): serializers, lists, validation, and
-  editor metadata.
-- [Migrations](docs/migrations.md): rename values, move files, and import older
-  formats.
-- [Sorting configs](docs/sorting.md): persist user-defined order for dynamic
-  values.
-
-The guides explain the intended workflows. The Javadocs published with the API
-artifact are the reference for exact method contracts and exceptions.
-
 ## Add MezzConfig to your mod
 
-Add the Maven repository:
+Jar-in-Jar is the recommended setup. It gives the development environment the
+full MezzConfig runtime and embeds the matching loader jar in the production
+mod, so players do not need to install MezzConfig separately.
+
+Set the version used by every configuration and add the Maven repository:
 
 ```kotlin
+val mezzConfigVersion = "<version>"
+val mezzConfigVersionRange = "[0.3.0,1.0.0)"
+
 repositories {
 	maven("https://maven.blamejared.com")
 }
 ```
 
-Then declare the artifact for your loader, replacing `<version>` with the
-MezzConfig version you use.
+The `config-api` artifact is compile-time only. The loader artifact provides the
+development runtime and is embedded in the final jar. Keep every dependency on
+the same preferred version.
 
 ### Fabric Loom
 
 ```kotlin
 dependencies {
-	modImplementation("net.mezzdev.config:mezz_config-1.21.1-fabric:<version>")
+	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
+	modRuntimeOnly("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
+	include("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
 }
 ```
 
 ### ForgeGradle
 
 ```kotlin
+jarJar.enable()
+
 dependencies {
-	implementation(fg.deobf(
-		"net.mezzdev.config:mezz_config-1.21.1-forge:<version>"
-	))
+	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
+	runtimeOnly(fg.deobf("net.mezzdev.config:mezz_config-1.21.1-forge:$mezzConfigVersion"))
+	jarJar("net.mezzdev.config:mezz_config-1.21.1-forge:$mezzConfigVersionRange") { jarJar.pin(this, mezzConfigVersion) }
 }
 ```
+
+Build with `./gradlew jarJar` and distribute the generated `-all.jar`, not the
+plain jar.
 
 ### NeoForge ModDevGradle
 
 ```kotlin
 dependencies {
-	implementation("net.mezzdev.config:mezz_config-1.21.1-neoforge:<version>")
+	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
+	runtimeOnly("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion")
+	jarJar("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }
 }
 ```
 
-Declare one loader artifact in each loader module. It brings in the public API
-and common runtime through its Maven metadata.
+For Fabric and NeoForge, the normal `build` task produces the jar with the
+nested dependency. For all loaders, keep `mezz_config` as a required dependency
+in the mod metadata; the nested mod satisfies that dependency and establishes
+load ordering. Widen `mezzConfigVersionRange` only to versions your mod actually
+supports.
 
-A shared source module that must not depend on a loader can compile against the
-API-only artifact:
+See the loader references for [Loom `include`](https://docs.fabricmc.net/develop/loom/#dependency-configurations),
+[ForgeGradle Jar-in-Jar](https://docs.minecraftforge.net/en/fg-6.x/dependencies/jarinjar/),
+and [ModDevGradle Jar-in-Jar](https://docs.neoforged.net/toolchain/docs/plugins/mdg/#jar-in-jar).
 
-```kotlin
-dependencies {
-	compileOnly(
-		"net.mezzdev.config:mezz_config-1.21.1-config-api:<version>"
-	)
-}
-```
-
-The final mod still needs its loader-specific MezzConfig artifact at runtime.
-Compile integrations against `net.mezzdev.config.api`; implementation packages
+Compile integrations against `net.mezzdev.config.api`. Implementation packages
 and loader internals are not compatibility-guaranteed API.
+
+## Documentation
+
+Start with the [API guide](docs/API.md). Deeper guides cover
+[config schemas](docs/config-schemas.md),
+[custom values](docs/custom-values.md), [migrations](docs/migrations.md), and
+[sorting configs](docs/sorting.md). The published Javadocs are the reference for
+exact contracts and exceptions.
 
 ## Building MezzConfig
 
@@ -100,15 +105,6 @@ Run the complete release validation with:
 ```text
 ./gradlew spotlessCheck build :Common:apiJavadoc :Common:checkJarCompatibility validatePublishing
 ```
-
-The Gradle projects are:
-
-- `Common` — public API and loader-independent runtime;
-- `Fabric`, `Forge`, and `NeoForge` — loader integrations and distributable
-  mod jars.
-
-Each loader project keeps its in-game integration fixture in a `testMod` source
-set.
 
 ## License
 
