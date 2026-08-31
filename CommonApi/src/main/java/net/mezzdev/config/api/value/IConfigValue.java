@@ -113,7 +113,7 @@ public interface IConfigValue<T> {
 	boolean set(T value);
 
 	/**
-	 * Run code when this setting's effective value changes.
+	 * Run code when this setting's {@link #getValue()} changes.
 	 * <p>
 	 * Use this to refresh behavior that depends on the active value. A restart-required edit invokes this listener only when
 	 * the saved value becomes effective.
@@ -125,9 +125,9 @@ public interface IConfigValue<T> {
 	Runnable addListener(IConfigValueChangeListener<T> listener);
 
 	/**
-	 * Run code when this setting's saved value changes, even if it is waiting for a restart.
+	 * Run code when this setting's {@link #getPendingValue()} changes, even if it is waiting for a restart.
 	 * <p>
-	 * Use this for editors or diagnostics that display the saved selection.
+	 * Use this for editors or diagnostics that display the currently saved selection.
 	 *
 	 * @param listener callback accepting the pending change
 	 * @return a callback that removes this listener
@@ -139,7 +139,8 @@ public interface IConfigValue<T> {
 	/**
 	 * Observe the complete effective-value batch whenever it includes this setting.
 	 * <p>
-	 * Use this when reacting correctly requires the other settings changed by the same operation.
+	 * Use this when reacting to {@link #getValue()} requires seeing the other settings changed by the same operation.
+	 *
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener
 	 *
@@ -150,7 +151,8 @@ public interface IConfigValue<T> {
 	/**
 	 * Observe the complete saved-value batch whenever it includes this setting.
 	 * <p>
-	 * Use this when an editor or diagnostic view needs all saved selections from the same operation.
+	 * Use this when an editor or diagnostic view needs the other saved selections changed alongside
+	 * {@link #getPendingValue()}.
 	 *
 	 * @param listener callback accepting the pending changes
 	 * @return a callback that removes this listener

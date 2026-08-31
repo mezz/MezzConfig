@@ -53,6 +53,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -122,8 +123,7 @@ public class ConfigSchemaTest {
 		);
 
 		// Assertions: integrations can discover the original element serializer for per-element list editing.
-		assertTrue(flags.getSerializer() instanceof IConfigListValueSerializer<?>);
-		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) flags.getSerializer();
+		IConfigListValueSerializer<?> listSerializer = assertListSerializer(flags.getSerializer());
 		assertSame(BooleanSerializer.INSTANCE, listSerializer.getElementSerializer());
 	}
 
@@ -199,8 +199,7 @@ public class ConfigSchemaTest {
 			List.of(new ExtensionEntry("first", "one"), new ExtensionEntry("second", "two")),
 			values.getSerializer().deserialize("[\"first=one\",\"second=two\"]").getResult().orElseThrow()
 		);
-		assertTrue(values.getSerializer() instanceof IConfigListValueSerializer<?>);
-		IConfigListValueSerializer<?> listSerializer = (IConfigListValueSerializer<?>) values.getSerializer();
+		IConfigListValueSerializer<?> listSerializer = assertListSerializer(values.getSerializer());
 		assertEquals(ConfigListOrdering.UNORDERED, listSerializer.getOrdering());
 		assertListElementSerializer(values, "element=value", new ExtensionEntry("element", "value"));
 	}
@@ -249,8 +248,7 @@ public class ConfigSchemaTest {
 		assertEquals(Integer.MIN_VALUE, unboundedInteger.getSerializer().getRange().orElseThrow().min());
 		assertEquals(List.of(1, 2), unboundedIntegers.getSerializer().deserialize("[\"1\",\"2\"]").getResult().orElseThrow());
 		assertEquals(List.of(1, 2), boundedIntegers.getSerializer().deserialize("[\"1\",\"2\"]").getResult().orElseThrow());
-		assertTrue(colors.getSerializer() instanceof IConfigListValueSerializer<?>);
-		IConfigListValueSerializer<?> colorsSerializer = (IConfigListValueSerializer<?>) colors.getSerializer();
+		IConfigListValueSerializer<?> colorsSerializer = assertListSerializer(colors.getSerializer());
 		assertEquals(PackedColor.rgb(0x112233), colorsSerializer.getElementSerializer().deserialize("0x112233").getResult().orElseThrow());
 		assertEquals("0xFF112233", color.getSerializer().serialize(PackedColor.argb(0xFF112233)));
 		assertEquals(PackedColor.argb(0xFF445566), color.getSerializer().deserialize("0xFF445566").getResult().orElseThrow());
@@ -566,7 +564,7 @@ public class ConfigSchemaTest {
 		AtomicReference<IConfigBatchUpdater> retainedUpdater = new AtomicReference<>();
 
 		// Operation: run an empty batch but retain the updater reference.
-		List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(updater -> retainedUpdater.set(updater));
+		List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(retainedUpdater::set);
 
 		// Assertions: the updater cannot be used after the schema-owned callback has returned.
 		assertEquals(List.of(), changes);
@@ -975,7 +973,7 @@ public class ConfigSchemaTest {
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
-		ConfigSchema schema = createSchema(createPathResolver(resolvedPath), builder);
+		ConfigSchema schema = createSchema(resolvedPath::get, builder);
 		assertFalse(enabled.getValue());
 		List<String> pendingChanges = new ArrayList<>();
 		AtomicInteger effectiveNotifications = new AtomicInteger();
@@ -1065,7 +1063,7 @@ public class ConfigSchemaTest {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
-		ConfigSchema schema = createClientPerWorldSchema(createPathResolver(resolvedPath), builder);
+		ConfigSchema schema = createClientPerWorldSchema(resolvedPath::get, builder);
 
 		// Assertions: inactive schemas keep their defaults and cannot be updated because there is nowhere to save them.
 		assertEquals(ConfigSchemaType.CLIENT_PER_WORLD, schema.getType());
@@ -1323,7 +1321,7 @@ public class ConfigSchemaTest {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
-		ConfigSchema schema = createSchema(createPathResolver(resolvedPath), builder);
+		ConfigSchema schema = createSchema(resolvedPath::get, builder);
 		List<String> valueChanges = new ArrayList<>();
 		List<String> schemaBatches = new ArrayList<>();
 		enabled.addListener(change -> valueChanges.add("%s -> %s".formatted(change.oldValue(), change.newValue())));
@@ -1357,7 +1355,7 @@ public class ConfigSchemaTest {
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
 		ConfigSchema schema = new ConfigSchema(
-			createPathResolver(resolvedPath),
+			resolvedPath::get,
 			List.of(builder),
 			List.of(builder),
 			(command, delay) -> new CompletableFuture<>()
@@ -1547,22 +1545,13 @@ public class ConfigSchemaTest {
 	private static ConfigSchema createRemoteServerSchema(ConfigCategoryBuilder... builders) {
 		return new ConfigSchema(
 			"test_mod",
-			() -> Optional.empty(),
+			Optional::empty,
 			List.of(builders),
 			List.of(builders),
 			(command, delay) -> CompletableFuture.completedFuture(null),
 			ConfigSchemaType.SERVER,
 			new ServerConfigKey("test_mod", "server.ini")
 		);
-	}
-
-	private static ConfigSchemaPathResolver createPathResolver(AtomicReference<Optional<Path>> resolvedPath) {
-		return new ConfigSchemaPathResolver() {
-			@Override
-			public Optional<Path> resolvePath() {
-				return resolvedPath.get();
-			}
-		};
 	}
 
 	private static void runScheduledTasks(Deque<Runnable> scheduledTasks) {
@@ -1591,19 +1580,22 @@ public class ConfigSchemaTest {
 			.toList();
 	}
 
-	@SuppressWarnings("unchecked")
 	private static <T> void assertListElementSerializer(
 		IConfigValue<List<T>> configValue,
 		String serializedValue,
 		T expectedValue
 	) {
-		assertTrue(configValue.getSerializer() instanceof IConfigListValueSerializer<?>);
-		IConfigListValueSerializer<T> listSerializer = (IConfigListValueSerializer<T>) configValue.getSerializer();
-		IDeserializeResult<T> result = listSerializer.getElementSerializer()
+		IConfigListValueSerializer<?> listSerializer = assertListSerializer(configValue.getSerializer());
+		IDeserializeResult<?> result = listSerializer.getElementSerializer()
 			.deserialize(serializedValue);
 
 		assertEquals(List.of(), result.getDiagnostics());
 		assertEquals(expectedValue, result.getResult().orElseThrow());
+	}
+
+	private static IConfigListValueSerializer<?> assertListSerializer(IConfigValueSerializer<?> serializer) {
+		assertInstanceOf(IConfigListValueSerializer.class, serializer);
+		return (IConfigListValueSerializer<?>) serializer;
 	}
 
 	private static String formatBatch(
