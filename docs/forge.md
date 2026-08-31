@@ -31,8 +31,6 @@ dependencies {
 ```
 
 This lets your code use MezzConfig and makes it available to local game runs.
-Your release jar does not contain MezzConfig, so players and modpacks can
-install one shared copy.
 
 Run `./gradlew build` and distribute your normal release jar from `build/libs`.
 
