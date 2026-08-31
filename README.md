@@ -17,15 +17,16 @@ The current branch targets Minecraft 1.21.1 and Java 21.
 
 ## Add MezzConfig to your mod
 
-Jar-in-Jar is recommended so players do not need to install MezzConfig
-separately. Choose the guide for your loader:
+Add MezzConfig as a normal required mod dependency. This is preferred because
+mods can share one MezzConfig installation and keep their own jars smaller.
+Choose the guide for your loader:
 
 - [Fabric Loom](docs/fabric.md)
 - [ForgeGradle](docs/forge.md)
 - [NeoForge ModDevGradle](docs/neoforge.md)
 
-Each guide shows how to use MezzConfig during development, include it in your
-released mod, and declare it to the mod loader.
+Each guide also explains how to include MezzConfig inside your mod as an
+optional Jar-in-Jar dependency.
 
 Use classes under `net.mezzdev.config.api`; other packages are internal.
 

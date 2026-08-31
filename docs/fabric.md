@@ -13,18 +13,18 @@ repositories {
 }
 ```
 
-Add all three dependencies:
+Add both dependencies:
 
 ```kotlin
 dependencies {
 	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
 	modLocalRuntime("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
-	include("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
 }
 ```
 
-With this setup, your code can use MezzConfig, local game runs can load it, and
-your release jar includes it for players.
+This lets your code use MezzConfig and makes it available to local game runs.
+Your release jar does not contain MezzConfig, so players and modpacks can
+install one shared copy.
 
 Run `./gradlew build` and distribute your normal release jar from `build/libs`.
 
@@ -39,9 +39,26 @@ into the existing `depends` object:
 }
 ```
 
-This tells Fabric Loader to start MezzConfig before your mod. The copy in your
-jar satisfies the dependency. Change the version range only when your mod
-supports a different range.
+This tells Fabric Loader to require MezzConfig and start it before your mod.
+Change the version range only when your mod supports a different range.
+
+## Optional: include MezzConfig in your jar
+
+You can include MezzConfig when your mod must work as a single download. This
+makes installation simpler, but increases your jar size and packages another
+copy in every mod that uses this option.
+
+Add the Fabric dependency to `include`:
+
+```kotlin
+dependencies {
+	include("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
+}
+```
+
+Run `./gradlew build` as usual. The release jar now contains MezzConfig and
+satisfies the same required dependency in `fabric.mod.json`; do not remove that
+entry.
 
 For more detail, see the official
 [Fabric Loom dependency documentation](https://docs.fabricmc.net/develop/loom/#dependency-configurations).

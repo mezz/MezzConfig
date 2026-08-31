@@ -2,34 +2,31 @@
 
 ## Gradle
 
-In `build.gradle.kts`, choose the MezzConfig version, set the versions your mod
-supports, and add its Maven repository:
+In `build.gradle.kts`, choose the MezzConfig version and add its Maven
+repository:
 
 ```kotlin
 val mezzConfigVersion = "<version>"
-val mezzConfigVersionRange = "[0.3.0,1.0.0)"
 
 repositories {
 	maven("https://maven.blamejared.com")
 }
 ```
 
-Add all three dependencies:
+Add both dependencies:
 
 ```kotlin
 dependencies {
 	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
 	additionalRuntimeClasspath("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion")
-	jarJar("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }
 }
 ```
 
-With this setup, your code can use MezzConfig, local game runs can load it, and
-your release jar includes it for players. The exact version is the copy placed
-in your jar; the range lets NeoForge share one compatible copy when several
-mods include MezzConfig.
+This lets your code use MezzConfig and makes it available to local game runs.
+Your release jar does not contain MezzConfig, so players and modpacks can
+install one shared copy.
 
-Run `./gradlew build` and distribute the production jar from `build/libs`.
+Run `./gradlew build` and distribute your normal release jar from `build/libs`.
 
 ## Tell NeoForge about MezzConfig
 
@@ -45,9 +42,29 @@ Replace `your_mod_id` with your mod id:
     side="BOTH"
 ```
 
-This tells NeoForge to start MezzConfig before your mod. The copy in your jar
-satisfies the dependency. Keep this range the same as
-`mezzConfigVersionRange`.
+This tells NeoForge to require MezzConfig and start it before your mod. Change
+the version range only when your mod supports a different range.
+
+## Optional: include MezzConfig in your jar
+
+You can include MezzConfig when your mod must work as a single download. This
+makes installation simpler, but increases your jar size and packages another
+copy in every mod that uses this option.
+
+Add the supported range and Jar-in-Jar dependency:
+
+```kotlin
+val mezzConfigVersionRange = "[0.3.0,1.0.0)"
+
+dependencies {
+	jarJar("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }
+}
+```
+
+Keep the range the same as the one in `neoforge.mods.toml`. Run
+`./gradlew build` as usual. The release jar now contains MezzConfig and
+satisfies the required dependency; do not remove the `neoforge.mods.toml`
+entry.
 
 See the official
 [ModDevGradle Jar-in-Jar documentation](https://docs.neoforged.net/toolchain/docs/plugins/mdg/#jar-in-jar).
