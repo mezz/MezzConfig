@@ -39,7 +39,6 @@ pluginManagement {
 
 rootProject.name = "MezzConfig"
 include(
-	"Common", "CommonApi",
-	"Fabric", "Forge", "NeoForge",
-	"FabricTest", "ForgeTest", "NeoForgeTest"
+	"Common",
+	"Fabric", "Forge", "NeoForge"
 )

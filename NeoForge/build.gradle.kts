@@ -17,6 +17,7 @@ val neoforgeTestModId: String by extra
 val modJavaVersion: String by extra
 val deduplicatingRunnerVersion: String by extra
 val fileWatcherVersion: String by extra
+val jsr305Version: String by extra
 
 group = configModGroup
 
@@ -29,23 +30,30 @@ val commonProject: Project = project(":Common")
 val dependencyProjects: List<Project> = listOf(
     commonProject,
 )
-val configApiProject: Project = project(":CommonApi")
-val testModProject: Project = project(":NeoForgeTest")
 
-(listOf(configApiProject, testModProject) + dependencyProjects).forEach {
+dependencyProjects.forEach {
     project.evaluationDependsOn(it.path)
 }
-val testModSourceSet = testModProject.sourceSets.main.get()
 val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
 val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
 fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
     zipTree(archiveTask.flatMap { it.archiveFile })
 val gameTestJunitResultsDir = layout.buildDirectory.dir("test-results/gameTest")
+val testModSourceSet = sourceSets.create("testMod") {
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
 val gameTestSourceSet = sourceSets.create("gameTest") {
     compileClasspath += sourceSets.main.get().output
     runtimeClasspath += sourceSets.main.get().output
 }
 
+configurations.named(testModSourceSet.implementationConfigurationName) {
+    extendsFrom(configurations.implementation.get())
+}
+configurations.named(testModSourceSet.compileOnlyConfigurationName) {
+    extendsFrom(configurations.compileOnly.get())
+}
 configurations.named(gameTestSourceSet.implementationConfigurationName) {
     extendsFrom(configurations.implementation.get())
 }
@@ -56,12 +64,12 @@ configurations.named(gameTestSourceSet.compileOnlyConfigurationName) {
 neoForge {
     version = neoforgeVersion
 
+    addModdingDependenciesTo(testModSourceSet)
     addModdingDependenciesTo(gameTestSourceSet)
 
     mods {
         create(configModId) {
             sourceSet(sourceSets.main.get())
-            sourceSet(configApiProject.sourceSets.main.get())
             sourceSet(commonProject.sourceSets.main.get())
         }
         create(neoforgeTestModId) {
@@ -102,9 +110,13 @@ neoForge {
     }
 }
 
-val testModClassesTask = testModProject.tasks.named(testModSourceSet.classesTaskName)
+val testModClassesTask = tasks.named(testModSourceSet.classesTaskName)
 val testModRunTasks = setOf("runClient", "runServer", "runGameTestServer")
 tasks.matching { it.name in testModRunTasks }.configureEach {
+    dependsOn(testModClassesTask)
+}
+
+tasks.check {
     dependsOn(testModClassesTask)
 }
 
@@ -116,10 +128,10 @@ sourceSets {
 }
 
 dependencies {
-    compileOnly(configApiProject)
     dependencyProjects.forEach {
         compileOnly(it)
     }
+    add(testModSourceSet.compileOnlyConfigurationName, "com.google.code.findbugs:jsr305:$jsr305Version")
     add("additionalRuntimeClasspath", "net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
         isTransitive = false
     }
@@ -149,7 +161,6 @@ tasks.withType<JavaCompile> {
 
 tasks.jar {
     dependsOn(commonModShadeJarTask)
-    from(configApiProject.sourceSets.main.get().output)
     from(sourceSets.main.get().output)
     from(zipTreeArchive(commonModShadeJarTask))
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -157,7 +168,6 @@ tasks.jar {
 
 val sourcesJarTask = tasks.named<Jar>("sourcesJar") {
     dependsOn(commonModShadeSourcesJarTask)
-    from(configApiProject.sourceSets.main.get().allJava)
     from(sourceSets.main.get().allJava)
     from(zipTreeArchive(commonModShadeSourcesJarTask)) {
         exclude("META-INF/MANIFEST.MF", "MANIFEST.MF")
@@ -199,7 +209,7 @@ publishing {
             artifact(mavenJarTask.get())
             artifact(mavenSourcesJarTask.get())
 
-            val dependencyInfos = (listOf(configApiProject) + dependencyProjects).map {
+            val dependencyInfos = dependencyProjects.map {
                 mapOf(
                     "groupId" to it.group,
                     "artifactId" to it.base.archivesName.get(),

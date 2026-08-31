@@ -31,13 +31,10 @@ val commonProject: Project = project(":Common")
 val dependencyProjects: List<Project> = listOf(
 	commonProject,
 )
-val configApiProject: Project = project(":CommonApi")
-val testModProject: Project = project(":ForgeTest")
 
-(listOf(configApiProject, testModProject) + dependencyProjects).forEach {
+dependencyProjects.forEach {
 	project.evaluationDependsOn(it.path)
 }
-val testModSourceSet = testModProject.sourceSets.main.get()
 val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
 val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
 val serverSmokeTestRunDir = layout.buildDirectory.dir("run/server-smoke")
@@ -48,6 +45,14 @@ val configModRunSourceSet = sourceSets.create("configModRun") {
 	val outputDir = layout.buildDirectory.file("sourcesSets/$name").get().asFile
 	output.setResourcesDir(outputDir)
 	java.destinationDirectory.set(outputDir)
+}
+val testModSourceSet = sourceSets.create("testMod") {
+	compileClasspath += sourceSets.main.get().output
+	compileClasspath += sourceSets.main.get().compileClasspath
+}
+configurations.named(testModSourceSet.runtimeClasspathConfigurationName) {
+	// ForgeGradle needs the loader runtime here, but main outputs must remain on the transforming mod path.
+	extendsFrom(configurations.runtimeClasspath.get())
 }
 fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
 	zipTree(archiveTask.flatMap { it.archiveFile })
@@ -89,7 +94,6 @@ dependencies {
 	compileOnly("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
 	compileOnly("org.apache.logging.log4j:log4j-api:$log4jVersion")
 	compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
-	compileOnly(configApiProject)
 	dependencyProjects.forEach {
 		compileOnly(it)
 	}
@@ -97,7 +101,6 @@ dependencies {
 
 val prepareConfigModRun = tasks.register<Sync>("prepareConfigModRun") {
 	from(sourceSets.main.get().output)
-	from(configApiProject.sourceSets.main.get().output)
 	from(zipTreeArchive(commonModShadeJarTask))
 	into(configModRunSourceSet.java.destinationDirectory)
 }
@@ -153,9 +156,13 @@ minecraft {
 	}
 }
 
-val testModClassesTask = testModProject.tasks.named(testModSourceSet.classesTaskName)
+val testModClassesTask = tasks.named(testModSourceSet.classesTaskName)
 val testModRunTasks = setOf("runClientDev", "Server", "runServerSmokeTest")
 tasks.matching { it.name in testModRunTasks }.configureEach {
+	dependsOn(testModClassesTask)
+}
+
+tasks.check {
 	dependsOn(testModClassesTask)
 }
 
@@ -179,7 +186,6 @@ tasks.matching { it.name == "runServerSmokeTest" }.configureEach {
 
 tasks.jar {
 	dependsOn(commonModShadeJarTask)
-	from(configApiProject.sourceSets.main.get().output)
 	from(sourceSets.main.get().output)
 	from(zipTreeArchive(commonModShadeJarTask))
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -187,7 +193,6 @@ tasks.jar {
 
 val sourcesJarTask = tasks.named<Jar>("sourcesJar") {
 	dependsOn(commonModShadeSourcesJarTask)
-	from(configApiProject.sourceSets.main.get().allJava)
 	from(sourceSets.main.get().allJava)
 	from(zipTreeArchive(commonModShadeSourcesJarTask)) {
 		exclude("META-INF/MANIFEST.MF", "MANIFEST.MF")
@@ -220,7 +225,7 @@ publishing {
 			artifact(mavenJarTask.get())
 			artifact(mavenSourcesJarTask.get())
 
-			val dependencyInfos = (listOf(configApiProject) + dependencyProjects).map {
+			val dependencyInfos = dependencyProjects.map {
 				mapOf(
 					"groupId" to it.group,
 					"artifactId" to it.base.archivesName.get(),

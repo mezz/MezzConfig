@@ -307,7 +307,7 @@ mistaken for a requirement without supporting evidence.
 
 ### Establish the Post-Release Compatibility Baseline
 
-- [ ] Make the first published `0.3.0` CommonApi jar the required rolling
+- [ ] Make the first published `0.3.0` API jar the required rolling
       baseline for subsequent development.
 
   **Reason:** Compatibility checking is correctly configured but intentionally
@@ -351,13 +351,13 @@ mistaken for a requirement without supporting evidence.
 
 ### State the Stable Package Boundary Explicitly
 
-- [x] Document that supported API consists of non-internal packages in
-      `CommonApi`; public implementation classes in Common and loader artifacts
+- [x] Document that supported API consists of non-internal packages in the
+      filtered Common API artifact; public implementation classes in Common and loader artifacts
       are not stable API.
 
   **Reason:** Java visibility still allows consumers to link public classes from
   package-level `@ApiStatus.Internal` packages. A written boundary prevents
-  accidental compatibility obligations outside CommonApi.
+  accidental compatibility obligations outside the API artifact.
 
   - [x] Keep implementation and loader packages annotated
         `@ApiStatus.Internal`.
@@ -386,7 +386,7 @@ mistaken for a requirement without supporting evidence.
 The release gate must exercise packaged artifacts and the high-risk behaviors
 identified above, not only internal helpers.
 
-- [x] Run `spotlessCheck`, `build`, CommonApi Javadocs, API compatibility
+- [x] Run `spotlessCheck`, `build`, API Javadocs, API compatibility
       checking, and `validatePublishing` from a clean checkout.
 - [x] Run NeoForge server GameTests and the new Fabric and Forge smoke tests.
 - [ ] Test dedicated-server, integrated-server, and remote-client config flows.
@@ -396,6 +396,6 @@ identified above, not only internal helpers.
 - [x] Test conventional and explicit locations across every supported schema type.
 - [x] Test schema, sorting, and cross-location path-collision rejection.
 - [x] Test category order and all listener scopes through public APIs.
-- [x] Inspect generated jars and POMs and compile a standalone CommonApi
+- [x] Inspect generated jars and POMs and compile a standalone API
       consumer against the validated publication repository.
 - [ ] Confirm the worktree is clean before tagging the release.

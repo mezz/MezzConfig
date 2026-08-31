@@ -5,13 +5,13 @@ schemas, plus string-backed client sort orders.
 
 ## Supported API boundary
 
-The supported API is the non-internal surface published by the `CommonApi`
-module under `net.mezzdev.config.api`. Types annotated with
+The supported API is the non-internal surface published by `Common`'s API-only
+artifact under `net.mezzdev.config.api`. Types annotated with
 `@ApiStatus.Internal` are runtime integration details. Public classes in the
 `Common` implementation module and the Fabric, Forge, and NeoForge loader
 modules are also internal and may change without API compatibility guarantees.
 Depend on those modules through the loader artifact, but compile integrations
-only against the supported `CommonApi` types.
+only against the supported API artifact's types.
 
 ## Registering configs
 

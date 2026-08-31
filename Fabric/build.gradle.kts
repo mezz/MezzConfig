@@ -25,6 +25,7 @@ val fabricApiVersion: String by extra
 val minecraftVersion: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
+val fabricTestModId: String by extra
 val modJavaVersion: String by extra
 val parchmentMinecraftVersion: String by extra
 val parchmentVersionFabric: String by extra
@@ -41,19 +42,21 @@ val commonProject: Project = project(":Common")
 val dependencyProjects: List<Project> = listOf(
     commonProject,
 )
-val configApiProject: Project = project(":CommonApi")
-val testModProject: Project = project(":FabricTest")
 
-(listOf(configApiProject, testModProject) + dependencyProjects).forEach {
+dependencyProjects.forEach {
     project.evaluationDependsOn(it.path)
 }
-val testModSourceSet = testModProject.sourceSets.main.get()
 val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
 val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
 val serverSmokeTestRunDir = layout.buildDirectory.dir("run/server-smoke")
 val serverSmokeTestSuccessFile = serverSmokeTestRunDir.map { it.file("smoke-test-passed") }
 fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
     zipTree(archiveTask.flatMap { it.archiveFile })
+
+val testModSourceSet = sourceSets.create("testMod") {
+    compileClasspath += sourceSets.main.get().output
+    compileClasspath += sourceSets.main.get().compileClasspath
+}
 
 java {
     toolchain {
@@ -81,7 +84,6 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
     compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
-    compileOnly(configApiProject)
     dependencyProjects.forEach {
         compileOnly(it)
     }
@@ -96,7 +98,6 @@ loom {
     mods {
         create(configModId) {
             sourceSet(sourceSets.main.get())
-            sourceSet(configApiProject.sourceSets.main.get())
         }
     }
     runs {
@@ -148,15 +149,8 @@ loom {
     }
 }
 
-sourceSets {
-    named("main") {
-        runtimeClasspath += configApiProject.sourceSets.main.get().output
-    }
-}
-
 tasks.jar {
     dependsOn(commonModShadeJarTask)
-    from(configApiProject.sourceSets.main.get().output)
     from(sourceSets.main.get().output)
     from(zipTreeArchive(commonModShadeJarTask))
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -164,7 +158,6 @@ tasks.jar {
 
 tasks.named<Jar>("sourcesJar") {
     dependsOn(commonModShadeSourcesJarTask)
-    from(configApiProject.sourceSets.main.get().allJava)
     from(sourceSets.main.get().allJava)
     from(zipTreeArchive(commonModShadeSourcesJarTask)) {
         exclude("META-INF/MANIFEST.MF", "MANIFEST.MF")
@@ -205,8 +198,8 @@ tasks.assemble {
     dependsOn(tasks.remapJar, tasks.remapSourcesJar)
 }
 
-val testModClassesTask = testModProject.tasks.named(testModSourceSet.classesTaskName)
-val testModPath = testModProject.layout.buildDirectory.dir("resources/main").get().asFile.absolutePath
+val testModClassesTask = tasks.named(testModSourceSet.classesTaskName)
+val testModPath = layout.buildDirectory.dir("resources/${testModSourceSet.name}").get().asFile.absolutePath
 val testModRunTasks = setOf("runClient", "runServer", "runServerSmokeTest")
 tasks.matching { it.name in testModRunTasks }.configureEach {
     dependsOn(testModClassesTask)
@@ -214,6 +207,10 @@ tasks.matching { it.name in testModRunTasks }.configureEach {
         classpath(testModSourceSet.output)
         jvmArgs("-Dfabric.addMods=$testModPath")
     }
+}
+
+tasks.check {
+    dependsOn(testModClassesTask)
 }
 
 tasks.matching { it.name == "runServerSmokeTest" }.configureEach {
@@ -242,7 +239,7 @@ publishing {
             artifact(remapMavenJarTask)
             artifact(remapMavenSourcesJarTask)
 
-            val dependencyInfos = (listOf(configApiProject) + dependencyProjects).map {
+            val dependencyInfos = dependencyProjects.map {
                 mapOf(
                     "groupId" to it.group,
                     "artifactId" to it.base.archivesName.get(),

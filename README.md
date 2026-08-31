@@ -8,9 +8,9 @@ registration.
 ## Using the API
 
 The stable integration surface consists of the non-internal packages published
-from the `CommonApi` module. Public implementation classes in `Common` and the
-loader modules are internal and are not compatibility-guaranteed API. See the
-[API guide](CommonApi/README.md) for the exact supported boundary, config schema
+in `Common`'s API-only artifact. Public implementation classes in `Common` and
+the loader modules are internal and are not compatibility-guaranteed API. See the
+[API guide](Common/README.md) for the exact supported boundary, config schema
 types and locations, custom serializers, editor hints, and sorting configs.
 
 MezzConfig currently targets Minecraft 1.21.1 and Java 21. Loader-specific
@@ -46,11 +46,11 @@ still needs its loader-specific MezzConfig dependency at runtime.
 
 ## Project layout
 
-- `CommonApi` contains the public API.
-- `Common` contains the loader-independent runtime.
+- `Common` contains the public API and loader-independent runtime, and publishes
+  a filtered API-only artifact for loader-independent compilation.
 - `Fabric`, `Forge`, and `NeoForge` contain loader integrations and produce the
   distributed mod jars.
-- The corresponding `*Test` modules provide in-game integration fixtures.
+- Their `testMod` source sets provide in-game integration fixtures.
 
 ## Building
 
@@ -65,12 +65,12 @@ Build outputs are written beneath each module's `build/libs` directory.
 Run the same release-blocking validation used by CI with:
 
 ```text
-./gradlew spotlessCheck build :CommonApi:javadoc :CommonApi:checkJarCompatibility validatePublishing
+./gradlew spotlessCheck build :Common:apiJavadoc :Common:checkJarCompatibility validatePublishing
 ```
 
 Publication validation writes every Maven publication to
-`build/publication-validation`. JarCompatibilityChecker compares CommonApi with
-the latest released baseline. The baseline may be absent only while preparing
+`build/publication-validation`. JarCompatibilityChecker compares the filtered
+Common API artifact with the latest released baseline. The baseline may be absent only while preparing
 the initial release at the same version.
 
 The NeoForge dedicated-server integration GameTest can be run directly with:

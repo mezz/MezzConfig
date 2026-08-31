@@ -1,10 +1,33 @@
+import groovy.json.JsonSlurper
+import net.neoforged.jarcompatibilitychecker.gradle.CompatibilityTask
+import org.gradle.api.Action
+import org.gradle.api.GradleException
+import org.gradle.api.Task
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
+
+// CompatibilityTask.fail delegates to ConsoleTool's System.exit in JCC 0.1.18.
+class FailOnJccErrors : Action<Task> {
+    override fun execute(task: Task) {
+        val compatibilityTask = task as CompatibilityTask
+        val report = JsonSlurper().parse(compatibilityTask.output.get().asFile)
+        if (containsErrors(report)) {
+            throw GradleException("JarCompatibilityChecker found incompatible API changes.")
+        }
+    }
+
+    private fun containsErrors(value: Any?): Boolean = when (value) {
+        is Map<*, *> -> value["isError"] == true || value.values.any(::containsErrors)
+        is Iterable<*> -> value.any(::containsErrors)
+        else -> false
+    }
+}
 
 plugins {
     id("idea")
     id("java")
     id("net.neoforged.moddev")
+    id("net.neoforged.jarcompatibilitychecker")
     id("maven-publish")
     id("net.mezzdev.modshade")
 }
@@ -40,18 +63,36 @@ val modJavaVersion: String by extra
 val deduplicatingRunnerVersion: String by extra
 val fileWatcherVersion: String by extra
 val jetbrainsAnnotationsVersion: String by extra
+val jspecifyVersion: String by extra
 val log4jVersion: String by extra
+val apiBaselineVersion: String by extra
+val specificationVersion: String by extra
+val isInitialApiRelease = apiBaselineVersion == specificationVersion
+
+repositories {
+    maven {
+        name = "publicationValidation"
+        url = rootProject.layout.buildDirectory.dir("publication-validation").get().asFile.toURI()
+        content {
+            includeGroup(configModGroup)
+        }
+    }
+    maven("https://maven.blamejared.com") {
+        name = "mezzReleases"
+        content {
+            includeGroup(configModGroup)
+        }
+    }
+}
 
 group = configModGroup
 
 val baseArchivesName = "${configModId}-${minecraftVersion}-config"
+val apiArchivesName = "${configModId}-${minecraftVersion}-config-api"
 base {
     archivesName.set(baseArchivesName)
 }
 
-val dependencyProjects: List<Project> = listOf(
-    project(":CommonApi"),
-)
 val fileWatcherLicense by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -61,10 +102,6 @@ val deduplicatingRunnerLicense by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
     isTransitive = false
-}
-
-dependencyProjects.forEach {
-    project.evaluationDependsOn(it.path)
 }
 
 neoForge {
@@ -82,10 +119,8 @@ dependencies {
         isTransitive = false
     }
     implementation("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
+    implementation("org.jspecify:jspecify:$jspecifyVersion")
     implementation("org.apache.logging.log4j:log4j-api:$log4jVersion")
-    dependencyProjects.forEach {
-        implementation(it)
-    }
     testImplementation("org.junit.jupiter:junit-jupiter:$jUnitVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -110,6 +145,75 @@ java {
         languageVersion.set(JavaLanguageVersion.of(modJavaVersion))
     }
     withSourcesJar()
+}
+
+val apiJarTask = tasks.register<Jar>("apiJar") {
+    archiveBaseName.set(apiArchivesName)
+    from(sourceSets.main.get().output) {
+        include("net/mezzdev/config/api/**")
+    }
+}
+
+val apiSourcesJarTask = tasks.register<Jar>("apiSourcesJar") {
+    archiveBaseName.set(apiArchivesName)
+    archiveClassifier.set("sources")
+    from(sourceSets.main.get().allJava) {
+        include("net/mezzdev/config/api/**")
+    }
+}
+
+val apiJavadocDir = layout.buildDirectory.dir("docs/apiJavadoc")
+val apiJavadocTask = tasks.register<Javadoc>("apiJavadoc") {
+    source(sourceSets.main.get().allJava.matching {
+        include("net/mezzdev/config/api/**")
+    })
+    classpath = sourceSets.main.get().compileClasspath
+    destinationDir = apiJavadocDir.get().asFile
+}
+
+val apiJavadocJarTask = tasks.register<Jar>("apiJavadocJar") {
+    dependsOn(apiJavadocTask)
+    archiveBaseName.set(apiArchivesName)
+    archiveClassifier.set("javadoc")
+    from(apiJavadocDir)
+}
+
+tasks.assemble {
+    dependsOn(apiJarTask, apiSourcesJarTask, apiJavadocJarTask)
+}
+
+val apiBaseline by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
+dependencies {
+    apiBaseline("$group:$apiArchivesName:$apiBaselineVersion")
+}
+
+val apiBaselineArchives = apiBaseline.incoming.artifactView {
+    isLenient = isInitialApiRelease
+}.files
+val missingApiBaselineArchive = layout.buildDirectory.file("api-baseline/missing-$apiBaselineVersion.jar")
+val apiBaselineArchive = layout.file(apiBaselineArchives.elements.map { archives ->
+    archives.singleOrNull()?.asFile ?: missingApiBaselineArchive.get().asFile
+})
+
+val checkJarCompatibility = tasks.named<CompatibilityTask>("checkJarCompatibility") {
+    group = "verification"
+    description = "Checks the public API artifact against the latest released baseline."
+
+    inputJar.set(apiJarTask.flatMap { it.archiveFile })
+    baseJar.set(apiBaselineArchive)
+    doLast(FailOnJccErrors())
+    onlyIf("the initial API $apiBaselineVersion baseline has been published") {
+        baseJar.get().asFile.exists()
+    }
+}
+
+tasks.check {
+    dependsOn(checkJarCompatibility)
 }
 
 val shadedDependencyLicenses = copySpec {
@@ -145,6 +249,39 @@ tasks.withType<JavaCompile> {
 
 publishing {
     publications {
+        register<MavenPublication>("configApiJar") {
+            artifactId = apiArchivesName
+            artifact(apiJarTask)
+            artifact(apiSourcesJarTask)
+            artifact(apiJavadocJarTask)
+
+            pom {
+                name.set("MezzConfig API")
+            }
+
+            val dependencyInfos = listOf(
+                mapOf(
+                    "groupId" to "org.jetbrains",
+                    "artifactId" to "annotations",
+                    "version" to jetbrainsAnnotationsVersion
+                ),
+                mapOf(
+                    "groupId" to "org.jspecify",
+                    "artifactId" to "jspecify",
+                    "version" to jspecifyVersion
+                )
+            )
+
+            pom.withXml {
+                val dependenciesNode = asNode().appendNode("dependencies")
+                dependencyInfos.forEach {
+                    val dependencyNode = dependenciesNode.appendNode("dependency")
+                    it.forEach { (key, value) ->
+                        dependencyNode.appendNode(key, value)
+                    }
+                }
+            }
+        }
         register<MavenPublication>("configJar") {
             artifactId = baseArchivesName
             from(components["modShade"])
@@ -156,17 +293,16 @@ publishing {
                     "version" to jetbrainsAnnotationsVersion
                 ),
                 mapOf(
+                    "groupId" to "org.jspecify",
+                    "artifactId" to "jspecify",
+                    "version" to jspecifyVersion
+                ),
+                mapOf(
                     "groupId" to "org.apache.logging.log4j",
                     "artifactId" to "log4j-api",
                     "version" to log4jVersion
                 )
-            ) + dependencyProjects.map {
-                mapOf(
-                    "groupId" to it.group,
-                    "artifactId" to it.base.archivesName.get(),
-                    "version" to it.version
-                )
-            }
+            )
 
             pom.withXml {
                 val dependenciesNode = asNode().appendNode("dependencies")

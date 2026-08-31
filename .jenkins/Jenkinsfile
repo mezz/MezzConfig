@@ -60,7 +60,7 @@ pipeline {
         stage('Validate') {
             steps {
                 script {
-                    sh "./gradlew clean spotlessCheck build :CommonApi:javadoc :CommonApi:checkJarCompatibility validatePublishing ${getReleaseGradleArgs()} --no-daemon"
+                    sh "./gradlew clean spotlessCheck build :Common:apiJavadoc :Common:checkJarCompatibility validatePublishing ${getReleaseGradleArgs()} --no-daemon"
                 }
             }
         }
