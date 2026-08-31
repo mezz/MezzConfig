@@ -10,7 +10,7 @@ registration.
 The stable integration surface consists of the non-internal packages published
 in `Common`'s API-only artifact. Public implementation classes in `Common` and
 the loader modules are internal and are not compatibility-guaranteed API. See the
-[API guide](Common/README.md) for the exact supported boundary, config schema
+[API guide](docs/API.md) for the exact supported boundary, config schema
 types and locations, custom serializers, editor hints, and sorting configs.
 
 MezzConfig currently targets Minecraft 1.21.1 and Java 21. Loader-specific
