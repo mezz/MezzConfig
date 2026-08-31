@@ -497,6 +497,42 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
+	public void sharedValueBatchListenersRunOncePerBatch() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> first = builder.addBoolean("first", true)
+			.build();
+		ConfigValue<Boolean> second = builder.addBoolean("second", true)
+			.build();
+		ConfigSchema schema = createSchema(builder);
+		List<String> effectiveBatches = new ArrayList<>();
+		List<String> pendingBatches = new ArrayList<>();
+		IConfigValueBatchChangeListener effectiveListener = changes -> effectiveBatches.add(formatChanges(changes));
+		IConfigValueBatchChangeListener pendingListener = changes -> pendingBatches.add(formatChanges(changes));
+		first.addBatchListener(effectiveListener);
+		second.addBatchListener(effectiveListener);
+		first.addPendingBatchListener(pendingListener);
+		second.addPendingBatchListener(pendingListener);
+
+		schema.batchUpdate(updater -> {
+			updater.set(first, false);
+			updater.set(second, false);
+		});
+
+		List<String> expected = List.of("first: true -> false, second: true -> false");
+		assertEquals(expected, effectiveBatches);
+		assertEquals(expected, pendingBatches);
+
+		schema.batchUpdate(updater -> updater.set(second, true));
+
+		List<String> expectedAfterNextBatch = List.of(
+			"first: true -> false, second: true -> false",
+			"second: false -> true"
+		);
+		assertEquals(expectedAfterNextBatch, effectiveBatches);
+		assertEquals(expectedAfterNextBatch, pendingBatches);
+	}
+
+	@Test
 	public void batchUpdaterValidatesAllUpdatesBeforeChangingValues() {
 		// Setup: one queued update is valid and one queued update is outside the integer range.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");

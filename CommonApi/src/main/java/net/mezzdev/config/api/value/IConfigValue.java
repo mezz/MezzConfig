@@ -139,7 +139,8 @@ public interface IConfigValue<T> {
 	/**
 	 * Observe the complete effective-value batch whenever it includes this setting.
 	 * <p>
-	 * Use this when reacting to {@link #getValue()} requires seeing the other settings changed by the same operation.
+	 * Register the same listener on every setting a reaction depends on. When several of those settings change together, the
+	 * listener runs once with the complete batch.
 	 *
 	 * @param listener callback accepting the applied changes
 	 * @return a callback that removes this listener
@@ -151,8 +152,8 @@ public interface IConfigValue<T> {
 	/**
 	 * Observe the complete saved-value batch whenever it includes this setting.
 	 * <p>
-	 * Use this when an editor or diagnostic view needs the other saved selections changed alongside
-	 * {@link #getPendingValue()}.
+	 * Register the same listener on every saved setting an editor or diagnostic view depends on. When several of those
+	 * settings change together, the listener runs once with the complete batch.
 	 *
 	 * @param listener callback accepting the pending changes
 	 * @return a callback that removes this listener

@@ -21,6 +21,7 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -367,14 +368,19 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 			return List.of();
 		}
 		List<AppliedConfigValueChange<?>> immutableChanges = List.copyOf(changes);
+		BatchListenerTracker batchListenerTracker = new BatchListenerTracker();
 		List<Runnable> notifications = immutableChanges.stream()
-			.map(change -> change.configValue().snapshotNotifications(immutableChanges, pending))
+			.map(change -> change.configValue().snapshotNotifications(immutableChanges, pending, batchListenerTracker))
 			.toList();
 		notifications.forEach(Runnable::run);
 		return immutableChanges;
 	}
 
-	private Runnable snapshotNotifications(List<? extends AppliedConfigValueChange<?>> changes, boolean pending) {
+	private Runnable snapshotNotifications(
+		List<? extends AppliedConfigValueChange<?>> changes,
+		boolean pending,
+		BatchListenerTracker batchListenerTracker
+	) {
 		AppliedConfigValueChange<T> change = getChange(changes);
 		List<IConfigValueChangeListener<T>> listenerSnapshot;
 		List<IConfigValueBatchChangeListener> batchListenerSnapshot;
@@ -397,7 +403,8 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 			listenerSnapshot,
 			batchListenerSnapshot,
 			listenerDescription,
-			batchListenerDescription
+			batchListenerDescription,
+			batchListenerTracker
 		);
 	}
 
@@ -407,7 +414,8 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 		List<IConfigValueChangeListener<T>> listenerSnapshot,
 		List<IConfigValueBatchChangeListener> batchListenerSnapshot,
 		String listenerDescription,
-		String batchListenerDescription
+		String batchListenerDescription,
+		BatchListenerTracker batchListenerTracker
 	) {
 		for (IConfigValueChangeListener<T> listener : listenerSnapshot) {
 			try {
@@ -417,11 +425,27 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 			}
 		}
 		for (IConfigValueBatchChangeListener listener : batchListenerSnapshot) {
+			if (!batchListenerTracker.shouldNotify(this, listener)) {
+				continue;
+			}
 			try {
 				listener.onConfigValuesChanged(changes);
 			} catch (RuntimeException e) {
 				LOGGER.error("{} failed for '{}'.", batchListenerDescription, name, e);
 			}
+		}
+	}
+
+	private static final class BatchListenerTracker {
+		private final Map<IConfigValueBatchChangeListener, ConfigValue<?>> firstOwners = new IdentityHashMap<>();
+
+		private boolean shouldNotify(ConfigValue<?> owner, IConfigValueBatchChangeListener listener) {
+			ConfigValue<?> firstOwner = firstOwners.get(listener);
+			if (firstOwner == null) {
+				firstOwners.put(listener, owner);
+				return true;
+			}
+			return firstOwner == owner;
 		}
 	}
 
