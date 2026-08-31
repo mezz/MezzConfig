@@ -1,157 +1,105 @@
 # Sorting configs
 
-## Why use a sorting config?
-
-Some user-facing lists are assembled from content registered by other mods, so
-their complete contents depend on the installed modpack. A normal config cannot
-declare that list ahead of time, and saving the current list verbatim is fragile
-when a pack update adds or removes entries.
-
-[Just Enough Items (JEI)](https://github.com/mezz/JustEnoughItems) has this
-problem with its ingredient list and recipe categories. JEI discovers mod names,
-ingredient types, and recipe categories from installed content. Its default
-orders keep familiar entries first: Minecraft in the ingredient list's mod-name
-order, item stacks among ingredient types, and crafting among recipe categories.
-A player can then change the saved order to put the content they use most often
-first.
-
-When the modpack changes, the useful behavior is to keep the player's order for
-entries that still exist, ignore entries that disappeared, and place newly
-discovered entries into a sensible default position. A sorting config handles
-that reconciliation. Use one for the same kind of dynamic list: plugins, recipe
-types, registered content, or any collection whose membership is not known when
-declaring a schema.
+A sorting config remembers how a player wants to order a list whose entries are
+discovered while the game is running.
 
 [Back to the API guide](API.md)
 
-## Create a string order
+## When a normal config list is not enough
 
-Create sorting configs from the same `IConfigRegistration` used for schemas:
+Use a normal schema value when every possible entry is known in advance. Use a
+sorting config when other mods, plugins, or registries determine which entries
+exist.
+
+[Just Enough Items (JEI)](https://github.com/mezz/JustEnoughItems) is a useful
+example. Its ingredient list discovers mod names and ingredient types from the
+installed modpack, and its recipe categories come from registered content. JEI
+can start with familiar defaults—Minecraft, item stacks, and crafting first—yet
+still preserve a player's preferred order when mods are added or removed.
+
+MezzConfig handles the same moving-list problem: entries that still exist keep
+their saved position, removed entries are ignored, and new entries are placed
+using your default comparator.
+
+## Create the order
+
+Create a sorting config once during common initialization. Use stable IDs rather
+than translated display names so language changes do not lose the saved order:
 
 ```java
 IConfigRegistration configs = Configs.forMod("example_mod");
 
-ISortingConfig<String> pluginOrder = configs.createSortingConfig(
-	"plugin-order.txt",
-	String.CASE_INSENSITIVE_ORDER,
-	true
+ISortingConfig<String> categoryOrder = configs.createSortingConfig(
+	"recipe-category-order.txt",
+	Comparator
+		.comparing((String id) -> !id.equals("minecraft:crafting"))
+		.thenComparing(String.CASE_INSENSITIVE_ORDER),
+	false
 );
 ```
 
-The last argument controls whether a user may hide values by removing them from
-the saved visible order.
+The comparator defines the order a new player sees and where newly discovered
+entries go. This example puts the familiar crafting category first, then sorts
+the rest by ID.
 
-On a physical client, the order is stored at:
+The final argument controls whether the player may hide entries:
 
-```text
-config/<mod-id>/client/<file-name>
-```
+- `false` keeps every available entry visible and only saves their order;
+- `true` lets an editor hide an entry by leaving it out of the saved visible
+  list.
 
-On a dedicated server it remains in memory and does not access a file.
+MezzConfig stores the preference in your mod's client config directory.
 
-Each sorting config and schema must resolve to a unique path. MezzConfig rejects
-collisions before the conflicting config reads or writes the file.
+## Connect it to a screen
 
-## Apply the saved order
-
-Pass the complete collection currently available whenever values need to be
-displayed:
+Whenever the screen is built or refreshed, pass every category currently
+available:
 
 ```java
-List<String> allPlugins = discoverPlugins();
-List<String> visiblePlugins = pluginOrder.getSortedValues(allPlugins);
-```
-
-The result is an unmodifiable, duplicate-free snapshot. MezzConfig reconciles
-the saved preference with the supplied runtime values:
-
-- saved values that still exist keep their preferred order;
-- missing runtime values are ignored;
-- newly discovered values are inserted with the default comparator;
-- values explicitly hidden by the user remain hidden.
-
-Use `getDefaultSortedValues(allValues)` to ignore the saved preference, or
-`getComparator(allValues)` when another API needs a comparator.
-
-## Save an edited order
-
-Provide both the complete runtime set and the visible order selected by the
-user:
-
-```java
-boolean changed = pluginOrder.setSortedValues(
-	allPlugins,
-	List.of("core", "compat", "debug")
+List<String> allCategoryIds = discoverRecipeCategoryIds();
+List<String> displayedCategoryIds = categoryOrder.getSortedValues(
+	allCategoryIds
 );
 ```
 
-The visible list must not contain duplicates or values outside `allPlugins`.
-The method returns `true` when the saved order changed.
-
-When removal is enabled, omitting a value that is present in `allPlugins` hides
-it. Values that are discovered in a later call are visible by default. When
-removal is disabled, omitted values are appended in default order instead.
-
-Use `isVisible(allValues, value)` to query the reconciled visibility of one
-value.
-
-## Listen for changes
-
-Register a listener when a view needs to refresh after the saved order changes:
+Render `displayedCategoryIds` in the returned order. After the player drags rows
+into a new order, save what the screen displays:
 
 ```java
-Runnable unsubscribe = pluginOrder.addChangeListener(() -> {
-	rebuildPluginList();
+categoryOrder.setSortedValues(
+	allCategoryIds,
+	reorderedCategoryIds
+);
+```
+
+Always pass the complete current collection as the first argument. The second
+list is the player's visible order. With removal disabled, accidentally omitted
+entries remain visible and are appended in their default order.
+
+If another API expects a comparator instead of a sorted list, pass it
+`categoryOrder.getComparator(allCategoryIds)`.
+
+## Refresh when the order changes
+
+Register a listener when another screen or command can update the order while a
+view is open:
+
+```java
+Runnable removeListener = categoryOrder.addChangeListener(() -> {
+	rebuildCategoryList();
 });
 ```
 
-Listeners run synchronously after the new order is active. Keep the returned
-callback for teardown.
+Keep and call the returned removal callback when the view closes.
 
-## Sort custom value types
+## Sort something other than strings
 
-The string overload is a convenience. For another effectively immutable type,
-provide its config serializer and a default comparator:
+For a custom ID type, use the `createSortingConfig` overload that accepts an
+`IConfigValueSerializer<T>`. The serialized form becomes the saved identity, so
+choose a stable domain value such as a resource ID—not a mutable object or
+localized name.
 
-```java
-ISortingConfig<ResourceLocation> ingredientOrder =
-	configs.createSortingConfig(
-		"ingredient-order.txt",
-		resourceLocationSerializer,
-		Comparator.comparing(ResourceLocation::toString),
-		true
-	);
-```
-
-Custom sortable values must have stable equality and hash codes. Their
-serializer must follow the normal [custom value contract](custom-values.md),
-with one additional identity rule: equal values serialize identically, and
-unequal values never share serialized text.
-
-## Migrate an old order
-
-Register a migration immediately after creating the sorting config, before any
-method loads or changes its saved order:
-
-```java
-pluginOrder.setLegacyMigration(
-	List.of(oldOrderFile),
-	(path, migration) -> {
-		List<String> savedOrder = Files.readAllLines(path);
-		migration.setSortedValues(savedOrder, savedOrder);
-	}
-);
-```
-
-The first collection passed to `setSortedValues` is every value known to the
-old order. The second is the visible subset in saved order. Supply hidden old
-values only in the first collection.
-
-Migration is attempted when the sorting config first needs its saved state and
-only when the new destination does not exist. MezzConfig preserves and backs up
-the selected source, validates the migrated order, and writes the current
-format atomically.
-
-Implement `ISortingConfigMigrator` as a class to receive an
-`IConfigMigrationResult` after migration completes. The statuses and result
-paths are the same as schema migration; see [Migrations](migrations.md).
+See [Custom config values](custom-values.md) for serializer guidance. If the mod
+already has an order file to preserve, register `setLegacyMigration` immediately
+after creating the sorting config; see [Migrations](migrations.md) for the
+broader migration workflow.

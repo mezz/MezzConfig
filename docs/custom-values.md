@@ -1,52 +1,32 @@
 # Custom config values
 
-## Why use a custom value?
-
-Most settings are naturally booleans, numbers, strings, colors, enums, or lists,
-and should use the built-in helpers. A custom value is useful when the setting
-has a meaningful type and rules that those primitives cannot express clearly.
-
-For example, a timeout may be a positive `Duration` in mod code. Storing it as
-an arbitrary string means parsing and checking it wherever it is used; storing
-it as a number leaves its unit unclear. A custom serializer defines the text
-format, validation, error messages, and editor information once, so the config
-value exposed to the rest of the mod is already a valid `Duration`.
-
-The same approach works for stable resource identifiers, structured rules, or
-other effectively immutable domain values. Create a custom serializer only
-when the mod benefits from using that type directly.
+A custom value lets the rest of your mod receive something meaningful, such as
+a `Duration` or resource ID, instead of repeatedly parsing strings or numbers.
 
 [Back to the API guide](API.md)
 
-## Built-in values
+## Decide whether a custom value helps
 
-`IConfigCategoryBuilder` provides scalar and list helpers for:
+Prefer the built-in helpers for booleans, strings, bounded numbers, packed
+colors, enums, and lists of those types. They already provide validation and
+enough information for config screens.
 
-| Type | Notes |
-| --- | --- |
-| `boolean` and `String` | Unrestricted scalar and list values. |
-| `int`, `long`, and `double` | Optional inclusive minimum and maximum. Doubles must be finite. |
-| `PackedColor` | RGB (`0xRRGGBB`) or ARGB (`0xAARRGGBB`). |
-| enums | All constants, or an explicit non-empty subset. |
-| lists | Typed lists of every built-in value type. |
+Create a custom serializer when the setting has a real type and rules that a
+primitive cannot express clearly. A serializer converts between the text in the
+config file and the type used by your mod. For example, a timeout may be a
+positive `Duration`. Storing an arbitrary string requires parsing it at every
+use, while storing a number leaves its unit unclear. With a serializer, the rest
+of the mod receives a valid `Duration` directly.
 
-Built-in lists are copied when declared, loaded, or updated and are returned as
-unmodifiable snapshots.
+Other good candidates include resource IDs, structured rules, or another small
+value object that the feature already uses directly.
 
 ## Implement a serializer
 
-`IConfigValueSerializer<T>` defines storage, validation, and the metadata a
-config editor needs for one type.
-
-This example stores a positive `java.time.Duration`:
+`IConfigValueSerializer<T>` tells MezzConfig how to write, read, validate, and
+describe one value type:
 
 ```java
-import net.mezzdev.config.api.value.IDeserializeResult;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
-
-import java.time.Duration;
-import java.time.format.DateTimeParseException;
-
 public final class DurationSerializer
 	implements IConfigValueSerializer<Duration> {
 
@@ -59,15 +39,15 @@ public final class DurationSerializer
 	public IDeserializeResult<Duration> deserialize(String text) {
 		try {
 			Duration value = Duration.parse(text);
-			if (!isValid(value)) {
-				return IDeserializeResult.failure(
-					"Duration must be greater than zero."
-				);
+			if (isValid(value)) {
+				return IDeserializeResult.success(value);
 			}
-			return IDeserializeResult.success(value);
+			return IDeserializeResult.failure(
+				"Duration must be greater than zero."
+			);
 		} catch (DateTimeParseException e) {
 			return IDeserializeResult.failure(
-				"Expected an ISO-8601 duration such as PT30S."
+				"Expected a duration such as PT30S."
 			);
 		}
 	}
@@ -84,7 +64,12 @@ public final class DurationSerializer
 }
 ```
 
-Pass the serializer directly to `addValue`:
+Bad file input should produce a failure with a useful message, not escape as an
+exception.
+
+## Add the typed setting
+
+Pass the serializer to `addValue` and keep the returned typed value:
 
 ```java
 IConfigValueSerializer<Duration> durations = new DurationSerializer();
@@ -96,54 +81,43 @@ IConfigValue<Duration> timeout = general.addValue(
 ).build();
 ```
 
-There is no global serializer registration. The value builder owns the
-serializer supplied for that setting.
-
-## Serializer contract
-
-A serializer must satisfy all of these rules:
-
-- accepted values are effectively immutable and have stable equality;
-- `serialize` is deterministic;
-- every accepted value serializes and deserializes back to an equal value
-  without diagnostics;
-- `deserialize` reports bad input through `IDeserializeResult` instead of
-  throwing;
-- every deserialized result passes `isValid`;
-- shared serializer instances are thread-safe.
-
-For a sorting config, serialized text is also the value's persistent identity:
-equal values must serialize identically, and unequal values must not serialize
-to the same text.
-
-## Deserialization outcomes
-
-Return one of the factory outcomes on `IDeserializeResult`:
+Feature code can now use the value without parsing:
 
 ```java
-IDeserializeResult.success(value);
-IDeserializeResult.partialSuccess(repairedValue, "Ignored unknown field.");
-IDeserializeResult.failure("Expected a positive duration.");
+Duration currentTimeout = timeout.getValue();
+scheduleRetry(currentTimeout);
 ```
 
-A partial success preserves a usable value while reporting why the stored input
-needs correction. A failure has diagnostics but no value. MezzConfig can use
-the diagnostics when repairing a config file.
+There is no global serializer registry. Reuse an instance where it makes sense,
+or supply a serializer built specifically for one setting.
 
-## Ranges and fixed choices
+## Avoid surprising config changes
 
-Serializers can provide optional editor metadata:
+The same value should always be written the same way, and reading that text
+should produce an equal value. Otherwise an unchanged config can appear to
+change each time it is loaded or saved.
 
-- `getRange()` describes an inclusive bounded control;
-- `getAllValidValues()` describes a fixed selection;
-- `getValidValuesDescription()` explains accepted input.
+Use values with stable equality and do not mutate them after handing them to
+MezzConfig. Make sure every value returned by `deserialize` also passes
+`isValid`, and return a useful failure for bad input instead of throwing an
+exception.
 
-The metadata does not replace validation. `isValid` remains authoritative for
-every update and loaded value.
+For a sorting config, the serialized text is also the value's saved identity.
+Equal values must use the same text, and different values must not collide.
 
-## Lists of custom values
+## Help config screens edit the value
 
-Use `addList` when every element uses the same serializer:
+The serializer can optionally expose an inclusive range or every valid choice.
+Config-screen integrations can use that information for sliders and selection
+controls. `getValidValuesDescription()` should briefly explain acceptable input
+for editors and error messages.
+
+These hints do not replace validation: `isValid` remains the final check for
+loaded and edited values.
+
+## Store lists and structured entries
+
+Use `addList` to store a list whose elements use the custom serializer:
 
 ```java
 IConfigValue<List<Duration>> retryDelays = general.addList(
@@ -153,41 +127,13 @@ IConfigValue<List<Duration>> retryDelays = general.addList(
 ).build();
 ```
 
-MezzConfig stores and validates each element with the supplied serializer. The
-resulting list serializer implements `IConfigListValueSerializer`, allowing an
-editor integration to inspect the element serializer.
+Pass `ConfigListOrdering.UNORDERED` only when reordering entries does not change
+the setting's meaning. This helps a config screen avoid presenting a useless
+reorder control.
 
-Lists are ordered by default. If order does not change the setting's meaning,
-declare it explicitly:
+For an ordered list of structured rules, an element serializer can implement
+`IConfigKeyValueSerializer`. A config screen can then edit the two components as
+separate fields while feature code keeps its own entry type and entry order.
 
-```java
-IConfigValue<List<Duration>> ignoredDurations = general.addList(
-	"ignoredDurations",
-	List.of(),
-	durations,
-	ConfigListOrdering.UNORDERED
-).build();
-```
-
-MezzConfig still preserves physical file order. The ordering flag tells editor
-integrations whether reordering controls are meaningful.
-
-Implement `IConfigListValueSerializer<T>` directly only when the complete list
-needs custom validation or metadata beyond an element serializer.
-
-## Key-value entries
-
-An entry type can implement `IConfigKeyValueSerializer<T, K, V>` so config
-editors can expose separate key and value controls while the mod keeps an
-ordered list or domain-specific entry type.
-
-The serializer supplies:
-
-- serializers for the key and value components;
-- functions to read both components from an entry;
-- a function to rebuild an entry from edited components.
-
-Every accepted entry must split into valid components, and rebuilding those
-components must produce an equal entry. Pass the entry serializer to `addList`
-to create a structured list suitable for map-style editing without changing the
-mod's value type.
+Use the published Javadocs for exact serializer contracts and advanced custom
+list behavior.
