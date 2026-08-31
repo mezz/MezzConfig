@@ -1,22 +1,38 @@
 # MezzConfig
 
-MezzConfig is a lightweight configuration API and runtime for Minecraft mods.
-It provides typed client-owned and server-authoritative config schemas,
-file-backed values, synchronization, migration support, and direct config
-registration.
+MezzConfig is a typed configuration library for Minecraft mods. It gives mods
+one API for client preferences, per-world client settings, and
+server-authoritative settings synchronized to connected clients.
 
-## Using the API
+MezzConfig focuses on the parts of configuration that are difficult to get
+right across loaders:
 
-The stable integration surface consists of the non-internal packages published
-in `Common`'s API-only artifact. Public implementation classes in `Common` and
-the loader modules are internal and are not compatibility-guaranteed API. See the
-[API guide](docs/API.md) for the exact supported boundary, config schema
-types and locations, custom serializers, editor hints, and sorting configs.
+- typed values with validation, defaults, and automatic file recovery;
+- Fabric, Forge, and NeoForge support through the same public API;
+- server-owned settings with one-way synchronization to clients;
+- atomic updates, change listeners, restart requirements, and migration tools;
+- persistent user-defined sorting for values discovered at runtime.
 
-MezzConfig currently targets Minecraft 1.21.1 and Java 21. Loader-specific
-artifacts are built for Fabric, Forge, and NeoForge.
+The current branch targets Minecraft 1.21.1 and Java 21.
 
-Add the release repository to your Gradle build:
+## Documentation
+
+- [API guide](docs/API.md): a complete first config and an overview of the API.
+- [Config schemas](docs/config-schemas.md): ownership, locations, lifecycle,
+  synchronization, categories, and updates.
+- [Custom values](docs/custom-values.md): serializers, lists, validation, and
+  editor metadata.
+- [Migrations](docs/migrations.md): rename values, move files, and import older
+  formats.
+- [Sorting configs](docs/sorting.md): persist user-defined order for dynamic
+  values.
+
+The guides explain the intended workflows. The Javadocs published with the API
+artifact are the reference for exact method contracts and exceptions.
+
+## Add MezzConfig to your mod
+
+Add the Maven repository:
 
 ```kotlin
 repositories {
@@ -24,57 +40,76 @@ repositories {
 }
 ```
 
-Then add the artifact for your loader, replacing `<version>` with the released
-MezzConfig version:
+Then declare the artifact for your loader, replacing `<version>` with the
+MezzConfig version you use.
+
+### Fabric Loom
 
 ```kotlin
-// Fabric Loom
-modImplementation("net.mezzdev.config:mezz_config-1.21.1-fabric:<version>")
-
-// ForgeGradle
-implementation(fg.deobf("net.mezzdev.config:mezz_config-1.21.1-forge:<version>"))
-
-// NeoForge ModDevGradle
-implementation("net.mezzdev.config:mezz_config-1.21.1-neoforge:<version>")
+dependencies {
+	modImplementation("net.mezzdev.config:mezz_config-1.21.1-fabric:<version>")
+}
 ```
 
-Choose one loader dependency; its Maven metadata brings in the public API and
-common runtime. A shared compile-only module that deliberately must not depend
-on a loader can instead use
-`net.mezzdev.config:mezz_config-1.21.1-config-api:<version>`, while the final mod
-still needs its loader-specific MezzConfig dependency at runtime.
+### ForgeGradle
 
-## Project layout
+```kotlin
+dependencies {
+	implementation(fg.deobf(
+		"net.mezzdev.config:mezz_config-1.21.1-forge:<version>"
+	))
+}
+```
 
-- `Common` contains the public API and loader-independent runtime, and publishes
-  a filtered API-only artifact for loader-independent compilation.
-- `Fabric`, `Forge`, and `NeoForge` contain loader integrations and produce the
-  distributed mod jars.
-- Their `testMod` source sets provide in-game integration fixtures.
+### NeoForge ModDevGradle
 
-## Building
+```kotlin
+dependencies {
+	implementation("net.mezzdev.config:mezz_config-1.21.1-neoforge:<version>")
+}
+```
 
-Use the included Gradle wrapper with Java 21:
+Declare one loader artifact in each loader module. It brings in the public API
+and common runtime through its Maven metadata.
+
+A shared source module that must not depend on a loader can compile against the
+API-only artifact:
+
+```kotlin
+dependencies {
+	compileOnly(
+		"net.mezzdev.config:mezz_config-1.21.1-config-api:<version>"
+	)
+}
+```
+
+The final mod still needs its loader-specific MezzConfig artifact at runtime.
+Compile integrations against `net.mezzdev.config.api`; implementation packages
+and loader internals are not compatibility-guaranteed API.
+
+## Building MezzConfig
+
+Build all artifacts and run the test suite with Java 21:
 
 ```text
 ./gradlew build
 ```
 
-Build outputs are written beneath each module's `build/libs` directory.
-
-Run the same release-blocking validation used by CI with:
+Run the complete release validation with:
 
 ```text
 ./gradlew spotlessCheck build :Common:apiJavadoc :Common:checkJarCompatibility validatePublishing
 ```
 
-Publication validation writes every Maven publication to
-`build/publication-validation`. JarCompatibilityChecker compares the filtered
-Common API artifact with the latest released baseline. The baseline may be absent only while preparing
-the initial release at the same version.
+The Gradle projects are:
 
-The NeoForge dedicated-server integration GameTest can be run directly with:
+- `Common` — public API and loader-independent runtime;
+- `Fabric`, `Forge`, and `NeoForge` — loader integrations and distributable
+  mod jars.
 
-```text
-./gradlew :NeoForge:runGameTestServer
-```
+Each loader project keeps its in-game integration fixture in a `testMod` source
+set.
+
+## License
+
+MezzConfig is available under the [MIT License](LICENSE).
