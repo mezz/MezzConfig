@@ -33,15 +33,16 @@ repositories {
 ```
 
 The `config-api` artifact is compile-time only. The loader artifact provides the
-development runtime and is embedded in the final jar. Keep every dependency on
-the same preferred version.
+local development runtime and is embedded in the final jar. The local-runtime
+configurations keep it out of your mod's published dependency metadata. Keep
+every dependency on the same preferred version.
 
 ### Fabric Loom
 
 ```kotlin
 dependencies {
 	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
-	modRuntimeOnly("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
+	modLocalRuntime("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
 	include("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
 }
 ```
@@ -49,11 +50,19 @@ dependencies {
 ### ForgeGradle
 
 ```kotlin
+val mezzConfigLocalRuntime by configurations.creating {
+	isCanBeConsumed = false
+	isCanBeResolved = false
+}
+configurations.runtimeClasspath {
+	extendsFrom(mezzConfigLocalRuntime)
+}
+
 jarJar.enable()
 
 dependencies {
 	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
-	runtimeOnly(fg.deobf("net.mezzdev.config:mezz_config-1.21.1-forge:$mezzConfigVersion"))
+	mezzConfigLocalRuntime(fg.deobf("net.mezzdev.config:mezz_config-1.21.1-forge:$mezzConfigVersion"))
 	jarJar("net.mezzdev.config:mezz_config-1.21.1-forge:$mezzConfigVersionRange") { jarJar.pin(this, mezzConfigVersion) }
 }
 ```
@@ -66,7 +75,7 @@ plain jar.
 ```kotlin
 dependencies {
 	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
-	runtimeOnly("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion")
+	additionalRuntimeClasspath("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion")
 	jarJar("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }
 }
 ```
