@@ -1,11 +1,9 @@
 # ForgeGradle setup
 
-Jar-in-Jar embeds MezzConfig in your production mod while keeping it available
-in development. This branch targets Minecraft 1.21.1 and Java 21.
-
 ## Gradle
 
-Set the preferred version, its compatible range, and the Maven repository:
+In `build.gradle.kts`, choose the MezzConfig version, set the versions your mod
+supports, and add its Maven repository:
 
 ```kotlin
 val mezzConfigVersion = "<version>"
@@ -16,7 +14,7 @@ repositories {
 }
 ```
 
-Create a private development-runtime bucket before declaring dependencies:
+Add the following setup and dependencies:
 
 ```kotlin
 val mezzConfigLocalRuntime by configurations.creating {
@@ -36,15 +34,15 @@ dependencies {
 }
 ```
 
-The private bucket prevents ForgeGradle's mapped development artifact from
-appearing in your published Maven or Gradle metadata. `jarJar.pin` selects the
-preferred embedded version while preserving the supported range for dependency
-selection.
+With this setup, your code can use MezzConfig, local game runs can load it, and
+your release jar includes it for players. The exact version is the copy placed
+in your jar; the range lets Forge share one compatible copy when several mods
+include MezzConfig.
 
 Run `./gradlew jarJar` and distribute the generated `-all.jar`, not the plain
 jar.
 
-## Mod metadata
+## Tell Forge about MezzConfig
 
 Keep MezzConfig as a required dependency in `META-INF/mods.toml`. Replace
 `your_mod_id` with your mod id:
@@ -58,8 +56,9 @@ Keep MezzConfig as a required dependency in `META-INF/mods.toml`. Replace
     side="BOTH"
 ```
 
-The nested mod satisfies this dependency and establishes load ordering. Keep
-this range aligned with `mezzConfigVersionRange`.
+This tells Forge to start MezzConfig before your mod. The copy in your jar
+satisfies the dependency. Keep this range the same as
+`mezzConfigVersionRange`.
 
 See the official
 [ForgeGradle Jar-in-Jar documentation](https://docs.minecraftforge.net/en/fg-6.x/dependencies/jarinjar/).

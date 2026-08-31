@@ -1,12 +1,9 @@
 # Fabric Loom setup
 
-Jar-in-Jar embeds MezzConfig in your production mod while keeping it available
-as a remapped mod in development. This branch targets Minecraft 1.21.1 and Java
-21.
-
 ## Gradle
 
-Set the MezzConfig version and add its Maven repository:
+In `build.gradle.kts`, choose the MezzConfig version and add its Maven
+repository:
 
 ```kotlin
 val mezzConfigVersion = "<version>"
@@ -16,7 +13,7 @@ repositories {
 }
 ```
 
-Add the API, local runtime, and nested jar together:
+Add all three dependencies:
 
 ```kotlin
 dependencies {
@@ -26,15 +23,12 @@ dependencies {
 }
 ```
 
-`compileOnly` restricts source integrations to the public API.
-`modLocalRuntime` supplies the remapped development runtime without publishing
-it as a transitive dependency. `include` embeds the loader jar and is not
-transitive.
+With this setup, your code can use MezzConfig, local game runs can load it, and
+your release jar includes it for players.
 
-Run `./gradlew build` and distribute the remapped production jar from
-`build/libs`.
+Run `./gradlew build` and distribute your normal release jar from `build/libs`.
 
-## Mod metadata
+## Tell Fabric Loader about MezzConfig
 
 Keep MezzConfig as a required dependency in `fabric.mod.json`. Merge this entry
 into the existing `depends` object:
@@ -45,8 +39,9 @@ into the existing `depends` object:
 }
 ```
 
-The nested mod satisfies this dependency and gives Fabric Loader the required
-load ordering. Change the range only to versions your mod actually supports.
+This tells Fabric Loader to start MezzConfig before your mod. The copy in your
+jar satisfies the dependency. Change the version range only when your mod
+supports a different range.
 
-See the official Loom documentation for
-[`modLocalRuntime` and `include`](https://docs.fabricmc.net/develop/loom/#dependency-configurations).
+For more detail, see the official
+[Fabric Loom dependency documentation](https://docs.fabricmc.net/develop/loom/#dependency-configurations).

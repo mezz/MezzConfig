@@ -24,12 +24,10 @@ separately. Choose the guide for your loader:
 - [ForgeGradle](docs/forge.md)
 - [NeoForge ModDevGradle](docs/neoforge.md)
 
-Each guide keeps the public API compile-only, provides a local development
-runtime without leaking it into published dependency metadata, and embeds the
-matching loader jar.
+Each guide shows how to use MezzConfig during development, include it in your
+released mod, and declare it to the mod loader.
 
-Compile integrations against `net.mezzdev.config.api`. Implementation packages
-and loader internals are not compatibility-guaranteed API.
+Use classes under `net.mezzdev.config.api`; other packages are internal.
 
 ## Documentation
 
