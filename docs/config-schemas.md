@@ -1,8 +1,20 @@
 # Config schemas
 
-Config schemas define who owns a group of settings, where those settings are
-stored, and when they are active. Choose the schema type first; categories and
-values work the same way in every type.
+## Why use a config schema?
+
+Settings that look similar may belong to different places. A UI preference
+should follow the player's installation, a preference for one world or server
+should change with that context, and a gameplay rule should be owned by the
+server so every connected player sees the same value.
+
+A schema groups settings that share one owner and lifetime. Declaring that
+boundary lets MezzConfig select the right file, keep world-specific preferences
+separate, and synchronize server-owned values without each setting implementing
+those rules itself. It also prevents code on the wrong side from changing a
+value it does not own.
+
+Choose the schema type based on that ownership. Categories and values work the
+same way in every type.
 
 [Back to the API guide](API.md)
 

@@ -1,8 +1,20 @@
 # Custom config values
 
-Prefer the built-in value helpers whenever they describe the setting correctly.
-Create a serializer only when a mod needs to store and validate its own
-effectively immutable value type.
+## Why use a custom value?
+
+Most settings are naturally booleans, numbers, strings, colors, enums, or lists,
+and should use the built-in helpers. A custom value is useful when the setting
+has a meaningful type and rules that those primitives cannot express clearly.
+
+For example, a timeout may be a positive `Duration` in mod code. Storing it as
+an arbitrary string means parsing and checking it wherever it is used; storing
+it as a number leaves its unit unclear. A custom serializer defines the text
+format, validation, error messages, and editor information once, so the config
+value exposed to the rest of the mod is already a valid `Duration`.
+
+The same approach works for stable resource identifiers, structured rules, or
+other effectively immutable domain values. Create a custom serializer only
+when the mod benefits from using that type directly.
 
 [Back to the API guide](API.md)
 
