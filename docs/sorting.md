@@ -1,8 +1,26 @@
 # Sorting configs
 
-A sorting config persists a user's preferred order for values that are
-discovered at runtime. Use it for plugins, recipe types, registered content, or
-any collection whose complete membership is not known while declaring a schema.
+## Why use a sorting config?
+
+Some user-facing lists are assembled from content registered by other mods, so
+their complete contents depend on the installed modpack. A normal config cannot
+declare that list ahead of time, and saving the current list verbatim is fragile
+when a pack update adds or removes entries.
+
+[Just Enough Items (JEI)](https://github.com/mezz/JustEnoughItems) has this
+problem with its ingredient list and recipe categories. JEI discovers mod names,
+ingredient types, and recipe categories from installed content. Its default
+orders keep familiar entries first: Minecraft in the ingredient list's mod-name
+order, item stacks among ingredient types, and crafting among recipe categories.
+A player can then change the saved order to put the content they use most often
+first.
+
+When the modpack changes, the useful behavior is to keep the player's order for
+entries that still exist, ignore entries that disappeared, and place newly
+discovered entries into a sensible default position. A sorting config handles
+that reconciliation. Use one for the same kind of dynamic list: plugins, recipe
+types, registered content, or any collection whose membership is not known when
+declaring a schema.
 
 [Back to the API guide](API.md)
 
