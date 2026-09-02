@@ -62,12 +62,20 @@ if (enabled.getValue()) {
 Use a listener when an already-running feature must react immediately:
 
 ```java
-Runnable removeListener = maxEntries.addListener(change -> {
+maxEntries.addListener(change -> {
 	resizeOverlay(change.newValue());
 });
 ```
 
-Keep and call the returned removal callback when the feature is torn down.
+Config values and their usual listeners both live for the lifetime of the mod,
+so most mods do not need to keep the returned removal callback. This also applies
+to client-per-world values: the same listener remains registered and is notified
+when joining a world changes the effective value.
+
+Keep and call the removal callback only when the listener captures something
+shorter-lived than the config value, such as a config screen, reloadable runtime,
+or connection-specific component. Removing it when that object is torn down
+prevents stale callbacks and keeps the listener from retaining the old object.
 
 To apply an edit from your own config screen, call `set`:
 
@@ -182,7 +190,7 @@ MezzConfig validates the whole batch before applying it. A schema batch listener
 is useful when derived state depends on several settings:
 
 ```java
-Runnable removeListener = clientConfig.addBatchListener(changes -> {
+clientConfig.addBatchListener(changes -> {
 	rebuildOverlay();
 });
 ```

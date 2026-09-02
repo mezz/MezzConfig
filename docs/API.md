@@ -76,13 +76,17 @@ changed and `false` when the same valid value was already saved.
 Listen for effective-value changes when runtime behavior must refresh:
 
 ```java
-Runnable removeListener = ExampleConfig.ENABLED.addListener(change -> {
+ExampleConfig.ENABLED.addListener(change -> {
 	boolean enabled = change.newValue();
 	updateIntegration(enabled);
 });
 ```
 
-Keep the returned callback and run it when the listener is no longer needed.
+Most listeners live as long as their config values and can remain registered for
+the lifetime of the mod, so their returned removal callbacks can be ignored.
+Keep and run a removal callback when a listener captures a shorter-lived object,
+such as a screen, reloadable runtime, or connection-specific component. This
+prevents callbacks to torn-down objects and allows those objects to be collected.
 Listeners run synchronously on the thread applying the change.
 
 ## Choose the schema owner

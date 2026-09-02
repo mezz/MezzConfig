@@ -17,6 +17,10 @@ import java.util.function.Consumer;
  * active value.
  * <p>
  * Runtime methods and listener registration are thread-safe. Listeners run synchronously after a change is applied.
+ * Listener registrations normally live as long as this config value, which is usually the full mod lifetime, so callers
+ * may ignore their returned removal callbacks. Keep and run a removal callback when its listener captures a shorter-lived
+ * object, such as a screen, reloadable runtime, or connection-specific component. Client-per-world values retain their
+ * listeners across world changes and notify them when the effective value changes.
  *
  * @param <T> an effectively immutable value type with stable {@link Object#equals(Object)} behavior
  *

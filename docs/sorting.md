@@ -90,7 +90,10 @@ Runnable removeListener = categoryOrder.addChangeListener(() -> {
 });
 ```
 
-Keep and call the returned removal callback when the view closes.
+Most mod-lifetime listeners can remain registered and ignore the returned
+removal callback. This example is a special case because the listener captures a
+shorter-lived view: keep and call the removal callback when the view closes so
+the sorting config does not retain or notify the old view.
 
 ## Sort something other than strings
 

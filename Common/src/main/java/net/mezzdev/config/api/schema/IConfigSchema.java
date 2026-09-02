@@ -23,6 +23,11 @@ import java.util.function.Consumer;
  * are logged, and reentrant updates start a separate nested notification. Pending listeners run before effective listeners
  * for the same operation. Within either kind, single-value listeners run before value-scoped batch listeners, and schema
  * batch listeners run last. Listener changes made during a callback affect the next notification.
+ * <p>
+ * Listener registrations normally live as long as this schema, which is usually the full mod lifetime, so callers may
+ * ignore their returned removal callbacks. Keep and run a removal callback when its listener captures a shorter-lived
+ * object, such as a screen, reloadable runtime, or connection-specific component. Client-per-world schemas retain their
+ * listeners across world changes and notify them when effective values change.
  *
  * @since 0.1.0
  */
