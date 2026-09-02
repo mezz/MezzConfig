@@ -12,4 +12,9 @@ public final class TestConfigPhysicalSideProvider implements ConfigPhysicalSideP
 	public boolean isPhysicalClient() {
 		return true;
 	}
+
+	@Override
+	public boolean isDevelopmentEnvironment() {
+		return true;
+	}
 }

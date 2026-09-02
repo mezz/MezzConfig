@@ -16,4 +16,9 @@ public final class ConfigFabricPhysicalSideProvider implements ConfigPhysicalSid
 	public boolean isPhysicalClient() {
 		return FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT;
 	}
+
+	@Override
+	public boolean isDevelopmentEnvironment() {
+		return FabricLoader.getInstance().isDevelopmentEnvironment();
+	}
 }

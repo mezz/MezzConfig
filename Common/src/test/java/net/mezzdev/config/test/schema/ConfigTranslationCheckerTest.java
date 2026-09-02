@@ -46,4 +46,24 @@ class ConfigTranslationCheckerTest {
 			"missing.config.general.enabled.description"
 		), untranslatedKeys);
 	}
+
+	@Test
+	void formatsMissingTranslationsAsLangFileJson() {
+		List<String> localizationKeys = List.of(
+			"missing.config.general",
+			"missing.config.general.description",
+			"missing.config.general.enabled"
+		);
+
+		String langFileTemplate = ConfigTranslationChecker.createLangFileTemplate(localizationKeys);
+
+		assertEquals(String.join(
+			"\n",
+			"{",
+			"  \"missing.config.general\": \"\",",
+			"  \"missing.config.general.description\": \"\",",
+			"  \"missing.config.general.enabled\": \"\"",
+			"}"
+		), langFileTemplate);
+	}
 }

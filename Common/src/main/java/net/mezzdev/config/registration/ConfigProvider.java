@@ -7,8 +7,9 @@ import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.client.ClientWorldConfigPathUtil;
+import net.mezzdev.config.file.ConfigFileWatcherSettings;
+import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.schema.ClientWorldConfigSchemaPathResolver;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
@@ -213,7 +214,12 @@ public final class ConfigProvider implements Configs.IConfigProvider {
 	}
 
 	private static ConfigManager createConfigManager() {
-		ConfigManager configManager = new ConfigManager("MezzConfig File Watcher");
+		ConfigManager configManager = new ConfigManager(
+			"MezzConfig File Watcher",
+			ConfigFileWatcherSettings.clientDefaults(),
+			ConfigFileWatcherSettings.serverDefaults(),
+			PHYSICAL_SIDE_PROVIDER.isDevelopmentEnvironment()
+		);
 		configManager.startWatching();
 		return configManager;
 	}

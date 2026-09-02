@@ -33,20 +33,11 @@ schema:
 ```java
 IConfigRegistration configs = Configs.forMod("example_mod");
 
-IConfigSchemaBuilder builder = configs.createClientSchemaBuilder(
-	"client.ini",
-	"example_mod.config.client"
-);
-IConfigCategoryBuilder general = builder.addCategory("general");
+IConfigSchemaBuilder builder = configs.createClientSchemaBuilder("client.ini", "example_mod.config.client");
 
-IConfigValue<Boolean> enabled = general.addBoolean("enabled", true)
-	.build();
-IConfigValue<Integer> maxEntries = general.addInteger(
-	"maxEntries",
-	16,
-	1,
-	128
-).build();
+IConfigCategoryBuilder general = builder.addCategory("general");
+IConfigValue<Boolean> enabled = general.addBoolean("enabled", true).build();
+IConfigValue<Integer> maxEntries = general.addInteger("maxEntries",	16,	1, 128).build();
 
 IConfigSchema clientConfig = builder.build();
 ```
@@ -116,8 +107,8 @@ MezzConfig uses conventional locations automatically:
 | Schema | Storage |
 | --- | --- |
 | `CLIENT` | `config/<mod-id>/client/<file-name>` |
-| `CLIENT_PER_WORLD` | A distributable default plus a client file for the active local world or server. |
-| `SERVER` | A distributable default plus `<world>/serverconfig/<mod-id>/<file-name>` for the authoritative world. |
+| `CLIENT_PER_WORLD` | Pack default: `config/<mod-id>/client/world/default/<file-name>`<br>Singleplayer: `config/<mod-id>/client/world/local/<world-folder>/<file-name>`<br>Multiplayer: `config/<mod-id>/client/world/server/<server-id>/<file-name>` |
+| `SERVER` | Pack default: `config/<mod-id>/server/world/default/<file-name>`<br>World: `<world>/serverconfig/<mod-id>/<file-name>` |
 
 Per-world and server schemas resolve values from the code default, then the
 distributable default, then the active context file. This lets modpacks ship
@@ -126,7 +117,7 @@ defaults while worlds and players override only the settings they need.
 When connecting to a server that has MezzConfig, the server sends a stable ID
 stored with its world. Client-per-world settings use that ID, so they keep
 working when the server's address or name changes. If the server does not
-support MezzConfig—including a vanilla server—the client falls back to the
+support MezzConfig (i.e. a vanilla server) the client falls back to the
 server-list name and address. Connecting never requires server support.
 
 Use `createClientSchemaBuilderAtLocation` only when integrating with an existing
@@ -140,14 +131,22 @@ integrations can discover built schemas, categories, value types, bounds,
 restart requirements, and translations.
 
 The localization prefix and stable category/value names form translation keys.
-For the example above, provide:
+For example, `assets/example_mod/lang/en_us.json` can contain:
 
-```text
-example_mod.config.client.general
-example_mod.config.client.general.description
-example_mod.config.client.general.enabled
-example_mod.config.client.general.enabled.description
+```json
+{
+	"example_mod.config.client.general": "General",
+	"example_mod.config.client.general.description": "General display settings.",
+	"example_mod.config.client.general.enabled": "Enabled",
+	"example_mod.config.client.general.enabled.description": "Show the overlay.",
+	"example_mod.config.client.general.maxEntries": "Maximum entries",
+	"example_mod.config.client.general.maxEntries.description": "The most entries the overlay can show."
+}
 ```
+
+In a development run, MezzConfig also warns about missing keys when the schema
+becomes active. The warning includes a complete JSON object with blank values;
+copy its entries into the appropriate language file and fill in the text.
 
 Storage categories become sections in the file. If a screen needs a different
 layout, add editor categories and assign values to them without changing the
