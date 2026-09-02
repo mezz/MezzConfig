@@ -54,8 +54,8 @@ has a mod-specific value type.
 Read the effective value wherever the feature needs it:
 
 ```java
-if (enabled.getValue()) {
-	showOverlay(maxEntries.getValue());
+if (enabled.get()) {
+	showOverlay(maxEntries.get());
 }
 ```
 
@@ -103,10 +103,10 @@ When the connected server does not have MezzConfig, no server-owned values are
 sent. Those schemas remain inactive on the client and return their declared
 defaults, so client features can continue without server support.
 
-For restart-required settings, `getValue()` remains the value currently in use
-and `getPendingValue()` is the value saved for the next restart. This lets a
-config screen show the pending selection without making running code behave as
-if the restart already happened.
+For restart-required settings, `get()` remains the value currently in use
+and `getEditorInfo().getPendingValue()` is the value saved for the next restart.
+This lets a config screen show the pending selection without making running code
+behave as if the restart already happened.
 
 ## Know where settings are stored
 
@@ -138,6 +138,10 @@ files directly.
 MezzConfig describes configs but does not render a screen. Config-screen
 integrations can discover built schemas, categories, value types, bounds,
 restart requirements, and translations.
+
+Use `value.getEditorInfo()` when an integration needs a value's stable name,
+localization key, presentation metadata, serializer, or pending-value listener
+hooks. Regular feature code can stay on `IConfigValue` and its value accessors.
 
 The localization prefix and stable category/value names form translation keys.
 For example, `assets/example_mod/lang/en_us.json` can contain:

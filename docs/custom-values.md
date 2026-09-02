@@ -84,7 +84,7 @@ IConfigValue<Duration> timeout = general.addValue(
 Feature code can now use the value without parsing:
 
 ```java
-Duration currentTimeout = timeout.getValue();
+Duration currentTimeout = timeout.get();
 scheduleRetry(currentTimeout);
 ```
 

@@ -63,7 +63,7 @@ Keep the `IConfigValue` objects returned by the builders. They are the normal
 runtime interface; mods should not read or write MezzConfig files directly.
 
 ```java
-if (ExampleConfig.ENABLED.getValue()) {
+if (ExampleConfig.ENABLED.get()) {
 	startIntegration();
 }
 
