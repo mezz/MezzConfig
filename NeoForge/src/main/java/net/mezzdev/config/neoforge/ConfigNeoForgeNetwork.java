@@ -3,13 +3,14 @@ package net.mezzdev.config.neoforge;
 import net.mezzdev.config.server.ServerConfigNetworking;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigSyncChunkPayload;
+import net.mezzdev.config.server.ServerIdentityPayload;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.HandlerThread;
 
 public final class ConfigNeoForgeNetwork {
-	private static final String PROTOCOL_VERSION = "1";
+	private static final String PROTOCOL_VERSION = "2";
 
 	private ConfigNeoForgeNetwork() {
 
@@ -30,6 +31,11 @@ public final class ConfigNeoForgeNetwork {
 		event.registrar(PROTOCOL_VERSION)
 			.executesOn(HandlerThread.MAIN)
 			.optional()
+			.playToClient(
+				ServerIdentityPayload.TYPE,
+				ServerIdentityPayload.STREAM_CODEC,
+				(payload, context) -> ServerConfigRuntime.handleServerIdentity(payload)
+			)
 			.playToClient(
 				ServerConfigSyncChunkPayload.TYPE,
 				ServerConfigSyncChunkPayload.STREAM_CODEC,

@@ -42,7 +42,8 @@ public interface IConfigRegistration {
 	 * Create a server-owned config stored with each world and synchronized to connected clients.
 	 * <p>
 	 * The server loads the distributable default from the conventional config directory and the authoritative values from
-	 * the active world's server config directory. Connected clients receive the server's effective values in memory.
+	 * the active world's server config directory. Connected clients receive the server's effective values in memory. When
+	 * a remote server does not have MezzConfig, the client-side schema remains inactive and returns its declared defaults.
 	 *
 	 * @param configFileName relative file name inside the mod's server config directories
 	 * @param localizationPath translation key prefix for the config file
@@ -56,6 +57,8 @@ public interface IConfigRegistration {
 	 * Create a client config with separate values for each singleplayer world or multiplayer server.
 	 * <p>
 	 * Use this for client preferences that should follow the current world or server instead of the whole installation.
+	 * A server with MezzConfig supplies a stable identity stored with its world. For vanilla and other unsupported servers,
+	 * MezzConfig falls back to the name and address available to the client.
 	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
 	 * inactive, default-backed, and is not registered or connected to a file.
 	 *

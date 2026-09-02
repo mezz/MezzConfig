@@ -11,18 +11,23 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class ServerConfigRuntime {
 	private static final Logger LOGGER = LogManager.getLogger();
 	private static final Map<ConfigSchema, Long> SERVER_SCHEMA_VERSIONS = new IdentityHashMap<>();
 	private static final ServerConfigPayloadReassembler SYNC_REASSEMBLER = new ServerConfigPayloadReassembler();
+	private static final AtomicReference<UUID> REMOTE_SERVER_ID = new AtomicReference<>();
 	private static volatile @Nullable Path worldConfigRoot;
 	private static volatile @Nullable MinecraftServer activeServer;
+	private static volatile @Nullable UUID activeServerId;
 
 	private ServerConfigRuntime() {
 
@@ -30,6 +35,10 @@ public final class ServerConfigRuntime {
 
 	public static Optional<Path> getWorldConfigRoot() {
 		return Optional.ofNullable(worldConfigRoot);
+	}
+
+	public static Optional<UUID> getRemoteServerId() {
+		return Optional.ofNullable(REMOTE_SERVER_ID.get());
 	}
 
 	public static void validateSnapshot(ServerConfigKey key, List<ServerConfigValueData> values) {
@@ -47,9 +56,9 @@ public final class ServerConfigRuntime {
 
 	public static void onServerStarted(MinecraftServer server) {
 		activeServer = ErrorUtil.checkNotNull(server, "server");
-		worldConfigRoot = server.getWorldPath(LevelResource.ROOT)
-			.resolve("serverconfig")
-			.normalize();
+		Path worldRoot = server.getWorldPath(LevelResource.ROOT).normalize();
+		worldConfigRoot = worldRoot.resolve("serverconfig").normalize();
+		activeServerId = getOrCreateServerId(worldRoot);
 		SERVER_SCHEMA_VERSIONS.clear();
 		ConfigManager manager = getConfigManager();
 		manager.onWorldStarted();
@@ -65,6 +74,7 @@ public final class ServerConfigRuntime {
 
 	public static void onServerStopped() {
 		activeServer = null;
+		activeServerId = null;
 		worldConfigRoot = null;
 		SERVER_SCHEMA_VERSIONS.clear();
 		getConfigManager().getServerSchemas().forEach(schema -> {
@@ -100,7 +110,23 @@ public final class ServerConfigRuntime {
 	}
 
 	public static void onPlayerJoin(ServerPlayer player) {
+		UUID serverId = activeServerId;
+		if (serverId != null) {
+			ServerConfigNetworking.sendToPlayer(player, new ServerIdentityPayload(serverId));
+		}
 		getConfigManager().getServerSchemas().forEach(schema -> sendSchema(player, schema));
+	}
+
+	public static void handleServerIdentity(ServerIdentityPayload payload) {
+		UUID serverId = payload.serverId();
+		if (REMOTE_SERVER_ID.compareAndSet(null, serverId)) {
+			getConfigManager().onClientServerIdentityReceived();
+			return;
+		}
+		UUID currentServerId = REMOTE_SERVER_ID.get();
+		if (!serverId.equals(currentServerId)) {
+			LOGGER.warn("Ignored a conflicting server identity for the current connection.");
+		}
 	}
 
 	private static void broadcastSchema(MinecraftServer server, ConfigSchema schema) {
@@ -147,7 +173,20 @@ public final class ServerConfigRuntime {
 
 	public static void onClientDisconnect() {
 		SYNC_REASSEMBLER.clear();
+		REMOTE_SERVER_ID.set(null);
 		getConfigManager().getServerSchemas().forEach(ConfigSchema::clearRemoteSnapshot);
+	}
+
+	private static @Nullable UUID getOrCreateServerId(Path worldRoot) {
+		try {
+			return ServerIdentityStore.getOrCreate(worldRoot);
+		} catch (IOException | RuntimeException e) {
+			LOGGER.warn(
+				"Could not load or save a stable server identity. Clients will use their local server identity fallback.",
+				e
+			);
+			return null;
+		}
 	}
 
 	private static String getExceptionMessage(RuntimeException exception) {

@@ -100,6 +100,10 @@ server.
 Use `schema.isActive()` when code can run outside the schema's context. Inactive
 schemas continue to return their declared defaults.
 
+When the connected server does not have MezzConfig, no server-owned values are
+sent. Those schemas remain inactive on the client and return their declared
+defaults, so client features can continue without server support.
+
 For restart-required settings, `getValue()` remains the value currently in use
 and `getPendingValue()` is the value saved for the next restart. This lets a
 config screen show the pending selection without making running code behave as
@@ -118,6 +122,12 @@ MezzConfig uses conventional locations automatically:
 Per-world and server schemas resolve values from the code default, then the
 distributable default, then the active context file. This lets modpacks ship
 defaults while worlds and players override only the settings they need.
+
+When connecting to a server that has MezzConfig, the server sends a stable ID
+stored with its world. Client-per-world settings use that ID, so they keep
+working when the server's address or name changes. If the server does not
+support MezzConfig—including a vanilla server—the client falls back to the
+server-list name and address. Connecting never requires server support.
 
 Use `createClientSchemaBuilderAtLocation` only when integrating with an existing
 client file location. Mod code should read and update values through

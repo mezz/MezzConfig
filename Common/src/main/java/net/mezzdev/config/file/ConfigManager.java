@@ -221,6 +221,12 @@ public class ConfigManager {
 		getConfigSchemaSnapshot().forEach(ConfigSchema::promotePendingValuesAfterWorldRestart);
 	}
 
+	public void onClientServerIdentityReceived() {
+		getConfigSchemaSnapshot().stream()
+			.filter(schema -> schema.getType() == ConfigSchemaType.CLIENT_PER_WORLD)
+			.forEach(ConfigSchema::promotePendingValuesAfterWorldRestart);
+	}
+
 	public Collection<? extends IConfigSchema> getSchemas() {
 		return getConfigSchemaSnapshot();
 	}

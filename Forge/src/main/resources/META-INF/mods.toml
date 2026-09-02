@@ -9,6 +9,7 @@ version="${version}"
 displayName="MezzConfig"
 displayURL="${githubUrl}"
 authors="${modAuthor}"
+displayTest="IGNORE_SERVER_VERSION"
 description='''
 Lightweight client and server-authoritative config support for Minecraft mods.
 '''

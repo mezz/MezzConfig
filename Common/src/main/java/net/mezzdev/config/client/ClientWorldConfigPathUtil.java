@@ -6,12 +6,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
+import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.util.ErrorUtil;
 
 import java.net.IDN;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 
 public final class ClientWorldConfigPathUtil {
 	private static final Path WORLD_DIR_PATH = Path.of("world");
@@ -34,6 +36,10 @@ public final class ClientWorldConfigPathUtil {
 						.flatMap(ClientWorldConfigPathUtil::getLevelId)
 						.map(ClientWorldConfigPathUtil::sanitizePathName)
 						.map(levelId -> LOCAL_DIR_PATH.resolve(levelId));
+				}
+				Optional<UUID> serverId = ServerConfigRuntime.getRemoteServerId();
+				if (serverId.isPresent()) {
+					return serverId.map(ClientWorldConfigPathUtil::getServerPath);
 				}
 				return Optional.ofNullable(minecraft.getCurrentServer())
 					.map(serverData -> getServerPath(serverData.name, serverData.ip, serverData.isLan()));
@@ -66,6 +72,11 @@ public final class ClientWorldConfigPathUtil {
 				return getNamedServerPath("%s (%s)".formatted(name, addressName));
 			})
 			.orElseGet(() -> getNamedServerPath("%s (%s)".formatted(name, address)));
+	}
+
+	public static Path getServerPath(UUID serverId) {
+		UUID id = ErrorUtil.checkNotNull(serverId, "serverId");
+		return SERVER_DIR_PATH.resolve(id.toString());
 	}
 
 	public static Path getServerDirPath() {

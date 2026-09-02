@@ -13,6 +13,9 @@ right across loaders:
 - atomic updates, change listeners, restart requirements, and migration tools;
 - persistent user-defined sorting for values discovered at runtime.
 
+Its network features are optional. A client with MezzConfig can connect to a
+vanilla server or any server that does not have MezzConfig installed.
+
 The current branch targets Minecraft 1.21.1 and Java 21.
 
 ## Add MezzConfig to your mod

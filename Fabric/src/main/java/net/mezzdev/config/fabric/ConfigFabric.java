@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.mezzdev.config.server.ServerConfigNetworking;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigSyncChunkPayload;
+import net.mezzdev.config.server.ServerIdentityPayload;
 
 /**
  * Fabric common entry point and server networking registration.
@@ -19,6 +20,7 @@ public final class ConfigFabric implements ModInitializer {
 	}
 
 	public static void registerCommonServerSupport() {
+		PayloadTypeRegistry.playS2C().register(ServerIdentityPayload.TYPE, ServerIdentityPayload.STREAM_CODEC);
 		PayloadTypeRegistry.playS2C().register(ServerConfigSyncChunkPayload.TYPE, ServerConfigSyncChunkPayload.STREAM_CODEC);
 		ServerConfigNetworking.setServerSender((player, payload) -> {
 			if (ServerPlayNetworking.canSend(player, payload.type())) {

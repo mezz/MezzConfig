@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -88,6 +89,15 @@ public class ClientWorldConfigPathUtilTest {
 
 		// Assertions: LAN servers use the advertised server name and connection type.
 		assertEquals(getServerPath("LAN Server (LAN connection)"), path);
+	}
+
+	@Test
+	public void getServerPathUsesStableServerIdentity() {
+		UUID serverId = UUID.fromString("dc2a86e0-fc9f-4ae4-aa7a-718c46817a3e");
+
+		Path path = ClientWorldConfigPathUtil.getServerPath(serverId);
+
+		assertEquals(getServerPath(serverId.toString()), path);
 	}
 
 	@Test

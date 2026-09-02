@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigSyncChunkPayload;
+import net.mezzdev.config.server.ServerIdentityPayload;
 
 /**
  * Fabric client entry point for the config mod.
@@ -13,6 +14,10 @@ import net.mezzdev.config.server.ServerConfigSyncChunkPayload;
 public final class ConfigFabricClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		ClientPlayNetworking.registerGlobalReceiver(
+			ServerIdentityPayload.TYPE,
+			(payload, context) -> ServerConfigRuntime.handleServerIdentity(payload)
+		);
 		ClientPlayNetworking.registerGlobalReceiver(
 			ServerConfigSyncChunkPayload.TYPE,
 			(payload, context) -> ServerConfigRuntime.handleSyncChunk(payload)
