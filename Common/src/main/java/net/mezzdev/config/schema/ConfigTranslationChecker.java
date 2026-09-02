@@ -34,7 +34,7 @@ public final class ConfigTranslationChecker {
 		editorCategories.forEach(category -> addLocalizationKeys(localizationKeys, category.getLocalizationKey()));
 		categories.stream()
 			.flatMap(category -> category.getConfigValues().stream())
-			.forEach(configValue -> addLocalizationKeys(localizationKeys, configValue.getLocalizationKey()));
+			.forEach(configValue -> addLocalizationKeys(localizationKeys, configValue.getEditorInfo().getLocalizationKey()));
 
 		Language language = Language.getInstance();
 		return localizationKeys.stream()

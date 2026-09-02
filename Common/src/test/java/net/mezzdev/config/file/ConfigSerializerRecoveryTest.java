@@ -48,8 +48,8 @@ public class ConfigSerializerRecoveryTest {
 
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
-		assertFalse(enabled.getValue());
-		assertEquals(1, count.getValue());
+		assertFalse(enabled.get());
+		assertEquals(1, count.get());
 		assertEquals(malformed, Files.readAllLines(ConfigFileUtil.getBackupPath(path, 1)));
 		String corrected = Files.readString(path);
 		assertTrue(corrected.contains("enabled = false"));
@@ -75,7 +75,7 @@ public class ConfigSerializerRecoveryTest {
 
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
-		assertEquals(List.of(true, false), flags.getValue());
+		assertEquals(List.of(true, false), flags.get());
 		assertTrue(Files.readString(path).contains("flags = [\"true\",\"false\"]"));
 		assertTrue(Files.readString(ConfigFileUtil.getBackupPath(path, 1)).contains("invalid"));
 	}
@@ -168,8 +168,8 @@ public class ConfigSerializerRecoveryTest {
 
 		schema.loadIfNeeded();
 
-		assertTrue(enabled.getValue());
-		assertEquals(2, count.getValue());
+		assertTrue(enabled.get());
+		assertEquals(2, count.get());
 		assertEquals(packContents, Files.readAllLines(defaultPath));
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(defaultPath, 1)));
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(playerPath, 1)));

@@ -63,7 +63,7 @@ public class ConfigMigrationTest {
 
 		builder.build();
 
-		assertFalse(enabled.getValue());
+		assertFalse(enabled.get());
 		assertTrue(backupExistedDuringCallback.get());
 		assertEquals(
 			List.of("third", "first", "second", "fourth"),
@@ -113,9 +113,9 @@ public class ConfigMigrationTest {
 
 		builder.build();
 
-		assertFalse(enabled.getValue());
-		assertEquals("imported", name.getValue());
-		assertEquals(7, count.getValue());
+		assertFalse(enabled.get());
+		assertEquals("imported", name.get());
+		assertEquals(7, count.get());
 		Path destinationPath = getClientPath(configRoot, "client.ini");
 		assertTrue(Files.isRegularFile(destinationPath));
 		assertEquals(legacyContents, Files.readString(selectedLegacyPath));
@@ -143,7 +143,7 @@ public class ConfigMigrationTest {
 
 		builder.build();
 
-		assertTrue(enabled.getValue());
+		assertTrue(enabled.get());
 		assertFalse(Files.exists(getClientPath(configRoot, "client.ini")));
 		assertEquals(-1L, Files.mismatch(legacyPath, ConfigFileUtil.getBackupPath(legacyPath, 1)));
 	}
@@ -310,7 +310,7 @@ public class ConfigMigrationTest {
 
 		builder.build();
 
-		assertTrue(enabled.getValue());
+		assertTrue(enabled.get());
 		assertFalse(Files.exists(getClientPath(configRoot, "client.ini")));
 		assertEquals(sortingContents, Files.readString(sortingPath));
 		assertEquals(
@@ -341,7 +341,7 @@ public class ConfigMigrationTest {
 
 		builder.build();
 
-		assertEquals(5, bounded.getValue());
+		assertEquals(5, bounded.get());
 		assertFalse(Files.exists(getClientPath(configRoot, "client.ini")));
 		IConfigMigrationResult result = migrator.getResult();
 		assertEquals(ConfigMigrationStatus.FAILED, result.getStatus());
@@ -368,7 +368,7 @@ public class ConfigMigrationTest {
 		builder.build();
 
 		assertFalse(called.get());
-		assertFalse(enabled.getValue());
+		assertFalse(enabled.get());
 		IConfigMigrationResult result = migrator.getResult();
 		assertEquals(ConfigMigrationStatus.SKIPPED_DESTINATION_EXISTS, result.getStatus());
 		assertEquals(destination, result.getDestinationPath().orElseThrow());

@@ -68,8 +68,8 @@ public class ConfigManagerTest {
 
 		Thread readingThread = Thread.currentThread();
 		awaitValue(server.enabled(), false);
-		assertTrue(client.enabled().getValue());
-		assertFalse(server.enabled().getValue());
+		assertTrue(client.enabled().get());
+		assertFalse(server.enabled().get());
 		assertSame(readingThread, reloadListenerThread.get());
 	}
 
@@ -300,7 +300,7 @@ public class ConfigManagerTest {
 	private static <T> void awaitValue(ConfigValue<T> value, T expected) {
 		long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
 		while (System.nanoTime() < deadline) {
-			if (expected.equals(value.getValue())) {
+			if (expected.equals(value.get())) {
 				return;
 			}
 			try {

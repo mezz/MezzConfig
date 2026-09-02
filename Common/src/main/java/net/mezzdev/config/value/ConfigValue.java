@@ -7,6 +7,7 @@ import net.mezzdev.config.api.value.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
 import net.mezzdev.config.api.value.IConfigValueChangeListener;
+import net.mezzdev.config.api.value.IConfigValueEditorInfo;
 import net.mezzdev.config.api.value.IConfigValueSerializer;
 import net.mezzdev.config.api.schema.IConfigEditorCategory;
 import net.mezzdev.config.file.ConfigFileValueAdapter;
@@ -28,7 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
-public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
+public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T>, Supplier<T> {
 	private static final Logger LOGGER = LogManager.getLogger();
 
 	private final String name;
@@ -168,6 +169,11 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	@Override
+	public IConfigValueEditorInfo<T> getEditorInfo() {
+		return this;
+	}
+
+	@Override
 	public ConfigValueEditMode getEditMode() {
 		return editMode;
 	}
@@ -183,7 +189,7 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 	}
 
 	@Override
-	public T getValue() {
+	public T get() {
 		if (schema != null) {
 			return schema.getEffectiveValue(this);
 		}
@@ -204,11 +210,6 @@ public class ConfigValue<T> implements IConfigValue<T>, Supplier<T> {
 
 	public T getPendingValueWithoutLoading() {
 		return pendingValue;
-	}
-
-	@Override
-	public T get() {
-		return getValue();
 	}
 
 	@Override

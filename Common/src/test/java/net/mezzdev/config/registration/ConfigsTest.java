@@ -87,9 +87,9 @@ public class ConfigsTest {
 		assertEquals(explicitPath.toString().replace('\\', '/'), explicit.schema().getId());
 		assertEquals("server.ini", server.schema().getId());
 		assertTrue(client.schema().isActive());
-		assertFalse(client.enabled().getValue());
+		assertFalse(client.enabled().get());
 		assertTrue(explicit.schema().isActive());
-		assertTrue(explicit.enabled().getValue());
+		assertTrue(explicit.enabled().get());
 		assertEquals(clientPath, client.schema().getPath().orElseThrow());
 		assertEquals(explicitPath, explicit.schema().getPath().orElseThrow());
 		assertFalse(server.schema().isActive());
@@ -110,8 +110,8 @@ public class ConfigsTest {
 
 		assertTrue(config.enabled().set(true));
 
-		assertFalse(config.enabled().getValue());
-		assertTrue(config.enabled().getPendingValue());
+		assertFalse(config.enabled().get());
+		assertTrue(config.enabled().getEditorInfo().getPendingValue());
 		awaitFileContent(path, "enabled = true");
 	}
 
@@ -125,7 +125,7 @@ public class ConfigsTest {
 		writeEnabled(path, false);
 
 		awaitValue(config.enabled(), false);
-		assertFalse(config.enabled().getPendingValue());
+		assertFalse(config.enabled().getEditorInfo().getPendingValue());
 	}
 
 	@Test
@@ -133,7 +133,7 @@ public class ConfigsTest {
 		IConfigRegistration registration = createRegistration(configRoot);
 		TestSchema config = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
 
-		assertEquals(ConfigValueRestartRequirement.NONE, config.enabled().getRestartRequirement());
+		assertEquals(ConfigValueRestartRequirement.NONE, config.enabled().getEditorInfo().getRestartRequirement());
 		assertTrue(Files.exists(getClientDefaultPath(configRoot, FILE_NAME)));
 		assertFalse(Files.exists(getClientPath(configRoot, FILE_NAME)));
 	}
@@ -146,7 +146,7 @@ public class ConfigsTest {
 		IConfigRegistration registration = createRegistration(configRoot);
 		TestSchema config = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
 
-		assertFalse(config.enabled().getValue());
+		assertFalse(config.enabled().get());
 		assertFalse(Files.exists(userPath));
 
 		assertTrue(config.enabled().set(true));
@@ -333,8 +333,8 @@ public class ConfigsTest {
 
 		TestSchema config = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), false);
 
-		assertTrue(config.enabled().getValue());
-		assertEquals(0, config.bounded().getValue());
+		assertTrue(config.enabled().get());
+		assertEquals(0, config.bounded().get());
 		assertTrue(Files.isRegularFile(ConfigFileUtil.getBackupPath(path, 1)));
 		String corrected = Files.readString(path);
 		assertTrue(corrected.contains("Config for this game installation"));
@@ -449,7 +449,7 @@ public class ConfigsTest {
 	private static <T> void awaitValue(IConfigValue<T> value, T expected) {
 		long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
 		while (System.nanoTime() < deadline) {
-			if (expected.equals(value.getValue())) {
+			if (expected.equals(value.get())) {
 				return;
 			}
 			try {

@@ -58,15 +58,15 @@ public class ConfigSerializerEncodingTest {
 		category.getConfigValues().forEach(ConfigValue::resetToDefaultWithoutNotifying);
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
-		assertEquals("text", text.getValue());
-		assertFalse(enabled.getValue());
-		assertEquals(-7, integer.getValue());
-		assertEquals(Long.MAX_VALUE, longValue.getValue());
-		assertEquals(2.5, decimal.getValue());
-		assertEquals(Mode.SECOND, mode.getValue());
-		assertEquals(color, packedColor.getValue());
-		assertEquals(List.of("", "a,b", " surrounding ", "line one\nline two"), strings.getValue());
-		assertEquals(List.of(true, false), booleans.getValue());
+		assertEquals("text", text.get());
+		assertFalse(enabled.get());
+		assertEquals(-7, integer.get());
+		assertEquals(Long.MAX_VALUE, longValue.get());
+		assertEquals(2.5, decimal.get());
+		assertEquals(Mode.SECOND, mode.get());
+		assertEquals(color, packedColor.get());
+		assertEquals(List.of("", "a,b", " surrounding ", "line one\nline two"), strings.get());
+		assertEquals(List.of(true, false), booleans.get());
 
 		String saved = Files.readString(path);
 		assertTrue(saved.contains("enabled = false"));
@@ -79,7 +79,7 @@ public class ConfigSerializerEncodingTest {
 		strings.set(List.of("changed"));
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
-		assertEquals(List.of(), strings.getValue());
+		assertEquals(List.of(), strings.get());
 		assertTrue(Files.readString(path).contains("strings = []"));
 	}
 
@@ -103,9 +103,9 @@ public class ConfigSerializerEncodingTest {
 		customList.set(List.of("changed"));
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
-		assertEquals(sensitive, builtIn.getValue());
-		assertEquals(sensitive, custom.getValue());
-		assertEquals(elements, customList.getValue());
+		assertEquals(sensitive, builtIn.get());
+		assertEquals(sensitive, custom.get());
+		assertEquals(elements, customList.get());
 		assertFalse(Files.readString(path).contains("\n\"quoted\""));
 		assertTrue(Files.readString(path).contains("\\n\\\"quoted\\\""));
 	}
@@ -126,9 +126,9 @@ public class ConfigSerializerEncodingTest {
 
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
-		assertEquals(8, before.getValue());
-		assertEquals("fallback", broken.getValue());
-		assertFalse(after.getValue());
+		assertEquals(8, before.get());
+		assertEquals("fallback", broken.get());
+		assertFalse(after.get());
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
 	}
 
@@ -146,7 +146,7 @@ public class ConfigSerializerEncodingTest {
 
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
-		assertFalse(enabled.getValue());
+		assertFalse(enabled.get());
 	}
 
 	@Test
@@ -165,8 +165,8 @@ public class ConfigSerializerEncodingTest {
 
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
-		assertTrue(enabled.getValue());
-		assertEquals(8, after.getValue());
+		assertTrue(enabled.get());
+		assertEquals(8, after.get());
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
 		assertEquals(1, Files.readAllLines(path).stream().filter(line -> line.stripLeading().startsWith("enabled =")).count());
 	}

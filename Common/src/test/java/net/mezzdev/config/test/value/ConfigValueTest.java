@@ -33,7 +33,7 @@ public class ConfigValueTest {
 
 		assertThrows(IllegalArgumentException.class, () -> value.set(11));
 
-		assertEquals(5, value.getValue());
+		assertEquals(5, value.get());
 		assertEquals(0, notifications.get());
 	}
 
@@ -50,7 +50,7 @@ public class ConfigValueTest {
 
 		assertFalse(value.set(5));
 
-		assertEquals(5, value.getValue());
+		assertEquals(5, value.get());
 		assertEquals(0, notifications.get());
 	}
 
@@ -90,8 +90,8 @@ public class ConfigValueTest {
 
 		assertTrue(value.set(true));
 
-		assertFalse(value.getValue());
-		assertTrue(value.getPendingValue());
+		assertFalse(value.get());
+		assertTrue(value.getEditorInfo().getPendingValue());
 		assertEquals(List.of("false -> true"), pendingChanges);
 		assertEquals(List.of("batch: 1"), pendingBatches);
 		assertEquals(0, effectiveNotifications.get());
@@ -154,7 +154,11 @@ public class ConfigValueTest {
 		value.addBatchListener(batch -> {
 			assertEquals(1, batch.size());
 			IAppliedConfigValueChange<?> change = batch.getFirst();
-			changes.add("%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()));
+			changes.add("%s: %s -> %s".formatted(
+				change.configValue().getEditorInfo().getName(),
+				change.oldValue(),
+				change.newValue()
+			));
 		});
 
 		assertTrue(value.set(7));

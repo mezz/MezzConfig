@@ -115,7 +115,7 @@ public final class MezzConfigGameTests {
 		WatchedServerConfig config = createFastWatchedServerConfig();
 		Path path = config.path();
 		IConfigValue<Boolean> enabled = config.enabled();
-		boolean originalValue = enabled.getValue();
+		boolean originalValue = enabled.get();
 		boolean updatedValue = !originalValue;
 		String originalContents;
 		try {

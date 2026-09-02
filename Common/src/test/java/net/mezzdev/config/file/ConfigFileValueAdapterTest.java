@@ -123,7 +123,7 @@ public class ConfigFileValueAdapterTest {
 		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> value.set("updated"));
 
 		assertTrue(exception.getMessage().contains("cannot round-trip"));
-		assertEquals("original", value.getValue());
+		assertEquals("original", value.get());
 	}
 
 	@Test
@@ -146,8 +146,8 @@ public class ConfigFileValueAdapterTest {
 
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
-		assertEquals("default", bad.getValue());
-		assertFalse(good.getValue());
+		assertEquals("default", bad.get());
+		assertFalse(good.get());
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
 	}
 

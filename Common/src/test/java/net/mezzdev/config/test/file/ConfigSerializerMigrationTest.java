@@ -43,7 +43,7 @@ public class ConfigSerializerMigrationTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertFalse(enabled.getValue());
+		assertFalse(enabled.get());
 	}
 
 	@Test
@@ -61,7 +61,7 @@ public class ConfigSerializerMigrationTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertFalse(enabled.getValue());
+		assertFalse(enabled.get());
 	}
 
 	@Test
@@ -79,7 +79,7 @@ public class ConfigSerializerMigrationTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertEquals(List.of("first", "a,b", ""), names.getValue());
+		assertEquals(List.of("first", "a,b", ""), names.get());
 	}
 
 	@Test
@@ -100,7 +100,7 @@ public class ConfigSerializerMigrationTest {
 		ConfigSerializer.load(path, List.of(category));
 
 		// Assertions: the legacy-name migration converts the old serialized text into the current value.
-		assertTrue(enabled.getValue());
+		assertTrue(enabled.get());
 	}
 
 	@Test
@@ -118,7 +118,7 @@ public class ConfigSerializerMigrationTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertFalse(enabled.getValue());
+		assertFalse(enabled.get());
 	}
 
 	@Test
@@ -141,7 +141,7 @@ public class ConfigSerializerMigrationTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertEquals("1:2:3", numbers.getValue());
+		assertEquals("1:2:3", numbers.get());
 	}
 
 	@Test
@@ -165,8 +165,8 @@ public class ConfigSerializerMigrationTest {
 		ConfigSerializer.load(path, List.of(category));
 
 		// Assertions: only the explicitly declared legacy value migrates.
-		assertFalse(enabled.getValue());
-		assertTrue(visible.getValue());
+		assertFalse(enabled.get());
+		assertTrue(visible.get());
 	}
 
 	@Test
@@ -197,7 +197,7 @@ public class ConfigSerializerMigrationTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertFalse(value.getValue());
+		assertFalse(value.get());
 	}
 
 	@Test
@@ -239,14 +239,14 @@ public class ConfigSerializerMigrationTest {
 		List<String> regularChanges = new ArrayList<>();
 		List<String> firstBatches = new ArrayList<>();
 		List<String> secondBatches = new ArrayList<>();
-		first.addListener(change -> regularChanges.add("%s -> %s, second = %s".formatted(change.oldValue(), change.newValue(), second.getValue())));
-		first.addBatchListener(changes -> firstBatches.add(formatBatch(changes, first.getValue(), second.getValue())));
-		second.addBatchListener(changes -> secondBatches.add(formatBatch(changes, first.getValue(), second.getValue())));
+		first.addListener(change -> regularChanges.add("%s -> %s, second = %s".formatted(change.oldValue(), change.newValue(), second.get())));
+		first.addBatchListener(changes -> firstBatches.add(formatBatch(changes, first.get(), second.get())));
+		second.addBatchListener(changes -> secondBatches.add(formatBatch(changes, first.get(), second.get())));
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertTrue(first.getValue());
-		assertFalse(second.getValue());
+		assertTrue(first.get());
+		assertFalse(second.get());
 		assertEquals(List.of("false -> true, second = false"), regularChanges);
 		assertEquals(List.of("first: false -> true, second: true -> false; first = true; second = false"), firstBatches);
 		assertEquals(List.of("first: false -> true, second: true -> false; first = true; second = false"), secondBatches);
@@ -258,7 +258,11 @@ public class ConfigSerializerMigrationTest {
 		boolean second
 	) {
 		String formattedChanges = String.join(", ", changes.stream()
-			.map(change -> "%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()))
+			.map(change -> "%s: %s -> %s".formatted(
+				change.configValue().getEditorInfo().getName(),
+				change.oldValue(),
+				change.newValue()
+			))
 			.toList());
 		return "%s; first = %s; second = %s".formatted(
 			formattedChanges,

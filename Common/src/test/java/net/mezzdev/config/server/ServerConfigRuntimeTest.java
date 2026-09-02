@@ -122,8 +122,8 @@ public class ServerConfigRuntimeTest {
 		);
 
 		assertTrue(exception.getMessage().contains("cannot be synchronized"));
-		assertEquals("original", testSchema.values().getFirst().getValue());
-		assertEquals("original", testSchema.values().getFirst().getPendingValue());
+		assertEquals("original", testSchema.values().getFirst().get());
+		assertEquals("original", testSchema.values().getFirst().getEditorInfo().getPendingValue());
 	}
 
 	@Test
@@ -152,8 +152,8 @@ public class ServerConfigRuntimeTest {
 		);
 
 		assertTrue(exception.getMessage().contains("maximum length"));
-		assertTrue(values.stream().allMatch(value -> value.getValue().length() == 80 * 1024));
-		assertTrue(values.stream().allMatch(value -> value.getPendingValue().length() == 80 * 1024));
+		assertTrue(values.stream().allMatch(value -> value.get().length() == 80 * 1024));
+		assertTrue(values.stream().allMatch(value -> value.getEditorInfo().getPendingValue().length() == 80 * 1024));
 	}
 
 	@Test
@@ -178,7 +178,7 @@ public class ServerConfigRuntimeTest {
 		activePath.set(Optional.of(oversizedPath));
 
 		assertEquals(Optional.of(oversizedPath), testSchema.schema().getPath());
-		assertEquals("original", testSchema.values().getFirst().getValue());
+		assertEquals("original", testSchema.values().getFirst().get());
 		assertEquals(0, notifications.get());
 	}
 

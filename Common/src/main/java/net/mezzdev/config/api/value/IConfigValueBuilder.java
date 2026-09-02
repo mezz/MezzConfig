@@ -35,8 +35,8 @@ public interface IConfigValueBuilder<T> {
 	/**
 	 * Set when saved changes to this value become effective.
 	 * <p>
-	 * Until that lifecycle boundary, {@link IConfigValue#getValue()} retains the effective value and
-	 * {@link IConfigValue#getPendingValue()} returns the saved change. If this is not called, values use
+	 * Until that lifecycle boundary, {@link IConfigValue#get()} retains the effective value and
+	 * {@link IConfigValueEditorInfo#getPendingValue()} returns the saved change. If this is not called, values use
 	 * {@link ConfigValueRestartRequirement#NONE} and update immediately.
 	 *
 	 * @param restartRequirement when saved changes become effective

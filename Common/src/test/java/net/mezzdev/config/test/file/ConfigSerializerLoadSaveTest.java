@@ -44,8 +44,8 @@ public class ConfigSerializerLoadSaveTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertFalse(enabled.getValue());
-		assertEquals(7, count.getValue());
+		assertFalse(enabled.get());
+		assertEquals(7, count.get());
 	}
 
 	@Test
@@ -60,8 +60,8 @@ public class ConfigSerializerLoadSaveTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertTrue(enabled.getValue());
-		assertFalse(enabled.getPendingValue());
+		assertTrue(enabled.get());
+		assertFalse(enabled.getEditorInfo().getPendingValue());
 	}
 
 	@Test
@@ -78,8 +78,8 @@ public class ConfigSerializerLoadSaveTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertTrue(enabled.getValue());
-		assertEquals(1, count.getValue());
+		assertTrue(enabled.get());
+		assertEquals(1, count.get());
 	}
 
 	@Test
@@ -100,8 +100,8 @@ public class ConfigSerializerLoadSaveTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertEquals(List.of(3, 4), values.getValue());
-		assertEquals(List.of(1, 2), values.getDefaultValue());
+		assertEquals(List.of(3, 4), values.get());
+		assertEquals(List.of(1, 2), values.getEditorInfo().getDefaultValue());
 	}
 
 	@Test
@@ -122,7 +122,7 @@ public class ConfigSerializerLoadSaveTest {
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertEquals(List.of("current"), values.getValue());
+		assertEquals(List.of("current"), values.get());
 	}
 
 	@Test
@@ -137,12 +137,12 @@ public class ConfigSerializerLoadSaveTest {
 		List<String> regularChanges = new ArrayList<>();
 		List<String> batchChanges = new ArrayList<>();
 		count.addListener(change -> regularChanges.add("%s -> %s".formatted(change.oldValue(), change.newValue())));
-		count.addBatchListener(changes -> batchChanges.add(formatBatch(changes, true, count.getValue())));
+		count.addBatchListener(changes -> batchChanges.add(formatBatch(changes, true, count.get())));
 
 		List<? extends IAppliedConfigValueChange<?>> changes = ConfigSerializer.load(path, List.of(category));
 
 		assertEquals(List.of(), changes);
-		assertEquals(1, count.getValue());
+		assertEquals(1, count.get());
 		assertEquals(List.of(), regularChanges);
 		assertEquals(List.of(), batchChanges);
 	}
@@ -161,14 +161,14 @@ public class ConfigSerializerLoadSaveTest {
 		List<String> regularChanges = new ArrayList<>();
 		List<String> enabledBatches = new ArrayList<>();
 		List<String> countBatches = new ArrayList<>();
-		enabled.addListener(change -> regularChanges.add("%s -> %s, count = %s".formatted(change.oldValue(), change.newValue(), count.getValue())));
-		enabled.addBatchListener(changes -> enabledBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
-		count.addBatchListener(changes -> countBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
+		enabled.addListener(change -> regularChanges.add("%s -> %s, count = %s".formatted(change.oldValue(), change.newValue(), count.get())));
+		enabled.addBatchListener(changes -> enabledBatches.add(formatBatch(changes, enabled.get(), count.get())));
+		count.addBatchListener(changes -> countBatches.add(formatBatch(changes, enabled.get(), count.get())));
 
 		ConfigSerializer.load(path, List.of(category));
 
-		assertFalse(enabled.getValue());
-		assertEquals(7, count.getValue());
+		assertFalse(enabled.get());
+		assertEquals(7, count.get());
 		assertEquals(List.of("true -> false, count = 7"), regularChanges);
 		assertEquals(List.of("enabled: true -> false, count: 1 -> 7; enabled = false; count = 7"), enabledBatches);
 		assertEquals(List.of("enabled: true -> false, count: 1 -> 7; enabled = false; count = 7"), countBatches);
@@ -319,7 +319,11 @@ public class ConfigSerializerLoadSaveTest {
 		int count
 	) {
 		String formattedChanges = String.join(", ", changes.stream()
-			.map(change -> "%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()))
+			.map(change -> "%s: %s -> %s".formatted(
+				change.configValue().getEditorInfo().getName(),
+				change.oldValue(),
+				change.newValue()
+			))
 			.toList());
 		return "%s; enabled = %s; count = %s".formatted(
 			formattedChanges,

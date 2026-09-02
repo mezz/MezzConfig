@@ -90,7 +90,7 @@ public class ConfigSchemaTest {
 			.build();
 
 		// Assertions: the empty default is valid, and the serializer still knows which enum values to parse.
-		assertEquals(List.of(), modes.getDefaultValue());
+		assertEquals(List.of(), modes.getEditorInfo().getDefaultValue());
 		assertEquals(
 			List.of(TestMode.STANDARD, TestMode.ADVANCED),
 			modes.getSerializer()
@@ -144,12 +144,12 @@ public class ConfigSchemaTest {
 		updatedValues.add("late update mutation");
 
 		// Assertions: defaults, current values, and change records are stable unmodifiable snapshots.
-		assertEquals(List.of("default"), names.getDefaultValue());
-		assertEquals(List.of("updated"), names.getValue());
+		assertEquals(List.of("default"), names.getEditorInfo().getDefaultValue());
+		assertEquals(List.of("updated"), names.get());
 		assertEquals(List.of("default"), appliedChange.get().oldValue());
 		assertEquals(List.of("updated"), appliedChange.get().newValue());
-		assertThrows(UnsupportedOperationException.class, () -> names.getDefaultValue().add("mutation"));
-		assertThrows(UnsupportedOperationException.class, () -> names.getValue().add("mutation"));
+		assertThrows(UnsupportedOperationException.class, () -> names.getEditorInfo().getDefaultValue().add("mutation"));
+		assertThrows(UnsupportedOperationException.class, () -> names.get().add("mutation"));
 		assertThrows(UnsupportedOperationException.class, () -> appliedChange.get().newValue().add("mutation"));
 	}
 
@@ -165,7 +165,7 @@ public class ConfigSchemaTest {
 			.build();
 		createSchema(path, builder);
 
-		List<String> loadedNames = names.getValue();
+		List<String> loadedNames = names.get();
 
 		assertEquals(List.of("first", "second"), loadedNames);
 		assertThrows(UnsupportedOperationException.class, () -> loadedNames.add("mutation"));
@@ -190,16 +190,16 @@ public class ConfigSchemaTest {
 			.build();
 
 		// Assertions: the custom entry round-trips and remains discoverable inside the list serializer.
-		assertSame(serializer, value.getSerializer());
+		assertSame(serializer, value.getEditorInfo().getSerializer());
 		assertEquals(
 			new ExtensionEntry("updatedKey", "updatedValue"),
-			value.getSerializer().deserialize("updatedKey=updatedValue").getResult().orElseThrow()
+			value.getEditorInfo().getSerializer().deserialize("updatedKey=updatedValue").getResult().orElseThrow()
 		);
 		assertEquals(
 			List.of(new ExtensionEntry("first", "one"), new ExtensionEntry("second", "two")),
-			values.getSerializer().deserialize("[\"first=one\",\"second=two\"]").getResult().orElseThrow()
+			values.getEditorInfo().getSerializer().deserialize("[\"first=one\",\"second=two\"]").getResult().orElseThrow()
 		);
-		IConfigListValueSerializer<?> listSerializer = assertListSerializer(values.getSerializer());
+		IConfigListValueSerializer<?> listSerializer = assertListSerializer(values.getEditorInfo().getSerializer());
 		assertEquals(ConfigListOrdering.UNORDERED, listSerializer.getOrdering());
 		assertListElementSerializer(values, "element=value", new ExtensionEntry("element", "value"));
 	}
@@ -466,21 +466,21 @@ public class ConfigSchemaTest {
 		List<String> valueBatches = new ArrayList<>();
 		List<String> schemaBatches = new ArrayList<>();
 		AtomicInteger unrelatedBatches = new AtomicInteger();
-		enabled.addListener(change -> valueChanges.add("%s -> %s, count = %s".formatted(change.oldValue(), change.newValue(), count.getValue())));
-		enabled.addBatchListener(changes -> valueBatches.add("value batch: %s, count = %s".formatted(changes.size(), count.getValue())));
+		enabled.addListener(change -> valueChanges.add("%s -> %s, count = %s".formatted(change.oldValue(), change.newValue(), count.get())));
+		enabled.addBatchListener(changes -> valueBatches.add("value batch: %s, count = %s".formatted(changes.size(), count.get())));
 		unrelated.addBatchListener(ignored -> unrelatedBatches.incrementAndGet());
 		schema.addBatchListener(changes -> schemaBatches.add("schema batch: %s, enabled = %s, count = %s".formatted(
 			changes.size(),
-			enabled.getValue(),
-			count.getValue()
+			enabled.get(),
+			count.get()
 		)));
 
 		// Operation: queue both changes in one callback. Nothing should change until the callback returns.
 		List<? extends IAppliedConfigValueChange<?>> changes = schema.batchUpdate(updater -> {
 			updater.set(enabled, false);
 			updater.set(count, 3);
-			assertTrue(enabled.getValue());
-			assertEquals(1, count.getValue());
+			assertTrue(enabled.get());
+			assertEquals(1, count.get());
 			assertEquals(List.of(), valueChanges);
 			assertEquals(List.of(), valueBatches);
 			assertEquals(List.of(), schemaBatches);
@@ -488,8 +488,8 @@ public class ConfigSchemaTest {
 
 		// Assertions: both values changed before any listener ran, and listeners receive one batch.
 		assertEquals(2, changes.size());
-		assertFalse(enabled.getValue());
-		assertEquals(3, count.getValue());
+		assertFalse(enabled.get());
+		assertEquals(3, count.get());
 		assertEquals(List.of("true -> false, count = 3"), valueChanges);
 		assertEquals(List.of("value batch: 2, count = 3"), valueBatches);
 		assertEquals(0, unrelatedBatches.get());
@@ -549,8 +549,8 @@ public class ConfigSchemaTest {
 		}));
 
 		// Assertions: validation happens before mutation, so even the valid update is not applied.
-		assertTrue(enabled.getValue());
-		assertEquals(1, count.getValue());
+		assertTrue(enabled.get());
+		assertEquals(1, count.get());
 	}
 
 	@Test
@@ -569,7 +569,7 @@ public class ConfigSchemaTest {
 
 		// Assertions: repeated updates are collapsed to the last queued value.
 		assertEquals(1, changes.size());
-		assertFalse(enabled.getValue());
+		assertFalse(enabled.get());
 		assertEquals(true, changes.getFirst().oldValue());
 		assertEquals(false, changes.getFirst().newValue());
 	}
@@ -587,7 +587,7 @@ public class ConfigSchemaTest {
 			updatedNames.add("mutated before apply");
 		});
 
-		assertEquals(List.of("queued"), names.getValue());
+		assertEquals(List.of("queued"), names.get());
 	}
 
 	@Test
@@ -605,7 +605,7 @@ public class ConfigSchemaTest {
 		// Assertions: the updater cannot be used after the schema-owned callback has returned.
 		assertEquals(List.of(), changes);
 		assertThrows(IllegalStateException.class, () -> retainedUpdater.get().set(enabled, false));
-		assertTrue(enabled.getValue());
+		assertTrue(enabled.get());
 	}
 
 	@Test
@@ -618,7 +618,11 @@ public class ConfigSchemaTest {
 		List<String> schemaBatches = new ArrayList<>();
 		schema.addBatchListener(changes -> {
 			IAppliedConfigValueChange<?> change = changes.getFirst();
-			schemaBatches.add("%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()));
+			schemaBatches.add("%s: %s -> %s".formatted(
+				change.configValue().getEditorInfo().getName(),
+				change.oldValue(),
+				change.newValue()
+			));
 		});
 
 		// Operation: set the current value again, then apply one change through the normal IConfigValue API.
@@ -726,8 +730,8 @@ public class ConfigSchemaTest {
 
 		assertThrows(IllegalArgumentException.class, () -> text.set(oversized));
 
-		assertEquals("small", text.getValue());
-		assertEquals("small", text.getPendingValue());
+		assertEquals("small", text.get());
+		assertEquals("small", text.getEditorInfo().getPendingValue());
 		assertFalse(Files.exists(path));
 	}
 
@@ -808,7 +812,7 @@ public class ConfigSchemaTest {
 		ConfigSchema schema = createSchema(builder);
 		List<List<String>> notifiedBatches = new java.util.concurrent.CopyOnWriteArrayList<>();
 		schema.addBatchListener(changes -> notifiedBatches.add(changes.stream()
-			.map(change -> change.configValue().getName())
+			.map(change -> change.configValue().getEditorInfo().getName())
 			.toList()));
 		CountDownLatch start = new CountDownLatch(1);
 
@@ -834,8 +838,8 @@ public class ConfigSchemaTest {
 
 		assertEquals(2, notifiedBatches.size());
 		assertTrue(notifiedBatches.stream().allMatch(names -> names.equals(List.of("first", "second"))));
-		assertEquals(first.getValue(), second.getValue());
-		assertTrue(first.getValue() == 1 || first.getValue() == 2);
+		assertEquals(first.get(), second.get());
+		assertTrue(first.get() == 1 || first.get() == 2);
 	}
 
 	@Test
@@ -881,14 +885,14 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createSchema(path, builder);
 		List<String> schemaBatches = new ArrayList<>();
-		schema.addBatchListener(changes -> schemaBatches.add(formatBatch(changes, enabled.getValue(), count.getValue())));
+		schema.addBatchListener(changes -> schemaBatches.add(formatBatch(changes, enabled.get(), count.get())));
 
 		// Operation: load the file through the schema.
 		schema.loadIfNeeded();
 
 		// Assertions: file loading also notifies after all changed values have been applied.
-		assertFalse(enabled.getValue());
-		assertEquals(3, count.getValue());
+		assertFalse(enabled.get());
+		assertEquals(3, count.get());
 		assertEquals(List.of("enabled: true -> false, count: 1 -> 3; enabled = false; count = 3"), schemaBatches);
 	}
 
@@ -912,14 +916,14 @@ public class ConfigSchemaTest {
 				return CompletableFuture.completedFuture(null);
 			}
 		);
-		assertFalse(enabled.getValue());
-		assertFalse(enabled.getPendingValue());
+		assertFalse(enabled.get());
+		assertFalse(enabled.getEditorInfo().getPendingValue());
 		AtomicInteger notifications = new AtomicInteger();
 		enabled.addListener(ignored -> notifications.incrementAndGet());
 		assertTrue(enabled.set(true));
 
-		assertFalse(enabled.getValue());
-		assertTrue(enabled.getPendingValue());
+		assertFalse(enabled.get());
+		assertTrue(enabled.getEditorInfo().getPendingValue());
 		assertEquals(0, notifications.get());
 		runScheduledTasks(scheduledTasks);
 		assertTrue(Files.readString(path).contains("enabled = true"));
@@ -930,8 +934,8 @@ public class ConfigSchemaTest {
 			.build();
 		createSchema(path, nextBuilder);
 
-		assertTrue(nextEnabled.getValue());
-		assertTrue(nextEnabled.getPendingValue());
+		assertTrue(nextEnabled.get());
+		assertTrue(nextEnabled.getEditorInfo().getPendingValue());
 	}
 
 	@Test
@@ -947,15 +951,15 @@ public class ConfigSchemaTest {
 		List<String> changes = new ArrayList<>();
 		schema.addBatchListener(applied -> changes.add(formatChanges(applied)));
 
-		assertTrue(worldValue.getValue());
+		assertTrue(worldValue.get());
 		assertTrue(worldValue.set(false));
 		assertTrue(gameValue.set(false));
 		schema.promotePendingValuesAfterWorldRestart();
 
-		assertFalse(worldValue.getValue());
-		assertFalse(worldValue.getPendingValue());
-		assertTrue(gameValue.getValue());
-		assertFalse(gameValue.getPendingValue());
+		assertFalse(worldValue.get());
+		assertFalse(worldValue.getEditorInfo().getPendingValue());
+		assertTrue(gameValue.get());
+		assertFalse(gameValue.getEditorInfo().getPendingValue());
 		assertEquals(List.of("worldValue: true -> false"), changes);
 	}
 
@@ -985,9 +989,9 @@ public class ConfigSchemaTest {
 		});
 
 		assertEquals(2, savedChanges.size());
-		assertFalse(immediate.getValue());
-		assertFalse(afterRestart.getValue());
-		assertTrue(afterRestart.getPendingValue());
+		assertFalse(immediate.get());
+		assertFalse(afterRestart.get());
+		assertTrue(afterRestart.getEditorInfo().getPendingValue());
 		assertEquals(List.of("immediate: true -> false"), listenerChanges);
 		assertEquals(List.of("false -> true"), pendingListenerChanges);
 		assertEquals(
@@ -1010,7 +1014,7 @@ public class ConfigSchemaTest {
 			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 		ConfigSchema schema = createSchema(resolvedPath::get, builder);
-		assertFalse(enabled.getValue());
+		assertFalse(enabled.get());
 		List<String> pendingChanges = new ArrayList<>();
 		AtomicInteger effectiveNotifications = new AtomicInteger();
 		schema.addPendingBatchListener(changes -> pendingChanges.add(formatChanges(changes)));
@@ -1019,8 +1023,8 @@ public class ConfigSchemaTest {
 		resolvedPath.set(Optional.of(secondPath));
 		schema.loadIfNeeded();
 
-		assertFalse(enabled.getValue());
-		assertTrue(enabled.getPendingValue());
+		assertFalse(enabled.get());
+		assertTrue(enabled.getEditorInfo().getPendingValue());
 		assertEquals(List.of("enabled: false -> true"), pendingChanges);
 		assertEquals(0, effectiveNotifications.get());
 	}
@@ -1052,8 +1056,8 @@ public class ConfigSchemaTest {
 			builder
 		);
 
-		assertFalse(enabled.getValue());
-		assertEquals(3, count.getValue());
+		assertFalse(enabled.get());
+		assertEquals(3, count.get());
 		assertEquals(Optional.of(playerPath), schema.getPath());
 	}
 
@@ -1105,7 +1109,7 @@ public class ConfigSchemaTest {
 		assertEquals(ConfigSchemaType.CLIENT_PER_WORLD, schema.getType());
 		assertFalse(schema.isActive());
 		assertEquals(Optional.empty(), schema.getPath());
-		assertTrue(enabled.getValue());
+		assertTrue(enabled.get());
 		assertThrows(IllegalStateException.class, () -> enabled.set(false));
 
 		// Operation: the client enters a world and the schema can now resolve its active path.
@@ -1149,13 +1153,13 @@ public class ConfigSchemaTest {
 		// Assertions: synchronized values are active, pathless, and expose no separate editor-only pending state.
 		assertTrue(schema.isActive());
 		assertEquals(Optional.empty(), schema.getPath());
-		assertFalse(enabled.getValue());
-		assertEquals(3, count.getValue());
-		assertFalse(afterRestart.getValue());
-		assertFalse(afterRestart.getPendingValue());
+		assertFalse(enabled.get());
+		assertEquals(3, count.get());
+		assertFalse(afterRestart.get());
+		assertFalse(afterRestart.getEditorInfo().getPendingValue());
 		assertEquals(List.of("true -> false"), pendingRestartChanges);
 		assertThrows(IllegalStateException.class, () -> enabled.set(true));
-		assertFalse(enabled.getValue());
+		assertFalse(enabled.get());
 
 		// Operation: a malformed later snapshot is rejected as one batch.
 		assertThrows(IllegalArgumentException.class, () -> schema.applyRemoteSnapshot(List.of(
@@ -1164,8 +1168,8 @@ public class ConfigSchemaTest {
 		)));
 
 		// Assertions: no value from the malformed snapshot was applied.
-		assertFalse(enabled.getValue());
-		assertEquals(3, count.getValue());
+		assertFalse(enabled.get());
+		assertEquals(3, count.get());
 
 		// Operation: an older server sends no value for a setting only this client knows.
 		schema.applyRemoteSnapshot(List.of(
@@ -1173,8 +1177,8 @@ public class ConfigSchemaTest {
 		));
 
 		// Assertions: known synchronized values apply and missing values safely use their declared defaults.
-		assertTrue(enabled.getValue());
-		assertEquals(1, count.getValue());
+		assertTrue(enabled.get());
+		assertEquals(1, count.get());
 		assertEquals(List.of("true -> false", "false -> true"), pendingRestartChanges);
 	}
 
@@ -1239,8 +1243,8 @@ public class ConfigSchemaTest {
 		)));
 
 		assertTrue(exception.getMessage().contains("failed to deserialize"));
-		assertEquals("default", text.getValue());
-		assertTrue(enabled.getValue());
+		assertEquals("default", text.get());
+		assertTrue(enabled.get());
 		assertFalse(schema.isActive());
 	}
 
@@ -1280,10 +1284,10 @@ public class ConfigSchemaTest {
 
 		targetSchema.applyRemoteSnapshot(sourceSchema.serializeValues());
 
-		assertEquals(effectiveStrings, targetStrings.getValue());
-		assertEquals(effectiveStrings, targetStrings.getPendingValue());
-		assertEquals(effectiveNested, targetNested.getValue());
-		assertEquals(effectiveNested, targetNested.getPendingValue());
+		assertEquals(effectiveStrings, targetStrings.get());
+		assertEquals(effectiveStrings, targetStrings.getEditorInfo().getPendingValue());
+		assertEquals(effectiveNested, targetNested.get());
+		assertEquals(effectiveNested, targetNested.getEditorInfo().getPendingValue());
 	}
 
 	@Test
@@ -1364,7 +1368,7 @@ public class ConfigSchemaTest {
 		schema.addBatchListener(changes -> schemaBatches.add(formatChanges(changes)));
 
 		// Operation: load the first world-specific config file.
-		assertFalse(enabled.getValue());
+		assertFalse(enabled.get());
 
 		// Assertions: the value loads from the active file and listeners receive one applied batch.
 		assertEquals(Optional.of(firstPath), schema.getPath());
@@ -1373,7 +1377,7 @@ public class ConfigSchemaTest {
 
 		// Operation: switch context and load the second world-specific config file.
 		resolvedPath.set(Optional.of(secondPath));
-		assertTrue(enabled.getValue());
+		assertTrue(enabled.get());
 
 		// Assertions: switching paths resets and loads before notifying, so listeners see old world value -> new world value.
 		assertEquals(Optional.of(secondPath), schema.getPath());
@@ -1400,12 +1404,12 @@ public class ConfigSchemaTest {
 		// Operation: update the first world, then switch to the second world before the delayed save can run.
 		assertTrue(enabled.set(false));
 		resolvedPath.set(Optional.of(secondPath));
-		assertTrue(enabled.getValue());
+		assertTrue(enabled.get());
 
 		// Assertions: switching paths flushes the first world's pending save before values reset for the second world.
 		assertTrue(Files.readString(firstPath).contains("enabled = false"));
 		assertEquals(Optional.of(secondPath), schema.getPath());
-		assertTrue(enabled.getValue());
+		assertTrue(enabled.get());
 	}
 
 	@Test
@@ -1621,7 +1625,7 @@ public class ConfigSchemaTest {
 		String serializedValue,
 		T expectedValue
 	) {
-		IConfigListValueSerializer<?> listSerializer = assertListSerializer(configValue.getSerializer());
+		IConfigListValueSerializer<?> listSerializer = assertListSerializer(configValue.getEditorInfo().getSerializer());
 		IDeserializeResult<?> result = listSerializer.getElementSerializer()
 			.deserialize(serializedValue);
 
@@ -1640,7 +1644,11 @@ public class ConfigSchemaTest {
 		int count
 	) {
 		String formattedChanges = String.join(", ", changes.stream()
-			.map(change -> "%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()))
+			.map(change -> "%s: %s -> %s".formatted(
+				change.configValue().getEditorInfo().getName(),
+				change.oldValue(),
+				change.newValue()
+			))
 			.toList());
 		return "%s; enabled = %s; count = %s".formatted(
 			formattedChanges,
@@ -1651,7 +1659,11 @@ public class ConfigSchemaTest {
 
 	private static String formatChanges(List<? extends IAppliedConfigValueChange<?>> changes) {
 		return String.join(", ", changes.stream()
-			.map(change -> "%s: %s -> %s".formatted(change.configValue().getName(), change.oldValue(), change.newValue()))
+			.map(change -> "%s: %s -> %s".formatted(
+				change.configValue().getEditorInfo().getName(),
+				change.oldValue(),
+				change.newValue()
+			))
 			.toList());
 	}
 }
