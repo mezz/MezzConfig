@@ -129,12 +129,30 @@ public class ConfigsTest {
 	}
 
 	@Test
-	public void missingClientFilesAreCreatedSynchronously(@TempDir Path configRoot) {
+	public void missingClientPackDefaultsAreCreatedSynchronously(@TempDir Path configRoot) {
 		IConfigRegistration registration = createRegistration(configRoot);
 		TestSchema config = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
 
 		assertEquals(ConfigValueRestartRequirement.NONE, config.enabled().getRestartRequirement());
-		assertTrue(Files.exists(getClientPath(configRoot, FILE_NAME)));
+		assertTrue(Files.exists(getClientDefaultPath(configRoot, FILE_NAME)));
+		assertFalse(Files.exists(getClientPath(configRoot, FILE_NAME)));
+	}
+
+	@Test
+	public void clientPackDefaultsAreOverriddenOnlyAfterTheUserChangesAValue(@TempDir Path configRoot) throws IOException {
+		Path defaultPath = getClientDefaultPath(configRoot, FILE_NAME);
+		Path userPath = getClientPath(configRoot, FILE_NAME);
+		writeEnabled(defaultPath, false);
+		IConfigRegistration registration = createRegistration(configRoot);
+		TestSchema config = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
+
+		assertFalse(config.enabled().getValue());
+		assertFalse(Files.exists(userPath));
+
+		assertTrue(config.enabled().set(true));
+
+		awaitFileContent(userPath, "enabled = true");
+		assertTrue(Files.readString(defaultPath).contains("enabled = false"));
 	}
 
 	@Test
@@ -167,6 +185,7 @@ public class ConfigsTest {
 	public void clientAndClientWorldSchemasCannotShareDefaultPath(@TempDir Path configRoot) throws IOException {
 		IConfigRegistration registration = createRegistration(configRoot);
 		Path path = getClientPath(configRoot, "world/default/" + FILE_NAME);
+		writeEnabled(path, true);
 		createSchema(
 			registration.createClientSchemaBuilder("world/default/" + FILE_NAME, "registration_test.client"),
 			true
@@ -182,6 +201,25 @@ public class ConfigsTest {
 		);
 
 		assertEquals(originalContents, Files.readString(path));
+	}
+
+	@Test
+	public void clientSchemasCannotSharePackDefaultAndUserPath(@TempDir Path configRoot) throws IOException {
+		IConfigRegistration registration = createRegistration(configRoot);
+		Path packDefaultPath = getClientDefaultPath(configRoot, FILE_NAME);
+		createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
+		String originalContents = Files.readString(packDefaultPath);
+
+		assertThrows(
+			IllegalArgumentException.class,
+			() -> createSchema(
+				registration.createClientSchemaBuilder("default/" + FILE_NAME, "registration_test.client_nested"),
+				false
+			)
+		);
+
+		assertEquals(originalContents, Files.readString(packDefaultPath));
+		assertFalse(Files.exists(getClientDefaultPath(configRoot, "default/" + FILE_NAME)));
 	}
 
 	@Test
@@ -224,6 +262,7 @@ public class ConfigsTest {
 	public void schemaRejectsSortingCollisionWithoutModifyingFile(@TempDir Path configRoot) throws IOException {
 		IConfigRegistration registration = createRegistration(configRoot);
 		Path path = getClientPath(configRoot, FILE_NAME);
+		writeEnabled(path, true);
 		createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
 		String originalContents = Files.readString(path);
 
@@ -374,6 +413,10 @@ public class ConfigsTest {
 		return configRoot.resolve(MOD_ID).resolve("client").resolve(fileName).normalize();
 	}
 
+	private static Path getClientDefaultPath(Path configRoot, String fileName) {
+		return configRoot.resolve(MOD_ID).resolve("client/default").resolve(fileName).normalize();
+	}
+
 	private static Path getServerWorldDefaultPath(Path configRoot, String fileName) {
 		return configRoot.resolve(MOD_ID).resolve("server/world/default").resolve(fileName).normalize();
 	}
@@ -390,7 +433,7 @@ public class ConfigsTest {
 	private static void awaitFileContent(Path path, String expected) throws IOException {
 		long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
 		while (System.nanoTime() < deadline) {
-			if (Files.readString(path).contains(expected)) {
+			if (Files.exists(path) && Files.readString(path).contains(expected)) {
 				return;
 			}
 			try {

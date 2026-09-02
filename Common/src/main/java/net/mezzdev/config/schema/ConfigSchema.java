@@ -1009,6 +1009,16 @@ public class ConfigSchema implements IConfigSchema {
 		ConfigTranslationChecker.logUntranslatedKeys(path, editorCategories, categories);
 	}
 
+	public synchronized void logUntranslatedKeysIfReady() {
+		Path path = activePath;
+		if (path == null) {
+			path = activeDefaultPath;
+		}
+		if (path != null) {
+			logUntranslatedKeysIfNeeded(path);
+		}
+	}
+
 	public synchronized void markDirty() {
 		Path path = activePath;
 		if (path == null) {

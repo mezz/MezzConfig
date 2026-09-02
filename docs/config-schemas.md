@@ -37,7 +37,7 @@ IConfigSchemaBuilder builder = configs.createClientSchemaBuilder("client.ini", "
 
 IConfigCategoryBuilder general = builder.addCategory("general");
 IConfigValue<Boolean> enabled = general.addBoolean("enabled", true).build();
-IConfigValue<Integer> maxEntries = general.addInteger("maxEntries",	16,	1, 128).build();
+IConfigValue<Integer> maxEntries = general.addInteger("maxEntries", 16, 1, 128).build();
 
 IConfigSchema clientConfig = builder.build();
 ```
@@ -106,13 +106,13 @@ MezzConfig uses conventional locations automatically:
 
 | Schema | Storage |
 | --- | --- |
-| `CLIENT` | `config/<mod-id>/client/<file-name>` |
+| `CLIENT` | Pack default: `config/<mod-id>/client/default/<file-name>`<br>User: `config/<mod-id>/client/<file-name>` |
 | `CLIENT_PER_WORLD` | Pack default: `config/<mod-id>/client/world/default/<file-name>`<br>Singleplayer: `config/<mod-id>/client/world/local/<world-folder>/<file-name>`<br>Multiplayer: `config/<mod-id>/client/world/server/<server-id>/<file-name>` |
 | `SERVER` | Pack default: `config/<mod-id>/server/world/default/<file-name>`<br>World: `<world>/serverconfig/<mod-id>/<file-name>` |
 
-Per-world and server schemas resolve values from the code default, then the
-distributable default, then the active context file. This lets modpacks ship
-defaults while worlds and players override only the settings they need.
+Conventional schemas resolve values from the code default, then the pack
+default, then the user or active-context file. This lets modpacks ship defaults
+while worlds and players override only the settings they need.
 
 When connecting to a server that has MezzConfig, the server sends a stable ID
 stored with its world. Client-per-world settings use that ID, so they keep
@@ -121,8 +121,9 @@ support MezzConfig (i.e. a vanilla server) the client falls back to the
 server-list name and address. Connecting never requires server support.
 
 Use `createClientSchemaBuilderAtLocation` only when integrating with an existing
-client file location. Mod code should read and update values through
-`IConfigValue`, not access schema files directly.
+client file location. It uses that one file without a separate pack default.
+Mod code should read and update values through `IConfigValue`, not access schema
+files directly.
 
 ## Make the schema useful to config screens
 
@@ -144,9 +145,10 @@ For example, `assets/example_mod/lang/en_us.json` can contain:
 }
 ```
 
-In a development run, MezzConfig also warns about missing keys when the schema
-becomes active. The warning includes a complete JSON object with blank values;
-copy its entries into the appropriate language file and fill in the text.
+In a development run, MezzConfig also warns about missing keys once game
+translations have loaded. The warning includes a complete JSON object with
+blank values; copy its entries into the appropriate language file and fill in
+the text.
 
 Storage categories become sections in the file. If a screen needs a different
 layout, add editor categories and assign values to them without changing the

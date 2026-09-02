@@ -168,6 +168,7 @@ public final class ServerConfigRuntime {
 	}
 
 	public static void onClientTick() {
+		getConfigManager().logUntranslatedKeysIfReady();
 		SYNC_REASSEMBLER.expire(System.nanoTime());
 	}
 

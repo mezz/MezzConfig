@@ -26,7 +26,8 @@ public interface IConfigRegistration {
 	/**
 	 * Create a client config shared across worlds and server connections.
 	 * <p>
-	 * MezzConfig stores it in the mod's conventional client config directory. The schema loads synchronously when built.
+	 * MezzConfig first loads a distributable pack default, then any settings for this installation. The schema loads
+	 * synchronously when built.
 	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
 	 * inactive, default-backed, and is not registered or connected to a file.
 	 *
@@ -76,7 +77,8 @@ public interface IConfigRegistration {
 	 * Use this when the conventional client config directory is not appropriate. Otherwise, prefer
 	 * {@link #createClientSchemaBuilder(String, String)}.
 	 * The supplied path is the complete config file location; MezzConfig does not append the mod id, ownership, or file
-	 * name. Relative paths are captured as normalized absolute paths when this method is called.
+	 * name or create a separate pack-default file. Relative paths are captured as normalized absolute paths when this
+	 * method is called.
 	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
 	 * inactive, default-backed, and does not access the supplied location.
 	 * Building the schema reads or creates the file synchronously and fails if the location is unavailable. Later edits

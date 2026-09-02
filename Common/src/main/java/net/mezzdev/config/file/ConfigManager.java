@@ -227,6 +227,12 @@ public class ConfigManager {
 			.forEach(ConfigSchema::promotePendingValuesAfterWorldRestart);
 	}
 
+	public void logUntranslatedKeysIfReady() {
+		if (logUntranslatedKeys) {
+			getConfigSchemaSnapshot().forEach(ConfigSchema::logUntranslatedKeysIfReady);
+		}
+	}
+
 	public Collection<? extends IConfigSchema> getSchemas() {
 		return getConfigSchemaSnapshot();
 	}

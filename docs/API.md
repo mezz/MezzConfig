@@ -55,7 +55,7 @@ registration for one mod
 ```
 
 Build every value, then build the schema once. Building an active local schema
-loads or creates its file before returning, so its values are ready to read.
+resolves its starting values before returning, so they are ready to read.
 
 ## Read and update values
 

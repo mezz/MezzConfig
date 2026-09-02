@@ -78,8 +78,14 @@ public final class ConfigProvider implements Configs.IConfigProvider {
 			localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 			Path relativeConfigFile = getRelativeConfigFile(configFileName);
 			String id = getSchemaId(relativeConfigFile);
-			ConfigSchemaPathResolver pathResolver = new StaticConfigSchemaPathResolver(
-				modDirectory.resolve("client").resolve(relativeConfigFile).normalize()
+			Path ownershipDirectory = modDirectory.resolve("client");
+			Path defaultConfigFile = ownershipDirectory.resolve("default")
+				.resolve(relativeConfigFile)
+				.normalize();
+			Path configFile = ownershipDirectory.resolve(relativeConfigFile).normalize();
+			ConfigSchemaPathResolver pathResolver = new LayeredConfigSchemaPathResolver(
+				defaultConfigFile,
+				new StaticConfigSchemaPathResolver(configFile)
 			);
 			return createClientSchemaBuilder(id, pathResolver, localizationPath, ConfigSchemaType.CLIENT);
 		}

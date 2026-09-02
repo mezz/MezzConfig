@@ -392,11 +392,16 @@ public class ConfigMigrationTest {
 		IConfigMigrationResult result = migrator.getResult();
 		assertEquals(ConfigMigrationStatus.SKIPPED_NO_LEGACY_FILE, result.getStatus());
 		assertTrue(result.getLegacyPath().isEmpty());
-		assertTrue(Files.isRegularFile(getClientPath(configRoot, "client.ini")));
+		assertTrue(Files.isRegularFile(getClientDefaultPath(configRoot, "client.ini")));
+		assertFalse(Files.exists(getClientPath(configRoot, "client.ini")));
 	}
 
 	private static Path getClientPath(Path configRoot, String fileName) {
 		return configRoot.resolve(MOD_ID).resolve("client").resolve(fileName).toAbsolutePath().normalize();
+	}
+
+	private static Path getClientDefaultPath(Path configRoot, String fileName) {
+		return configRoot.resolve(MOD_ID).resolve("client/default").resolve(fileName).toAbsolutePath().normalize();
 	}
 
 	private static void writeEnabled(Path path, boolean enabled) throws IOException {
