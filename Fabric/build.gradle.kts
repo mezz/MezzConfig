@@ -46,6 +46,7 @@ val dependencyProjects: List<Project> = listOf(
 dependencyProjects.forEach {
     project.evaluationDependsOn(it.path)
 }
+val commonApiSourceSet = commonProject.sourceSets["api"]
 val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
 val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
 val serverSmokeTestRunDir = layout.buildDirectory.dir("run/server-smoke")
@@ -87,6 +88,7 @@ dependencies {
     dependencyProjects.forEach {
         compileOnly(it)
     }
+    compileOnly(commonApiSourceSet.output)
     runtimeOnly(project(commonProject.path)) {
         attributes {
             attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.SHADOWED))

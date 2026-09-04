@@ -34,6 +34,7 @@ val dependencyProjects: List<Project> = listOf(
 dependencyProjects.forEach {
     project.evaluationDependsOn(it.path)
 }
+val commonApiSourceSet = commonProject.sourceSets["api"]
 val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
 val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
 fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
@@ -71,6 +72,7 @@ neoForge {
         create(configModId) {
             sourceSet(sourceSets.main.get())
             sourceSet(commonProject.sourceSets.main.get())
+            sourceSet(commonApiSourceSet)
         }
         create(neoforgeTestModId) {
             sourceSet(testModSourceSet)
@@ -131,6 +133,7 @@ dependencies {
     dependencyProjects.forEach {
         compileOnly(it)
     }
+    compileOnly(commonApiSourceSet.output)
     add(testModSourceSet.compileOnlyConfigurationName, "com.google.code.findbugs:jsr305:$jsr305Version")
     add("additionalRuntimeClasspath", "net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
         isTransitive = false

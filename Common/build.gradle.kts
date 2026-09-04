@@ -93,6 +93,14 @@ base {
     archivesName.set(baseArchivesName)
 }
 
+val apiSourceSet = sourceSets.create("api")
+
+dependencies {
+    implementation(apiSourceSet.output)
+    add(apiSourceSet.implementationConfigurationName, "org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
+    add(apiSourceSet.implementationConfigurationName, "org.jspecify:jspecify:$jspecifyVersion")
+}
+
 val fileWatcherLicense by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -147,27 +155,29 @@ java {
     withSourcesJar()
 }
 
+tasks.jar {
+    from(apiSourceSet.output)
+}
+
+tasks.named<Jar>("sourcesJar") {
+    from(apiSourceSet.allJava)
+}
+
 val apiJarTask = tasks.register<Jar>("apiJar") {
     archiveBaseName.set(apiArchivesName)
-    from(sourceSets.main.get().output) {
-        include("net/mezzdev/config/api/**")
-    }
+    from(apiSourceSet.output)
 }
 
 val apiSourcesJarTask = tasks.register<Jar>("apiSourcesJar") {
     archiveBaseName.set(apiArchivesName)
     archiveClassifier.set("sources")
-    from(sourceSets.main.get().allJava) {
-        include("net/mezzdev/config/api/**")
-    }
+    from(apiSourceSet.allJava)
 }
 
 val apiJavadocDir = layout.buildDirectory.dir("docs/apiJavadoc")
 val apiJavadocTask = tasks.register<Javadoc>("apiJavadoc") {
-    source(sourceSets.main.get().allJava.matching {
-        include("net/mezzdev/config/api/**")
-    })
-    classpath = sourceSets.main.get().compileClasspath
+    source(apiSourceSet.allJava)
+    classpath = apiSourceSet.compileClasspath
     destinationDir = apiJavadocDir.get().asFile
 }
 
