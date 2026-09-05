@@ -1,13 +1,13 @@
 package net.mezzdev.config.test.serializers;
 
-import net.mezzdev.config.api.value.ConfigColorFormat;
-import net.mezzdev.config.api.value.ConfigListOrdering;
-import net.mezzdev.config.api.value.ConfigValueRange;
-import net.mezzdev.config.api.value.IDeserializeResult;
-import net.mezzdev.config.api.value.IConfigKeyValueSerializer;
-import net.mezzdev.config.api.value.IConfigListValueSerializer;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.api.value.PackedColor;
+import net.mezzdev.config.api.value.color.ConfigColorFormat;
+import net.mezzdev.config.api.value.serializer.ConfigListOrdering;
+import net.mezzdev.config.api.value.serializer.ConfigValueRange;
+import net.mezzdev.config.api.value.serializer.IDeserializeResult;
+import net.mezzdev.config.api.value.serializer.IConfigKeyValueSerializer;
+import net.mezzdev.config.api.value.serializer.IConfigListValueSerializer;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
+import net.mezzdev.config.api.value.color.PackedColor;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.ColorSerializer;
 import net.mezzdev.config.serializers.DoubleSerializer;

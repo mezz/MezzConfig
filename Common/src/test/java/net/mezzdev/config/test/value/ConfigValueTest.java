@@ -1,9 +1,9 @@
 package net.mezzdev.config.test.value;
 
-import net.mezzdev.config.api.value.IAppliedConfigValueChange;
-import net.mezzdev.config.api.value.ConfigValueEditMode;
-import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
-import net.mezzdev.config.api.value.IConfigValueChangeListener;
+import net.mezzdev.config.api.value.change.IAppliedConfigValueChange;
+import net.mezzdev.config.api.value.editor.ConfigValueEditMode;
+import net.mezzdev.config.api.value.editor.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.change.IConfigValueChangeListener;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.IntegerSerializer;
 import net.mezzdev.config.value.ConfigValue;

@@ -1,7 +1,7 @@
 package net.mezzdev.config.schema;
 
 import net.mezzdev.config.api.schema.ConfigSchemaType;
-import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder;
 import net.mezzdev.config.api.migration.IConfigMigrator;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.server.ServerConfigKey;

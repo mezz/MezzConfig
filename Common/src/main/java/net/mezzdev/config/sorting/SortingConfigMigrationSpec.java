@@ -1,6 +1,6 @@
 package net.mezzdev.config.sorting;
 
-import net.mezzdev.config.api.sorting.ISortingConfigMigrator;
+import net.mezzdev.config.api.migration.ISortingConfigMigrator;
 import net.mezzdev.config.migration.LegacyMigrationPaths;
 import net.mezzdev.config.util.ErrorUtil;
 

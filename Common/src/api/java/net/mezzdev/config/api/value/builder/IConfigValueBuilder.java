@@ -1,6 +1,11 @@
-package net.mezzdev.config.api.value;
+package net.mezzdev.config.api.value.builder;
 
-import net.mezzdev.config.api.schema.IConfigEditorCategoryBuilder;
+import net.mezzdev.config.api.schema.builder.IConfigEditorCategoryBuilder;
+import net.mezzdev.config.api.value.IConfigValue;
+import net.mezzdev.config.api.value.editor.ConfigValueEditMode;
+import net.mezzdev.config.api.value.editor.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.editor.IConfigValueEditorInfo;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.function.Function;
@@ -9,7 +14,7 @@ import java.util.function.Function;
  * Configures optional behavior before adding a value to its category.
  * <p>
  * Get an instance from one of the value methods on
- * {@link net.mezzdev.config.api.schema.IConfigCategoryBuilder}. Most values can be built immediately. Use this builder
+ * {@link net.mezzdev.config.api.schema.builder.IConfigCategoryBuilder}. Most values can be built immediately. Use this builder
  * when a setting needs a restart, a different config-screen category, or compatibility with a value previously stored by
  * MezzConfig.
  *
@@ -92,9 +97,9 @@ public interface IConfigValueBuilder<T> {
 	 * reads the old value with {@code legacySerializer} and passes the typed result to {@code migration}.
 	 * <p>
 	 * To load a MezzConfig file from an older location, use
-	 * {@link net.mezzdev.config.api.schema.IConfigSchemaBuilder#setLegacySources(java.util.List)}. To import a file that was
+	 * {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacySources(java.util.List)}. To import a file that was
 	 * not written by MezzConfig, use
-	 * {@link net.mezzdev.config.api.schema.IConfigSchemaBuilder#setLegacyMigration(java.util.List,
+	 * {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacyMigration(java.util.List,
 	 * net.mezzdev.config.api.migration.IConfigMigrator)} instead.
 	 *
 	 * @param legacyCategoryName old stable storage category name

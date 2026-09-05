@@ -7,6 +7,12 @@ Start by adding the dependency for your loader from the
 [project README](../README.md#add-mezzconfig-to-your-mod). This guide uses only
 the stable API under `net.mezzdev.config.api`.
 
+The main runtime interfaces stay at the root of their domains:
+`IConfigSchema`, `ISortingConfig`, and `IConfigValue`. Supporting builders,
+categories, updates, listeners, editor metadata, colors, serializers, and
+migration helpers live in child packages and can be discovered from the methods
+that expose them.
+
 ## Create a config
 
 Declare configs during common mod initialization. The same declaration code can
@@ -15,9 +21,9 @@ run on a physical client or a dedicated server.
 ```java
 import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.IConfigRegistration;
-import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
+import net.mezzdev.config.api.schema.builder.IConfigCategoryBuilder;
 import net.mezzdev.config.api.schema.IConfigSchema;
-import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder;
 import net.mezzdev.config.api.value.IConfigValue;
 
 public final class ExampleConfig {

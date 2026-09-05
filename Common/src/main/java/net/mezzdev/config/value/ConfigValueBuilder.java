@@ -1,10 +1,10 @@
 package net.mezzdev.config.value;
 
-import net.mezzdev.config.api.value.ConfigValueEditMode;
-import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
-import net.mezzdev.config.api.value.IConfigValueBuilder;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.api.schema.IConfigEditorCategoryBuilder;
+import net.mezzdev.config.api.value.editor.ConfigValueEditMode;
+import net.mezzdev.config.api.value.editor.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.builder.IConfigValueBuilder;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
+import net.mezzdev.config.api.schema.builder.IConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.util.ConfigNameUtil;

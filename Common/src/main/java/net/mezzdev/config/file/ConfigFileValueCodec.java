@@ -7,7 +7,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
-import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;

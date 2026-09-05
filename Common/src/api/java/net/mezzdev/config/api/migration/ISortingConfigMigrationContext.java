@@ -1,5 +1,6 @@
-package net.mezzdev.config.api.sorting;
+package net.mezzdev.config.api.migration;
 
+import net.mezzdev.config.api.sorting.ISortingConfig;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.Collection;

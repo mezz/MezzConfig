@@ -6,7 +6,7 @@ import java.nio.file.Path;
  * Imports a config file from the format a mod used before adopting MezzConfig.
  * <p>
  * Register a migrator with
- * {@link net.mezzdev.config.api.schema.IConfigSchemaBuilder#setLegacyMigration(java.util.List, IConfigMigrator)}. Parse
+ * {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacyMigration(java.util.List, IConfigMigrator)}. Parse
  * the old file in {@link #migrate(Path, IConfigMigrationContext)} and pass converted values to the migration context.
  * MezzConfig handles backup, validation, and writing the new config, so migrators never need to understand MezzConfig's
  * file format.

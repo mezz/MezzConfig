@@ -1,6 +1,6 @@
 package net.mezzdev.config.schema;
 
-import net.mezzdev.config.api.schema.IConfigBatchUpdater;
+import net.mezzdev.config.api.schema.update.IConfigBatchUpdater;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.util.ErrorUtil;
 import net.mezzdev.config.value.ConfigValue;

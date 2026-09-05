@@ -4,7 +4,7 @@ import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.IConfigRegistration;
 import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchema;
-import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.file.ConfigFileWatcherSettings;
 import net.mezzdev.config.file.ConfigManager;

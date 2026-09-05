@@ -1,6 +1,6 @@
 package net.mezzdev.config.sorting;
 
-import net.mezzdev.config.api.sorting.ISortingConfigMigrationContext;
+import net.mezzdev.config.api.migration.ISortingConfigMigrationContext;
 
 import java.util.Collection;
 import java.util.List;

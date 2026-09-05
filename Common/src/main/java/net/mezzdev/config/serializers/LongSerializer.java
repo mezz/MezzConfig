@@ -1,7 +1,7 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.api.value.ConfigValueRange;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.serializer.ConfigValueRange;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;

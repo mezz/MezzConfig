@@ -1,6 +1,6 @@
 package net.mezzdev.config.schema;
 
-import net.mezzdev.config.api.schema.IConfigCategory;
+import net.mezzdev.config.api.schema.category.IConfigCategory;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;

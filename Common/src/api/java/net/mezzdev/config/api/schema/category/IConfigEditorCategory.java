@@ -1,5 +1,6 @@
-package net.mezzdev.config.api.schema;
+package net.mezzdev.config.api.schema.category;
 
+import net.mezzdev.config.api.schema.IConfigSchema;
 import org.jetbrains.annotations.ApiStatus;
 
 /**

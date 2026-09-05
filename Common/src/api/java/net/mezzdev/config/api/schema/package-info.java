@@ -1,9 +1,9 @@
 /**
- * Define how a mod's settings are grouped, stored, and synchronized.
+ * Inspect and atomically update config schemas.
  * <p>
- * Create an {@link net.mezzdev.config.api.schema.IConfigSchemaBuilder} from
- * {@link net.mezzdev.config.api.Configs#forMod(String)}, add storage categories and values, then build it during mod
- * initialization. Keep the returned config value objects to read and update settings at runtime.
+ * {@link net.mezzdev.config.api.schema.IConfigSchema} is the main runtime interface. Declare schemas through the
+ * {@link net.mezzdev.config.api.schema.builder builder package}, and use the child packages for category discovery and
+ * batch updates.
  */
 @NullMarked
 package net.mezzdev.config.api.schema;

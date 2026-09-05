@@ -1,5 +1,5 @@
 /**
- * Import settings from config files that a mod used before adopting MezzConfig.
+ * Import settings and persistent sort orders from files that a mod used before adopting MezzConfig.
  * <p>
  * Declare the destination values, then register the old file locations and a parser on the schema builder:
  * <pre>{@code
@@ -19,9 +19,9 @@
  * writes its current format without exposing that format to the mod.
  * <p>
  * To load a MezzConfig file from an older location, use
- * {@link net.mezzdev.config.api.schema.IConfigSchemaBuilder#setLegacySources(java.util.List)}. To rename, move, or convert
+ * {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacySources(java.util.List)}. To rename, move, or convert
  * a value inside an existing MezzConfig file, use the legacy methods on
- * {@link net.mezzdev.config.api.value.IConfigValueBuilder}.
+ * {@link net.mezzdev.config.api.value.builder.IConfigValueBuilder}.
  */
 @NullMarked
 package net.mezzdev.config.api.migration;

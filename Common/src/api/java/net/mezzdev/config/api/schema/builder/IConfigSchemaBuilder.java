@@ -1,7 +1,8 @@
-package net.mezzdev.config.api.schema;
+package net.mezzdev.config.api.schema.builder;
 
 import net.mezzdev.config.api.IConfigRegistration;
 import net.mezzdev.config.api.migration.IConfigMigrator;
+import net.mezzdev.config.api.schema.IConfigSchema;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.nio.file.Path;
@@ -42,7 +43,7 @@ public interface IConfigSchemaBuilder {
 	 * Load this schema from a MezzConfig file at an older location when the destination does not exist yet.
 	 * <p>
 	 * Use this when a mod moves or renames a MezzConfig file. Values are matched by their current storage names and by the
-	 * legacy names and migrations declared on {@link net.mezzdev.config.api.value.IConfigValueBuilder}. The first existing
+	 * legacy names and migrations declared on {@link net.mezzdev.config.api.value.builder.IConfigValueBuilder}. The first existing
 	 * source is preserved and backed up, and MezzConfig writes the imported values to the new location in its current format.
 	 * <p>
 	 * To import a file that was not written by MezzConfig, use {@link #setLegacyMigration(List, IConfigMigrator)} instead.
@@ -62,7 +63,7 @@ public interface IConfigSchemaBuilder {
 	 * <p>
 	 * Use this when the old file was not written by MezzConfig. To move a MezzConfig file from another location, use
 	 * {@link #setLegacySources(List)}. To rename, move, or convert values inside an existing MezzConfig schema, use the
-	 * legacy methods on {@link net.mezzdev.config.api.value.IConfigValueBuilder} instead.
+	 * legacy methods on {@link net.mezzdev.config.api.value.builder.IConfigValueBuilder} instead.
 	 * <p>
 	 * Declare and build the destination values first so the migrator can update them. The paths are checked in order, which
 	 * supports mods that used more than one old location. Migration is considered only when the new config does not exist.

@@ -1,6 +1,6 @@
-package net.mezzdev.config.api.sorting;
+package net.mezzdev.config.api.migration;
 
-import net.mezzdev.config.api.migration.IConfigMigrationResult;
+import net.mezzdev.config.api.sorting.ISortingConfig;
 
 import java.nio.file.Path;
 

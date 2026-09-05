@@ -1,6 +1,6 @@
-package net.mezzdev.config.api.value;
+package net.mezzdev.config.api.value.serializer;
 
-import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
+import net.mezzdev.config.api.schema.builder.IConfigCategoryBuilder;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;

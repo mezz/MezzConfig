@@ -1,10 +1,10 @@
-package net.mezzdev.config.api.schema;
+package net.mezzdev.config.api.schema.builder;
 
-import net.mezzdev.config.api.value.ConfigListOrdering;
-import net.mezzdev.config.api.value.IConfigListValueSerializer;
-import net.mezzdev.config.api.value.IConfigValueBuilder;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.api.value.PackedColor;
+import net.mezzdev.config.api.value.serializer.ConfigListOrdering;
+import net.mezzdev.config.api.value.serializer.IConfigListValueSerializer;
+import net.mezzdev.config.api.value.builder.IConfigValueBuilder;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
+import net.mezzdev.config.api.value.color.PackedColor;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.util.List;

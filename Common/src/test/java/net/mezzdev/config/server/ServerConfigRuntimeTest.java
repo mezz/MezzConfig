@@ -1,7 +1,7 @@
 package net.mezzdev.config.server;
 
 import net.mezzdev.config.api.schema.ConfigSchemaType;
-import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.editor.ConfigValueRestartRequirement;
 import net.mezzdev.config.file.ConfigFileWatcherSettings;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;

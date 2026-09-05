@@ -1,6 +1,6 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 import org.jetbrains.annotations.Unmodifiable;
 import org.jetbrains.annotations.Nullable;
 

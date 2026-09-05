@@ -1,6 +1,6 @@
 package net.mezzdev.config.value;
 
-import net.mezzdev.config.api.value.IAppliedConfigValueChange;
+import net.mezzdev.config.api.value.change.IAppliedConfigValueChange;
 
 public record AppliedConfigValueChange<T>(
 	ConfigValue<T> configValue,

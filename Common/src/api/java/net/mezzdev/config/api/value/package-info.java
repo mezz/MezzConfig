@@ -1,8 +1,8 @@
 /**
- * Define, read, update, validate, and observe individual config values.
+ * Read and update individual config values.
  * <p>
- * Prefer the built-in value types on {@link net.mezzdev.config.api.schema.IConfigCategoryBuilder}. Implement
- * {@link net.mezzdev.config.api.value.IConfigValueSerializer} only when a mod needs to store its own value type.
+ * {@link net.mezzdev.config.api.value.IConfigValue} is the main runtime interface. Its child packages contain the
+ * builders and supporting types used to declare, serialize, present, and observe values.
  */
 @NullMarked
 package net.mezzdev.config.api.value;

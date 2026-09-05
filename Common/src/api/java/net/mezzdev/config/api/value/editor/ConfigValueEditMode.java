@@ -1,4 +1,4 @@
-package net.mezzdev.config.api.value;
+package net.mezzdev.config.api.value.editor;
 
 /**
  * Hints how config editors should save edits for a config value.

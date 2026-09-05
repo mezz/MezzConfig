@@ -2,9 +2,9 @@ package net.mezzdev.config.test.neoforge;
 
 import net.mezzdev.config.api.Configs;
 import net.mezzdev.config.api.IConfigRegistration;
-import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
-import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
-import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.schema.builder.IConfigCategoryBuilder;
+import net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder;
+import net.mezzdev.config.api.value.editor.ConfigValueRestartRequirement;
 import net.neoforged.fml.common.Mod;
 
 import java.util.List;

@@ -1,8 +1,8 @@
 package net.mezzdev.config.serializers;
 
-import net.mezzdev.config.api.value.ConfigColorFormat;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.api.value.PackedColor;
+import net.mezzdev.config.api.value.color.ConfigColorFormat;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
+import net.mezzdev.config.api.value.color.PackedColor;
 import org.jetbrains.annotations.Nullable;
 
 /**

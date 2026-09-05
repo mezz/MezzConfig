@@ -1,6 +1,6 @@
 package net.mezzdev.config.schema;
 
-import net.mezzdev.config.api.schema.IConfigEditorCategoryBuilder;
+import net.mezzdev.config.api.schema.builder.IConfigEditorCategoryBuilder;
 import net.mezzdev.config.util.ConfigNameUtil;
 import net.mezzdev.config.util.ErrorUtil;
 import org.jetbrains.annotations.Nullable;

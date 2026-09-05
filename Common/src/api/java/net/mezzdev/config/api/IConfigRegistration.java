@@ -1,8 +1,8 @@
 package net.mezzdev.config.api;
 
-import net.mezzdev.config.api.schema.IConfigSchemaBuilder;
+import net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder;
 import net.mezzdev.config.api.sorting.ISortingConfig;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.nio.file.Path;

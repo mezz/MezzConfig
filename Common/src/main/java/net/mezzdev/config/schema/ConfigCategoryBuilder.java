@@ -1,9 +1,9 @@
 package net.mezzdev.config.schema;
 
-import net.mezzdev.config.api.schema.IConfigCategoryBuilder;
-import net.mezzdev.config.api.value.ConfigListOrdering;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.api.value.PackedColor;
+import net.mezzdev.config.api.schema.builder.IConfigCategoryBuilder;
+import net.mezzdev.config.api.value.serializer.ConfigListOrdering;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
+import net.mezzdev.config.api.value.color.PackedColor;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.ColorSerializer;
 import net.mezzdev.config.serializers.DoubleSerializer;

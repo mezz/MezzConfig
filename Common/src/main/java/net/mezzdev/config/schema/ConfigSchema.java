@@ -2,13 +2,13 @@ package net.mezzdev.config.schema;
 
 import com.google.gson.JsonElement;
 import net.mezzdev.config.api.schema.IConfigSchema;
-import net.mezzdev.config.api.schema.IConfigBatchUpdater;
+import net.mezzdev.config.api.schema.update.IConfigBatchUpdater;
 import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.migration.ConfigMigrationStatus;
-import net.mezzdev.config.api.value.IAppliedConfigValueChange;
-import net.mezzdev.config.api.value.IDeserializeResult;
-import net.mezzdev.config.api.value.ConfigValueRestartRequirement;
-import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
+import net.mezzdev.config.api.value.change.IAppliedConfigValueChange;
+import net.mezzdev.config.api.value.serializer.IDeserializeResult;
+import net.mezzdev.config.api.value.editor.ConfigValueRestartRequirement;
+import net.mezzdev.config.api.value.change.IConfigValueBatchChangeListener;
 import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.file.ConfigFileValueCodec;
 import net.mezzdev.config.file.ConfigFileTransaction;

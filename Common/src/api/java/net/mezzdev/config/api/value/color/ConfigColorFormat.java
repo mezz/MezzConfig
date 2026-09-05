@@ -1,4 +1,4 @@
-package net.mezzdev.config.api.value;
+package net.mezzdev.config.api.value.color;
 
 /**
  * Formats used by {@link PackedColor}.

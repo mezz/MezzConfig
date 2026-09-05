@@ -1,6 +1,5 @@
 package net.mezzdev.config.api.migration;
 
-import net.mezzdev.config.api.sorting.ISortingConfigMigrator;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.nio.file.Path;

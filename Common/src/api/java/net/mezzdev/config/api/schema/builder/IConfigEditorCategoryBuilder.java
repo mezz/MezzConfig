@@ -1,4 +1,4 @@
-package net.mezzdev.config.api.schema;
+package net.mezzdev.config.api.schema.builder;
 
 import org.jetbrains.annotations.ApiStatus;
 

@@ -2,6 +2,7 @@ package net.mezzdev.config.api.sorting;
 
 import net.mezzdev.config.api.IConfigRegistration;
 import net.mezzdev.config.api.migration.IConfigMigrationResult;
+import net.mezzdev.config.api.migration.ISortingConfigMigrator;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 

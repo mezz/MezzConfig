@@ -1,8 +1,8 @@
 package net.mezzdev.config.value;
 
 import com.google.gson.JsonElement;
-import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
+import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.util.ErrorUtil;
 

@@ -1,7 +1,7 @@
 package net.mezzdev.config.test.sorting;
 
-import net.mezzdev.config.api.value.IConfigValueSerializer;
-import net.mezzdev.config.api.value.IDeserializeResult;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
+import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 import net.mezzdev.config.file.ConfigFileReader;
 import net.mezzdev.config.file.ConfigFileUtil;
 import net.mezzdev.config.serializers.StringSerializer;

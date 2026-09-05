@@ -1,4 +1,4 @@
-package net.mezzdev.config.api.value;
+package net.mezzdev.config.api.value.editor;
 
 /**
  * Defines when a saved config value becomes effective.

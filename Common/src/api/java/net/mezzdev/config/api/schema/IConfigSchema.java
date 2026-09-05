@@ -1,9 +1,13 @@
 package net.mezzdev.config.api.schema;
 
 import net.mezzdev.config.api.Configs;
-import net.mezzdev.config.api.value.IAppliedConfigValueChange;
+import net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder;
+import net.mezzdev.config.api.schema.category.IConfigCategory;
+import net.mezzdev.config.api.schema.category.IConfigEditorCategory;
+import net.mezzdev.config.api.schema.update.IConfigBatchUpdater;
 import net.mezzdev.config.api.value.IConfigValue;
-import net.mezzdev.config.api.value.IConfigValueBatchChangeListener;
+import net.mezzdev.config.api.value.change.IAppliedConfigValueChange;
+import net.mezzdev.config.api.value.change.IConfigValueBatchChangeListener;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Unmodifiable;
 

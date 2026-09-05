@@ -1,4 +1,4 @@
-package net.mezzdev.config.api.value;
+package net.mezzdev.config.api.value.serializer;
 
 /**
  * Describes whether the order of entries in a list config value is meaningful.
