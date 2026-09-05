@@ -55,7 +55,7 @@ repositories {
 
 // gradle.properties
 val jUnitVersion: String by extra
-val minecraftVersion: String by extra
+val targetMinecraftVersion = providers.gradleProperty("minecraftVersion").get()
 val neoformTimestamp: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
@@ -87,8 +87,8 @@ repositories {
 
 group = configModGroup
 
-val baseArchivesName = "${configModId}-${minecraftVersion}-config"
-val apiArchivesName = "${configModId}-${minecraftVersion}-config-api"
+val baseArchivesName = "${configModId}-${targetMinecraftVersion}-config"
+val apiArchivesName = "${configModId}-${targetMinecraftVersion}-config-api"
 base {
     archivesName.set(baseArchivesName)
 }
@@ -113,7 +113,7 @@ val deduplicatingRunnerLicense by configurations.creating {
 }
 
 neoForge {
-    neoFormVersion = "$minecraftVersion-$neoformTimestamp"
+    neoFormVersion = "$targetMinecraftVersion-$neoformTimestamp"
     addModdingDependenciesTo(sourceSets.test.get())
 }
 
@@ -294,35 +294,7 @@ publishing {
         }
         register<MavenPublication>("configJar") {
             artifactId = baseArchivesName
-            from(components["modShade"])
-
-            val dependencyInfos = listOf(
-                mapOf(
-                    "groupId" to "org.jetbrains",
-                    "artifactId" to "annotations",
-                    "version" to jetbrainsAnnotationsVersion
-                ),
-                mapOf(
-                    "groupId" to "org.jspecify",
-                    "artifactId" to "jspecify",
-                    "version" to jspecifyVersion
-                ),
-                mapOf(
-                    "groupId" to "org.apache.logging.log4j",
-                    "artifactId" to "log4j-api",
-                    "version" to log4jVersion
-                )
-            )
-
-            pom.withXml {
-                val dependenciesNode = asNode().appendNode("dependencies")
-                dependencyInfos.forEach {
-                    val dependencyNode = dependenciesNode.appendNode("dependency")
-                    it.forEach { (key, value) ->
-                        dependencyNode.appendNode(key, value)
-                    }
-                }
-            }
+            from(components["java"])
         }
     }
     repositories {

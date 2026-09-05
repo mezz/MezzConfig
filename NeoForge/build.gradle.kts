@@ -88,7 +88,7 @@ neoForge {
         val gameTestMod = mods.named("mezzConfigGameTests")
 
         configureEach {
-            getMods().set(setOf(configMod.get(), testMod.get()))
+            getLoadedMods().set(setOf(configMod.get(), testMod.get()))
         }
         create("client") {
             client()
@@ -105,7 +105,7 @@ neoForge {
             type.set("gameTestServer")
             gameDirectory = file("run/gameTestServer")
             sourceSet = gameTestSourceSet
-            getMods().add(gameTestMod.get())
+            getLoadedMods().add(gameTestMod.get())
             systemProperty("mezzConfig.gameTest.junitDir", gameTestJunitResultsDir.get().asFile.absolutePath)
             logLevel = Level.INFO
         }
