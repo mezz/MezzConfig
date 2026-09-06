@@ -17,15 +17,82 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ServerConfigRuntimeTest {
+	@Test
+	public void remoteClientConnectionAppliesChunkedSnapshotAndClearsItOnDisconnect(@TempDir Path tempDir) {
+		ServerConfigKey key = new ServerConfigKey("remote_flow_test", "server.ini");
+		String authoritativeValue = "server-value-" + "x".repeat(ServerConfigPayloadChunker.MAX_CHUNK_DATA_LENGTH);
+		TestStringSchema source = createStringServerSchema(
+			key,
+			() -> Optional.of(tempDir.resolve("server.ini")),
+			1,
+			authoritativeValue
+		);
+		ConfigManager serverManager = createConfigManager();
+		serverManager.registerSchema(source.schema());
+
+		ConfigManager clientManager = createConfigManager();
+		TestStringSchema target = createStringServerSchema(key, Optional::empty, 1, "client-default");
+		clientManager.registerSchema(target.schema());
+		ServerConfigClientConnection connection = new ServerConfigClientConnection(() -> clientManager);
+		UUID serverId = UUID.randomUUID();
+
+		connection.handleServerIdentity(new ServerIdentityPayload(serverId));
+		int chunkCount = transmit(connection, new ServerConfigSyncPayload(key, source.schema().serializeValues()));
+
+		assertEquals(Optional.of(serverId), connection.getRemoteServerId());
+		assertTrue(chunkCount > 1);
+		assertTrue(target.schema().isActive());
+		assertEquals(Optional.empty(), target.schema().getPath());
+		assertEquals(authoritativeValue, target.values().getFirst().get());
+		assertThrows(IllegalStateException.class, () -> target.values().getFirst().set("client-edit"));
+
+		connection.onDisconnect();
+
+		assertEquals(Optional.empty(), connection.getRemoteServerId());
+		assertFalse(target.schema().isActive());
+		assertEquals("client-default", target.values().getFirst().get());
+	}
+
+	@Test
+	public void integratedServerConnectionKeepsTheLocalAuthoritativeSnapshot(@TempDir Path tempDir) {
+		ServerConfigKey key = new ServerConfigKey("integrated_flow_test", "server.ini");
+		ConfigManager integratedManager = createConfigManager();
+		TestStringSchema authoritative = createStringServerSchema(
+			key,
+			() -> Optional.of(tempDir.resolve("server.ini")),
+			1,
+			"local-authoritative"
+		);
+		integratedManager.registerSchema(authoritative.schema());
+		ServerConfigClientConnection connection = new ServerConfigClientConnection(() -> integratedManager);
+
+		connection.handleServerIdentity(new ServerIdentityPayload(UUID.randomUUID()));
+		transmit(connection, new ServerConfigSyncPayload(
+			key,
+			List.of(new ServerConfigValueData("general", "value_0", "\"remote-loopback\""))
+		));
+
+		assertTrue(authoritative.schema().isActive());
+		assertEquals(Optional.of(tempDir.resolve("server.ini")), authoritative.schema().getPath());
+		assertEquals("local-authoritative", authoritative.values().getFirst().get());
+
+		connection.onDisconnect();
+
+		assertTrue(authoritative.schema().isActive());
+		assertEquals("local-authoritative", authoritative.values().getFirst().get());
+	}
+
 	@Test
 	public void registrationEnforcesServerSnapshotValueCount() {
 		ConfigManager manager = createConfigManager();
@@ -236,6 +303,14 @@ public class ServerConfigRuntimeTest {
 			ConfigFileWatcherSettings.clientDefaults().withEnabled(false),
 			ConfigFileWatcherSettings.serverDefaults().withEnabled(false)
 		);
+	}
+
+	private static int transmit(ServerConfigClientConnection connection, ServerConfigSyncPayload payload) {
+		List<byte[]> chunks = ServerConfigPayloadChunker.split(ServerConfigPayloadCodec.encodeSync(payload));
+		chunks.stream()
+			.map(ServerConfigSyncChunkPayload::new)
+			.forEach(connection::handleSyncChunk);
+		return chunks.size();
 	}
 
 	private record TestStringSchema(ConfigSchema schema, List<ConfigValue<String>> values) {}

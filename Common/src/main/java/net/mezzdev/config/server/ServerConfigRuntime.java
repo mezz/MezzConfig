@@ -18,13 +18,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
 
 public final class ServerConfigRuntime {
 	private static final Logger LOGGER = LogManager.getLogger();
 	private static final Map<ConfigSchema, Long> SERVER_SCHEMA_VERSIONS = new IdentityHashMap<>();
-	private static final ServerConfigPayloadReassembler SYNC_REASSEMBLER = new ServerConfigPayloadReassembler();
-	private static final AtomicReference<UUID> REMOTE_SERVER_ID = new AtomicReference<>();
+	private static final ServerConfigClientConnection CLIENT_CONNECTION = new ServerConfigClientConnection(
+		ServerConfigRuntime::getConfigManager
+	);
 	private static volatile @Nullable Path worldConfigRoot;
 	private static volatile @Nullable MinecraftServer activeServer;
 	private static volatile @Nullable UUID activeServerId;
@@ -38,7 +38,7 @@ public final class ServerConfigRuntime {
 	}
 
 	public static Optional<UUID> getRemoteServerId() {
-		return Optional.ofNullable(REMOTE_SERVER_ID.get());
+		return CLIENT_CONNECTION.getRemoteServerId();
 	}
 
 	public static void validateSnapshot(ServerConfigKey key, List<ServerConfigValueData> values) {
@@ -69,7 +69,7 @@ public final class ServerConfigRuntime {
 	}
 
 	public static void onClientWorldStarted() {
-		getConfigManager().onWorldStarted();
+		CLIENT_CONNECTION.onWorldStarted();
 	}
 
 	public static void onServerStopped() {
@@ -118,15 +118,7 @@ public final class ServerConfigRuntime {
 	}
 
 	public static void handleServerIdentity(ServerIdentityPayload payload) {
-		UUID serverId = payload.serverId();
-		if (REMOTE_SERVER_ID.compareAndSet(null, serverId)) {
-			getConfigManager().onClientServerIdentityReceived();
-			return;
-		}
-		UUID currentServerId = REMOTE_SERVER_ID.get();
-		if (!serverId.equals(currentServerId)) {
-			LOGGER.warn("Ignored a conflicting server identity for the current connection.");
-		}
+		CLIENT_CONNECTION.handleServerIdentity(payload);
 	}
 
 	private static void broadcastSchema(MinecraftServer server, ConfigSchema schema) {
@@ -148,34 +140,19 @@ public final class ServerConfigRuntime {
 	}
 
 	public static void handleSync(ServerConfigSyncPayload payload) {
-		try {
-			getConfigManager().getServerSchema(payload.key())
-				.ifPresent(schema -> schema.applyRemoteSnapshot(payload.values()));
-		} catch (RuntimeException e) {
-			LOGGER.error("Failed to apply synchronized server config schema: {}", payload.key(), e);
-		}
+		CLIENT_CONNECTION.handleSync(payload);
 	}
 
 	public static void handleSyncChunk(ServerConfigSyncChunkPayload chunk) {
-		try {
-			SYNC_REASSEMBLER.accept(chunk.payloadInternal())
-				.map(ServerConfigPayloadCodec::decodeSync)
-				.ifPresent(ServerConfigRuntime::handleSync);
-		} catch (RuntimeException e) {
-			LOGGER.warn("Rejected malformed synchronized server config fragment: {}", getExceptionMessage(e));
-			LOGGER.debug("Malformed synchronized server config fragment details.", e);
-		}
+		CLIENT_CONNECTION.handleSyncChunk(chunk);
 	}
 
 	public static void onClientTick() {
-		getConfigManager().logUntranslatedKeysIfReady();
-		SYNC_REASSEMBLER.expire(System.nanoTime());
+		CLIENT_CONNECTION.onTick();
 	}
 
 	public static void onClientDisconnect() {
-		SYNC_REASSEMBLER.clear();
-		REMOTE_SERVER_ID.set(null);
-		getConfigManager().getServerSchemas().forEach(ConfigSchema::clearRemoteSnapshot);
+		CLIENT_CONNECTION.onDisconnect();
 	}
 
 	private static @Nullable UUID getOrCreateServerId(Path worldRoot) {
