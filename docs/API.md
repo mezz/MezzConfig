@@ -90,12 +90,12 @@ Listeners run synchronously on the thread applying the change.
 
 The builder factory determines who owns a config and when it is active.
 
-| Factory                               | Use it for                                                                 |
-|---------------------------------------|----------------------------------------------------------------------------|
-| `createClientSchemaBuilder`           | Client preferences shared across all worlds and servers.                   |
-| `createClientPerWorldSchemaBuilder`   | Client preferences that vary by singleplayer world or multiplayer server.  |
-| `createServerSchemaBuilder`           | World-owned settings controlled by the server and synchronized to clients. |
-| `createClientSchemaBuilderAtLocation` | A client config stored at one complete, explicit path.                     |
+| Factory                                            | Use it for                                                                 |
+|----------------------------------------------------|----------------------------------------------------------------------------|
+| `createClientSchemaBuilder(String, String)`        | Client preferences shared across all worlds and servers.                   |
+| `createClientSchemaBuilder(Path, String)`          | A client config stored at one complete, explicit path.                     |
+| `createClientPerWorldSchemaBuilder(String, String)` | Client preferences that vary by singleplayer world or multiplayer server.  |
+| `createServerSchemaBuilder(String, String)`        | World-owned settings controlled by the server and synchronized to clients. |
 
 Client schemas are safe to declare from common initialization code. On a
 dedicated server they remain inactive and default-backed, without touching a

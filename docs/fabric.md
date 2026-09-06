@@ -33,7 +33,7 @@ into the existing `depends` object:
 
 ```json
 "depends": {
-  "mezz_config": ">=0.4.0 <1.0.0"
+  "mezz_config": ">=0.5.0 <1.0.0"
 }
 ```
 

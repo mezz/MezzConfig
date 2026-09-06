@@ -35,7 +35,7 @@ Replace `your_mod_id` with your mod id:
 [[dependencies.your_mod_id]]
     modId="mezz_config"
     type="required"
-    versionRange="[0.4.0,1.0.0)"
+    versionRange="[0.5.0,1.0.0)"
     ordering="AFTER"
     side="BOTH"
 ```
@@ -52,7 +52,7 @@ copy in every mod that uses this option.
 Add the supported range and Jar-in-Jar dependency:
 
 ```kotlin
-val mezzConfigVersionRange = "[0.4.0,1.0.0)"
+val mezzConfigVersionRange = "[0.5.0,1.0.0)"
 
 dependencies {
 	jarJar("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }

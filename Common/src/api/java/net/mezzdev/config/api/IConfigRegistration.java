@@ -40,6 +40,28 @@ public interface IConfigRegistration {
 	IConfigSchemaBuilder createClientSchemaBuilder(String configFileName, String localizationPath);
 
 	/**
+	 * Create a client config stored at an explicit file path.
+	 * <p>
+	 * Use this when the conventional client config directory is not appropriate. Otherwise, prefer
+	 * {@link #createClientSchemaBuilder(String, String)}.
+	 * The supplied path is the complete config file location; MezzConfig does not append the mod id, ownership, or file
+	 * name or create a separate pack-default file. Relative paths are captured as normalized absolute paths when this
+	 * method is called.
+	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
+	 * inactive, default-backed, and does not access the supplied location.
+	 * Building the schema reads or creates the file synchronously and fails if the location is unavailable. Later edits
+	 * update the in-memory values before a delayed save; a later filesystem failure does not roll back the edit or reach
+	 * the original editing call.
+	 *
+	 * @param configFile complete path to the config file
+	 * @param localizationPath translation key prefix for the config file
+	 * @return client-owned schema builder
+	 *
+	 * @since 0.5.0
+	 */
+	IConfigSchemaBuilder createClientSchemaBuilder(Path configFile, String localizationPath);
+
+	/**
 	 * Create a server-owned config stored with each world and synchronized to connected clients.
 	 * <p>
 	 * The server loads the distributable default from the conventional config directory and the authoritative values from
@@ -70,28 +92,6 @@ public interface IConfigRegistration {
 	 * @since 0.3.0
 	 */
 	IConfigSchemaBuilder createClientPerWorldSchemaBuilder(String configFileName, String localizationPath);
-
-	/**
-	 * Create a client config stored at an explicit file path.
-	 * <p>
-	 * Use this when the conventional client config directory is not appropriate. Otherwise, prefer
-	 * {@link #createClientSchemaBuilder(String, String)}.
-	 * The supplied path is the complete config file location; MezzConfig does not append the mod id, ownership, or file
-	 * name or create a separate pack-default file. Relative paths are captured as normalized absolute paths when this
-	 * method is called.
-	 * On a dedicated server, the builder remains usable so common registration code can run, but the built schema is
-	 * inactive, default-backed, and does not access the supplied location.
-	 * Building the schema reads or creates the file synchronously and fails if the location is unavailable. Later edits
-	 * update the in-memory values before a delayed save; a later filesystem failure does not roll back the edit or reach
-	 * the original editing call.
-	 *
-	 * @param configFile complete path to the config file
-	 * @param localizationPath translation key prefix for the config file
-	 * @return client-owned schema builder
-	 *
-	 * @since 0.3.0
-	 */
-	IConfigSchemaBuilder createClientSchemaBuilderAtLocation(Path configFile, String localizationPath);
 
 	/**
 	 * Create a persistent user-defined order for strings discovered at runtime.

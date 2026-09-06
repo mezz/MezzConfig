@@ -72,7 +72,7 @@ public class ConfigsTest {
 			true
 		);
 		TestSchema explicit = createSchema(
-			registration.createClientSchemaBuilderAtLocation(explicitPath, "registration_test.explicit"),
+			registration.createClientSchemaBuilder(explicitPath, "registration_test.explicit"),
 			false
 		);
 		TestSchema server = createSchema(
@@ -285,7 +285,7 @@ public class ConfigsTest {
 		assertThrows(
 			IllegalArgumentException.class,
 			() -> createSchema(
-				registration.createClientSchemaBuilderAtLocation(conventionalPath, "registration_test.client"),
+				registration.createClientSchemaBuilder(conventionalPath, "registration_test.client"),
 				true
 			)
 		);
@@ -304,7 +304,7 @@ public class ConfigsTest {
 
 		Path explicitPath = configRoot.resolve("outside-owned-layout/settings.ini");
 		TestSchema explicit = createSchema(
-			registration.createClientSchemaBuilderAtLocation(explicitPath, "registration_test.explicit"),
+			registration.createClientSchemaBuilder(explicitPath, "registration_test.explicit"),
 			true
 		);
 		assertEquals(explicitPath, explicit.schema().getPath().orElseThrow());
@@ -317,7 +317,7 @@ public class ConfigsTest {
 		IConfigRegistration registration = createRegistration(tempDir.resolve("automatic-root"));
 
 		TestSchema config = createSchema(
-			registration.createClientSchemaBuilderAtLocation(relativePath, "registration_test.explicit"),
+			registration.createClientSchemaBuilder(relativePath, "registration_test.explicit"),
 			true
 		);
 
@@ -353,8 +353,8 @@ public class ConfigsTest {
 		Path oversizedPath = configRoot.resolve("explicit/oversized.ini");
 		Files.write(oversizedPath, new byte[MAX_CONFIG_FILE_BYTES + 1]);
 
-		createSchema(registration.createClientSchemaBuilderAtLocation(invalidPath, "registration_test.invalid"), true);
-		createSchema(registration.createClientSchemaBuilderAtLocation(oversizedPath, "registration_test.oversized"), false);
+		createSchema(registration.createClientSchemaBuilder(invalidPath, "registration_test.invalid"), true);
+		createSchema(registration.createClientSchemaBuilder(oversizedPath, "registration_test.oversized"), false);
 
 		assertEquals(invalidUtf8.length, Files.size(ConfigFileUtil.getBackupPath(invalidPath, 1)));
 		assertTrue(Files.readString(invalidPath).contains("enabled = true"));
@@ -372,7 +372,7 @@ public class ConfigsTest {
 		assertThrows(
 			UncheckedIOException.class,
 			() -> createSchema(
-				registration.createClientSchemaBuilderAtLocation(path, "registration_test.client"),
+				registration.createClientSchemaBuilder(path, "registration_test.client"),
 				true
 			)
 		);

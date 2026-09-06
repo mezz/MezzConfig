@@ -111,7 +111,7 @@ public final class ConfigProvider implements Configs.IConfigProvider {
 		}
 
 		@Override
-		public IConfigSchemaBuilder createClientSchemaBuilderAtLocation(Path configFile, String localizationPath) {
+		public IConfigSchemaBuilder createClientSchemaBuilder(Path configFile, String localizationPath) {
 			configFile = ErrorUtil.checkNotNull(configFile, "configFile")
 				.toAbsolutePath()
 				.normalize();

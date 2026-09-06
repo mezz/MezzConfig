@@ -128,8 +128,9 @@ working when the server's address or name changes. If the server does not
 support MezzConfig (i.e. a vanilla server) the client falls back to the
 server-list name and address. Connecting never requires server support.
 
-Use `createClientSchemaBuilderAtLocation` only when integrating with an existing
-client file location. It uses that one file without a separate pack default.
+Use the `createClientSchemaBuilder(Path, String)` overload only when integrating
+with an existing client file location. It uses that one file without a separate
+pack default.
 Mod code should read and update values through `IConfigValue`, not access schema
 files directly.
 
