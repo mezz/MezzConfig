@@ -2,12 +2,13 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
-import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.PathSensitive
@@ -43,10 +44,6 @@ plugins {
     id("org.parchmentmc.librarian.forgegradle") version("1.2.0") apply(false)
 }
 repositories {
-    maven {
-        name = "publicationValidation"
-        url = layout.buildDirectory.dir("publication-validation").get().asFile.toURI()
-    }
     mavenCentral()
 }
 
@@ -164,22 +161,18 @@ abstract class ValidateDocumentationLinks : DefaultTask() {
 }
 
 abstract class ValidateFabricEmbedding : DefaultTask() {
-    @get:Classpath
-    abstract val artifacts: ConfigurableFileCollection
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val fabricJar: RegularFileProperty
 
-    @get:Input
-    abstract val fabricJarPrefix: Property<String>
-
-    @get:Input
-    abstract val commonJarPrefix: Property<String>
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val commonJar: RegularFileProperty
 
     @TaskAction
     fun validate() {
-        val resolvedArtifacts = artifacts.files
-        val fabricJar = resolvedArtifacts.singleOrNull { it.name.startsWith(fabricJarPrefix.get()) }
-            ?: throw GradleException("The Fabric embedding set did not resolve exactly one loader-adapter jar.")
-        val commonJar = resolvedArtifacts.singleOrNull { it.name.startsWith(commonJarPrefix.get()) }
-            ?: throw GradleException("The Fabric embedding set did not resolve exactly one Common runtime jar.")
+        val fabricJar = fabricJar.get().asFile
+        val commonJar = commonJar.get().asFile
         val requiredEntries = mapOf(
             fabricJar to "net/mezzdev/config/fabric/ConfigFabric.class",
             commonJar to "net/mezzdev/config/registration/ConfigProvider.class"
@@ -237,23 +230,19 @@ tasks.register<ValidateDocumentationLinks>("validateDocumentationLinks") {
     rootDirectory.set(layout.projectDirectory)
 }
 
-val fabricEmbeddingArtifacts by configurations.creating {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-    isTransitive = false
-}
-dependencies {
-    fabricEmbeddingArtifacts("$modGroup:${configModId}-${minecraftVersion}-fabric:$projectVersion")
-    fabricEmbeddingArtifacts("$modGroup:${configModId}-${minecraftVersion}-config:$projectVersion")
-}
-
 tasks.register<ValidateFabricEmbedding>("validateFabricEmbedding") {
     group = "verification"
     description = "Checks the complete non-transitive Fabric Jar-in-Jar dependency set."
     dependsOn(validatePublishing)
-    artifacts.from(fabricEmbeddingArtifacts)
-    fabricJarPrefix.set("${configModId}-${minecraftVersion}-fabric-")
-    commonJarPrefix.set("${configModId}-${minecraftVersion}-config-")
+    val publicationGroupPath = modGroup.replace('.', '/')
+    val fabricModule = "${configModId}-${minecraftVersion}-fabric"
+    val commonModule = "${configModId}-${minecraftVersion}-config"
+    fabricJar.set(layout.buildDirectory.file(
+        "publication-validation/$publicationGroupPath/$fabricModule/$projectVersion/$fabricModule-$projectVersion.jar"
+    ))
+    commonJar.set(layout.buildDirectory.file(
+        "publication-validation/$publicationGroupPath/$commonModule/$projectVersion/$commonModule-$projectVersion.jar"
+    ))
 }
 
 subprojects {
