@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -257,7 +258,7 @@ public class ServerConfigPayloadCodecTest {
 	}
 
 	private static void writeString(DataOutputStream output, String value) throws IOException {
-		byte[] encoded = value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
 		output.writeInt(encoded.length);
 		output.write(encoded);
 	}

@@ -3,8 +3,10 @@ package net.mezzdev.config.api.schema.builder;
 import net.mezzdev.config.api.IConfigRegistration;
 import net.mezzdev.config.api.migration.IConfigMigrator;
 import net.mezzdev.config.api.schema.IConfigSchema;
+import net.mezzdev.config.api.value.builder.IConfigValueBuilder;
 import org.jetbrains.annotations.ApiStatus;
 
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -43,8 +45,8 @@ public interface IConfigSchemaBuilder {
 	 * Load this schema from a MezzConfig file at an older location when the destination does not exist yet.
 	 * <p>
 	 * Use this when a mod moves or renames a MezzConfig file. Values are matched by their current storage names and by the
-	 * legacy names and migrations declared on {@link net.mezzdev.config.api.value.builder.IConfigValueBuilder}. The first existing
-	 * source is preserved and backed up, and MezzConfig writes the imported values to the new location in its current format.
+	 * legacy names and migrations declared on {@link IConfigValueBuilder}. The first existing source is preserved and backed
+	 * up, and MezzConfig writes the imported values to the new location in its current format.
 	 * <p>
 	 * To import a file that was not written by MezzConfig, use {@link #setLegacyMigration(List, IConfigMigrator)} instead.
 	 *
@@ -63,14 +65,13 @@ public interface IConfigSchemaBuilder {
 	 * <p>
 	 * Use this when the old file was not written by MezzConfig. To move a MezzConfig file from another location, use
 	 * {@link #setLegacySources(List)} and, when needed, declare renamed, moved, or converted values with the legacy methods
-	 * on {@link net.mezzdev.config.api.value.builder.IConfigValueBuilder}.
+	 * on {@link IConfigValueBuilder}.
 	 * <p>
 	 * Declare and build the destination values first so the migrator can update them. The paths are checked in order, which
 	 * supports mods that used more than one old location. Migration is considered only when the new config does not exist.
 	 * <p>
 	 * The migrator parses the old format and supplies typed values; MezzConfig preserves and backs up the source, validates
-	 * the complete import, and writes the new format atomically. See the {@link net.mezzdev.config.api.migration migration
-	 * package} for an example.
+	 * the complete import, and writes the new format atomically. See {@link IConfigMigrator} for an example.
 	 *
 	 * @param legacyPaths ordered candidate legacy file paths; must not be empty
 	 * @param migrator callback that parses the selected legacy file and queues typed updates
@@ -96,7 +97,7 @@ public interface IConfigSchemaBuilder {
 	 * be safely serialized
 	 * @throws IllegalStateException when the schema has no storage category, a storage category has no config value, or a
 	 * value builder has not been built
-	 * @throws java.io.UncheckedIOException when an active backing file cannot initially be read or created
+	 * @throws UncheckedIOException when an active backing file cannot initially be read or created
 	 *
 	 * @since 0.1.0
 	 */

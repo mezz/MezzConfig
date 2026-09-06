@@ -19,11 +19,14 @@
  * writes its current format without exposing that format to the mod.
  * <p>
  * To load a MezzConfig file from an older location, use
- * {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacySources(java.util.List)}. To rename, move, or convert
- * a value inside an existing MezzConfig file, use the legacy methods on
- * {@link net.mezzdev.config.api.value.builder.IConfigValueBuilder}.
+ * {@link IConfigSchemaBuilder#setLegacySources(List)}. To rename, move, or convert a value while importing that legacy
+ * source, use the legacy methods on {@link IConfigValueBuilder}.
  */
 @NullMarked
 package net.mezzdev.config.api.migration;
 
+import net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder;
+import net.mezzdev.config.api.value.builder.IConfigValueBuilder;
 import org.jspecify.annotations.NullMarked;
+
+import java.util.List;

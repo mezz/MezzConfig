@@ -4,13 +4,14 @@ import net.mezzdev.config.api.sorting.ISortingConfig;
 import net.mezzdev.config.api.value.IConfigValue;
 import org.jetbrains.annotations.ApiStatus;
 
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
 
 /**
  * Imports converted legacy settings without exposing MezzConfig's file format.
  * <p>
- * MezzConfig passes this to {@link IConfigMigrator#migrate(java.nio.file.Path, IConfigMigrationContext)}. Use
+ * MezzConfig passes this to {@link IConfigMigrator#migrate(Path, IConfigMigrationContext)}. Use
  * {@link #set(IConfigValue, Object)} for schema values and {@link #setSortedValues(ISortingConfig, Collection, List)} for
  * persistent sort orders. All updates from one migration succeed or fail together.
  *

@@ -42,6 +42,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -810,7 +811,7 @@ public class ConfigSchemaTest {
 		ConfigValue<Integer> second = builder.addInteger("second", 0, 0, 2)
 			.build();
 		ConfigSchema schema = createSchema(builder);
-		List<List<String>> notifiedBatches = new java.util.concurrent.CopyOnWriteArrayList<>();
+		List<List<String>> notifiedBatches = new CopyOnWriteArrayList<>();
 		schema.addBatchListener(changes -> notifiedBatches.add(changes.stream()
 			.map(change -> change.configValue().getEditorInfo().getName())
 			.toList()));
