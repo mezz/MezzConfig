@@ -7,21 +7,17 @@ server-authoritative settings synchronized to connected clients.
 MezzConfig focuses on the parts of configuration that are difficult to get
 right across loaders:
 
-- typed values with validation, defaults, and automatic file recovery;
-- Fabric, Forge, and NeoForge support through the same public API;
-- server-owned settings with one-way synchronization to clients;
-- atomic updates, change listeners, restart requirements, and migration tools;
-- persistent user-defined sorting for values discovered at runtime.
+- typed values with validation, defaults, and automatic file recovery
+- Fabric, Forge, and NeoForge support through the same public API
+- server-owned settings with one-way synchronization to clients
+- atomic updates, change listeners, restart requirements, and migration tools
+- persistent user-defined sorting for values discovered at runtime
 
 Its network features are optional. A client with MezzConfig can connect to a
 vanilla server or any server that does not have MezzConfig installed.
 
-The current branch targets Minecraft 1.21.1 and Java 21.
-
 ## Add MezzConfig to your mod
 
-Add MezzConfig as a normal required mod dependency. This is preferred because
-mods can share one MezzConfig installation and keep their own jars smaller.
 Choose the guide for your loader:
 
 - [Fabric Loom](docs/fabric.md)
@@ -31,7 +27,7 @@ Choose the guide for your loader:
 Each guide also explains how to include MezzConfig inside your mod as an
 optional Jar-in-Jar dependency.
 
-Use classes under `net.mezzdev.config.api`; other packages are internal.
+Use classes under `net.mezzdev.config.api`, other packages are internal.
 
 ## Documentation
 
