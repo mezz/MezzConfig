@@ -46,17 +46,19 @@ You can include MezzConfig when your mod must work as a single download. This
 makes installation simpler, but increases your jar size and packages another
 copy in every mod that uses this option.
 
-Add the Fabric dependency to `include`:
+Fabric Loom's `include` configuration is not transitive, so add both the Fabric
+loader adapter and the Common runtime:
 
 ```kotlin
 dependencies {
 	include("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
+	include("net.mezzdev.config:mezz_config-1.21.1-config:$mezzConfigVersion")
 }
 ```
 
-Run `./gradlew build` as usual. The release jar now contains MezzConfig and
-satisfies the same required dependency in `fabric.mod.json`; do not remove that
-entry.
+Run `./gradlew build` as usual. The release jar now contains MezzConfig's loader
+adapter and runtime, and satisfies the same required dependency in
+`fabric.mod.json`; do not remove that entry.
 
 For more detail, see the official
 [Fabric Loom dependency documentation](https://docs.fabricmc.net/develop/loom/#dependency-configurations).

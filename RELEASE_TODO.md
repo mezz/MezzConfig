@@ -131,6 +131,28 @@ mistaken for a requirement without supporting evidence.
   - [x] Make listener registration and removal thread-safe.
   - [x] Cover concurrent batches and runtime callback threads with tests.
 
+### Exercise the Complete Client Synchronization Lifecycle
+
+- [x] Cover remote-client synchronization and integrated-server loopback through
+      the connection-scoped runtime using the production payload pipeline.
+
+  **Reason:** Codec and schema tests covered the individual operations, but did
+  not connect identity receipt, chunk reassembly, snapshot application, and
+  disconnect cleanup into one client lifecycle. Integrated servers also share
+  the authoritative schema with their local client, so a looped-back snapshot
+  must never replace the active world-backed state.
+
+  - [x] Isolate per-connection client state from the static server lifecycle so
+        independent server and client managers can be exercised together.
+  - [x] Round-trip a multi-chunk authoritative snapshot through the production
+        encoder, chunk envelope, reassembler, decoder, and remote schema.
+  - [x] Verify the remote identity and synchronized snapshot are cleared on
+        disconnect.
+  - [x] Verify an integrated-server loopback leaves the active local file and
+        authoritative values unchanged, including after disconnect.
+  - [x] Retain loader runtime coverage for actual registration, dedicated-server
+        activation, and networking-adapter startup.
+
 ## P1 — Complete and Freeze the Public API
 
 ### Support Explicit Client Config Locations Coherently
@@ -302,6 +324,8 @@ mistaken for a requirement without supporting evidence.
   - [x] Run `validatePublishing` before Jenkins publication.
   - [x] Run NeoForge server GameTests before publication, or require a matching
         green GitHub CI commit.
+  - [x] Complete API compatibility checking before publication tasks can
+        replace an artifact in the local validation repository.
   - [x] Keep publish, signing, and deployment tasks separate from ordinary
         validation.
 
@@ -338,16 +362,49 @@ mistaken for a requirement without supporting evidence.
   - [x] Verify a dedicated server keeps client declarations inert.
   - [x] Keep the smoke tests small; shared behavior remains covered in Common.
 
+### Keep Fabric Jar-in-Jar Complete
+
+- [x] Document and validate the complete non-transitive Fabric embedding set.
+
+  **Reason:** Fabric Loom's `include` configuration is not transitive. Including
+  only the published Fabric loader adapter omits its Common runtime dependency,
+  even though normal Maven dependency resolution follows that dependency from
+  the adapter POM.
+
+  - [x] Include both `mezz_config-1.21.1-fabric` and
+        `mezz_config-1.21.1-config` in the optional Fabric setup example.
+  - [x] Resolve both direct artifacts non-transitively from the publication
+        validation repository and verify they contain the loader entry point and
+        Common runtime provider.
+  - [x] Run the embedding validation in GitHub CI and Jenkins before publication.
+
 ## P2 — Documentation and Supported Boundaries
 
 ### Correct the Protocol Documentation
 
-- [x] Change the API guide's protocol version from 2 to 3 and verify all
-      documented limits against the implementation.
+- [x] Record the independent channel and chunk-envelope versions accurately and
+      keep their implementation constants centralized.
 
-  **Reason:** The chunk envelope and Forge and NeoForge channels use protocol
-  version 3, so the current version-2 statement is factually wrong during
-  compatibility troubleshooting.
+  **Reason:** An earlier checklist entry incorrectly described every protocol as
+  version 3. Forge and NeoForge currently negotiate channel version 2, while the
+  internal chunk envelope is version 1; these are separate compatibility layers.
+
+  - [x] Use one Common constant for the Forge and NeoForge channel version.
+  - [x] Use a separate Common constant for the chunk-envelope version.
+  - [x] Test that an unsupported chunk-envelope version is rejected.
+
+### Validate Documentation Links
+
+- [x] Check local Markdown file targets and heading anchors in release CI.
+
+  **Reason:** The migrations guide linked to a missing sorting-guide heading,
+  while the existing documentation gate generated only API Javadocs and could
+  not detect the broken Markdown navigation.
+
+  - [x] Restore the documented `migrate-an-old-order` section in the sorting
+        guide.
+  - [x] Add a configuration-cache-safe `validateDocumentationLinks` task.
+  - [x] Run the link validation in GitHub CI and Jenkins before publication.
 
 ### State the Stable Package Boundary Explicitly
 
@@ -389,7 +446,9 @@ identified above, not only internal helpers.
 - [x] Run `spotlessCheck`, `build`, API Javadocs, API compatibility
       checking, and `validatePublishing` from a clean checkout.
 - [x] Run NeoForge server GameTests and the new Fabric and Forge smoke tests.
-- [ ] Test dedicated-server, integrated-server, and remote-client config flows.
+- [x] Test dedicated-server activation through loader runtimes, plus
+      integrated-server loopback and the complete remote-client payload and
+      disconnect lifecycle through the connection-scoped runtime.
 - [x] Test oversized snapshot rejection and confirm authoritative state never
       changes on failure.
 - [x] Test throwing custom serializers and malformed-file recovery.
@@ -399,3 +458,6 @@ identified above, not only internal helpers.
 - [x] Inspect generated jars and POMs and compile a standalone API
       consumer against the validated publication repository.
 - [ ] Confirm the worktree is clean before tagging the release.
+- [ ] Manually resolve the local/remote branch topology and select the canonical
+      commit before tagging. This remains a release-operator task and is not
+      changed by automated release preparation.

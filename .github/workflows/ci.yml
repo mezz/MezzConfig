@@ -27,7 +27,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Validate build, API, documentation, and publications
-        run: ./gradlew --stacktrace spotlessCheck build :Common:apiJavadoc :Common:checkJarCompatibility validatePublishing
+        run: ./gradlew --stacktrace spotlessCheck build :Common:apiJavadoc :Common:checkJarCompatibility validateDocumentationLinks validateFabricEmbedding
 
       - name: Run NeoForge server GameTests
         run: ./gradlew --stacktrace :NeoForge:runGameTestServer

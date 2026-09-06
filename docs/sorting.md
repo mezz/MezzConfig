@@ -103,6 +103,9 @@ choose a stable domain value such as a resource ID—not a mutable object or
 localized name.
 
 See [Custom config values](custom-values.md) for serializer guidance. If the mod
-already has an order file to preserve, register `setLegacyMigration` immediately
-after creating the sorting config; see [Migrations](migrations.md) for the
-broader migration workflow.
+already has an order file to preserve, migrate it as described below.
+
+## Migrate an old order
+
+Register `setLegacyMigration` immediately after creating the sorting config;
+see [Migrations](migrations.md) for the broader migration workflow.

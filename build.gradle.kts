@@ -1,11 +1,21 @@
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
+import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+
+import java.util.Locale
+import java.util.zip.ZipFile
 
 plugins {
     // https://github.com/mezz/JavaFormatting
@@ -33,6 +43,10 @@ plugins {
     id("org.parchmentmc.librarian.forgegradle") version("1.2.0") apply(false)
 }
 repositories {
+    maven {
+        name = "publicationValidation"
+        url = layout.buildDirectory.dir("publication-validation").get().asFile.toURI()
+    }
     mavenCentral()
 }
 
@@ -82,6 +96,104 @@ abstract class ValidateReleaseVersion : DefaultTask() {
     }
 }
 
+abstract class ValidateDocumentationLinks : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val markdownFiles: ConfigurableFileCollection
+
+    @get:Internal
+    abstract val rootDirectory: DirectoryProperty
+
+    @TaskAction
+    fun validate() {
+        val rootDir = rootDirectory.get().asFile
+        val failures = mutableListOf<String>()
+        for (sourceFile in markdownFiles.files.sorted()) {
+            for (match in MARKDOWN_LINK_PATTERN.findAll(sourceFile.readText())) {
+                val target = match.groupValues[1]
+                if (target.startsWith("http://") ||
+                    target.startsWith("https://") ||
+                    target.startsWith("mailto:")
+                ) {
+                    continue
+                }
+                val location = target.substringBefore('#')
+                val anchor = target.substringAfter('#', "")
+                val targetFile = if (location.isEmpty()) {
+                    sourceFile
+                } else {
+                    sourceFile.parentFile.toPath().resolve(location).normalize().toFile()
+                }
+                val sourcePath = sourceFile.relativeTo(rootDir)
+                if (!targetFile.isFile) {
+                    failures.add("$sourcePath links to missing file '$target'.")
+                    continue
+                }
+                if (anchor.isNotEmpty()) {
+                    val anchors = targetFile.useLines { lines ->
+                        lines.mapNotNull { line ->
+                            MARKDOWN_HEADING_PATTERN.matchEntire(line)
+                                ?.groupValues
+                                ?.get(1)
+                                ?.let(::markdownHeadingAnchor)
+                        }.toSet()
+                    }
+                    if (anchor !in anchors) {
+                        failures.add("$sourcePath links to missing heading '#$anchor' in '$location'.")
+                    }
+                }
+            }
+        }
+        if (failures.isNotEmpty()) {
+            throw GradleException(failures.joinToString(separator = "\n"))
+        }
+    }
+
+    private fun markdownHeadingAnchor(heading: String): String = heading
+        .replace(Regex("""\s+#+\s*$"""), "")
+        .replace(Regex("""[`*_~]"""), "")
+        .lowercase(Locale.ROOT)
+        .replace(Regex("""[^\p{L}\p{N}\p{M} _-]"""), "")
+        .trim()
+        .replace(Regex("""\s+"""), "-")
+
+    private companion object {
+        val MARKDOWN_LINK_PATTERN = Regex("""(?<!!)\[[^]]+]\(([^)\s]+)\)""")
+        val MARKDOWN_HEADING_PATTERN = Regex("""^#{1,6}\s+(.+?)\s*$""")
+    }
+}
+
+abstract class ValidateFabricEmbedding : DefaultTask() {
+    @get:Classpath
+    abstract val artifacts: ConfigurableFileCollection
+
+    @get:Input
+    abstract val fabricJarPrefix: Property<String>
+
+    @get:Input
+    abstract val commonJarPrefix: Property<String>
+
+    @TaskAction
+    fun validate() {
+        val resolvedArtifacts = artifacts.files
+        val fabricJar = resolvedArtifacts.singleOrNull { it.name.startsWith(fabricJarPrefix.get()) }
+            ?: throw GradleException("The Fabric embedding set did not resolve exactly one loader-adapter jar.")
+        val commonJar = resolvedArtifacts.singleOrNull { it.name.startsWith(commonJarPrefix.get()) }
+            ?: throw GradleException("The Fabric embedding set did not resolve exactly one Common runtime jar.")
+        val requiredEntries = mapOf(
+            fabricJar to "net/mezzdev/config/fabric/ConfigFabric.class",
+            commonJar to "net/mezzdev/config/registration/ConfigProvider.class"
+        )
+        for ((artifact, requiredEntry) in requiredEntries) {
+            ZipFile(artifact).use { archive ->
+                if (archive.getEntry(requiredEntry) == null) {
+                    throw GradleException("Fabric embedding artifact '${artifact.name}' is missing '$requiredEntry'.")
+                }
+            }
+        }
+    }
+}
+
 fun normalizeReleaseVersion(value: String): String {
     val tagName = value.trim().substringAfterLast('/')
     return tagName.removePrefix("v")
@@ -113,6 +225,35 @@ tasks.register<ValidateReleaseVersion>("validateReleaseVersion") {
 val validatePublishing = tasks.register("validatePublishing") {
     group = "verification"
     description = "Publishes every Maven publication to a local validation repository."
+}
+
+val projectMarkdownFiles = fileTree(rootDir) {
+    include("*.md", "docs/**/*.md")
+}
+tasks.register<ValidateDocumentationLinks>("validateDocumentationLinks") {
+    group = "verification"
+    description = "Checks local Markdown file links and heading anchors."
+    markdownFiles.from(projectMarkdownFiles)
+    rootDirectory.set(layout.projectDirectory)
+}
+
+val fabricEmbeddingArtifacts by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+dependencies {
+    fabricEmbeddingArtifacts("$modGroup:${configModId}-${minecraftVersion}-fabric:$projectVersion")
+    fabricEmbeddingArtifacts("$modGroup:${configModId}-${minecraftVersion}-config:$projectVersion")
+}
+
+tasks.register<ValidateFabricEmbedding>("validateFabricEmbedding") {
+    group = "verification"
+    description = "Checks the complete non-transitive Fabric Jar-in-Jar dependency set."
+    dependsOn(validatePublishing)
+    artifacts.from(fabricEmbeddingArtifacts)
+    fabricJarPrefix.set("${configModId}-${minecraftVersion}-fabric-")
+    commonJarPrefix.set("${configModId}-${minecraftVersion}-config-")
 }
 
 subprojects {
@@ -159,6 +300,12 @@ subprojects {
         validatePublishing.configure {
             dependsOn(validationPublicationTaskPath)
         }
+    }
+
+    tasks.withType<PublishToMavenRepository>().configureEach {
+        // The compatibility baseline may come from the same local validation repository.
+        // Finish reading it before any publication task can replace the artifact.
+        dependsOn(":Common:checkJarCompatibility")
     }
 
     if (configuredReleaseVersion != null) {

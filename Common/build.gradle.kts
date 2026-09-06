@@ -216,6 +216,9 @@ val checkJarCompatibility = tasks.named<CompatibilityTask>("checkJarCompatibilit
 
     inputJar.set(apiJarTask.flatMap { it.archiveFile })
     baseJar.set(apiBaselineArchive)
+    libraries.setFrom(configurations.named("compileClasspath").map { classpath ->
+        classpath.filter(File::exists)
+    })
     doLast(FailOnJccErrors())
     onlyIf("the initial API $apiBaselineVersion baseline has been published") {
         baseJar.get().asFile.exists()
