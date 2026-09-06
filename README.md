@@ -22,7 +22,8 @@ Choose the guide for your loader:
 
 - [Fabric Loom](docs/fabric.md)
 - [ForgeGradle](docs/forge.md)
-- [NeoForge ModDevGradle](docs/neoforge.md)
+- NeoForge with [ModDevGradle](docs/neoforge.md) or
+  [NeoGradle](docs/neogradle.md)
 
 Each guide also explains how to include MezzConfig inside your mod as an
 optional Jar-in-Jar dependency.

@@ -1,4 +1,7 @@
-# NeoForge ModDevGradle setup
+# NeoForge NeoGradle setup
+
+This guide is for projects using NeoGradle's UserDev plugin. If your project
+uses ModDevGradle, follow the [ModDevGradle guide](neoforge.md) instead.
 
 ## Gradle
 
@@ -13,18 +16,19 @@ repositories {
 }
 ```
 
-Add both dependencies:
+Compile against the standalone API and put the NeoForge runtime on the development
+run classpath:
 
 ```kotlin
 dependencies {
 	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
-	additionalRuntimeClasspath("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion")
+	runtimeOnly("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion")
 }
 ```
 
-This lets your code use MezzConfig and makes it available to local game runs.
-
-Run `./gradlew build` and distribute your normal release jar from `build/libs`.
+The NeoForge artifact declares the Common runtime as a transitive dependency,
+so no additional runtime coordinate is needed. Run `./gradlew build` and
+distribute your normal release jar from `build/libs`.
 
 ## Tell NeoForge about MezzConfig
 
@@ -49,13 +53,19 @@ You can include MezzConfig when your mod must work as a single download. This
 makes installation simpler, but increases your jar size and packages another
 copy in every mod that uses this option.
 
-Add the supported range and Jar-in-Jar dependency:
+Add the supported range and wrap the runtime dependency with `jarJar`:
 
 ```kotlin
 val mezzConfigVersionRange = "[0.4.0,1.0.0)"
 
 dependencies {
-	jarJar("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }
+	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
+	jarJar(runtimeOnly("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion")) {
+		version {
+			strictly(mezzConfigVersionRange)
+			prefer(mezzConfigVersion)
+		}
+	}
 }
 ```
 
@@ -64,5 +74,6 @@ Keep the range the same as the one in `neoforge.mods.toml`. Run
 satisfies the required dependency; do not remove the `neoforge.mods.toml`
 entry.
 
-See the official
-[ModDevGradle Jar-in-Jar documentation](https://docs.neoforged.net/toolchain/docs/plugins/mdg/#jar-in-jar).
+See the official NeoForged documentation for
+[NeoGradle's UserDev plugin](https://docs.neoforged.net/toolchain/docs/plugins/ng/#userdev-plugin)
+and [Jar-in-Jar dependencies](https://docs.neoforged.net/toolchain/docs/dependencies/jarinjar).
