@@ -1,6 +1,7 @@
 package net.mezzdev.config.neoforge;
 
 import net.mezzdev.config.server.ServerConfigNetworking;
+import net.mezzdev.config.server.ServerConfigProtocol;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigSyncChunkPayload;
 import net.mezzdev.config.server.ServerIdentityPayload;
@@ -10,8 +11,6 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.HandlerThread;
 
 public final class ConfigNeoForgeNetwork {
-	private static final String PROTOCOL_VERSION = "2";
-
 	private ConfigNeoForgeNetwork() {
 
 	}
@@ -28,7 +27,7 @@ public final class ConfigNeoForgeNetwork {
 	}
 
 	private static void registerPayloads(RegisterPayloadHandlersEvent event) {
-		event.registrar(PROTOCOL_VERSION)
+		event.registrar(Integer.toString(ServerConfigProtocol.CHANNEL_VERSION))
 			.executesOn(HandlerThread.MAIN)
 			.optional()
 			.playToClient(

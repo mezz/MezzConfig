@@ -157,6 +157,20 @@ public class ServerConfigPayloadCodecTest {
 	}
 
 	@Test
+	public void unsupportedChunkEnvelopeVersionIsRejected() {
+		byte[] chunk = ServerConfigPayloadChunker.split(new byte[1], 607).getFirst();
+		assertEquals(ServerConfigProtocol.CHUNK_ENVELOPE_VERSION, chunk[Integer.BYTES]);
+		chunk[Integer.BYTES] = (byte) (ServerConfigProtocol.CHUNK_ENVELOPE_VERSION + 1);
+
+		IllegalArgumentException exception = assertThrows(
+			IllegalArgumentException.class,
+			() -> new ServerConfigPayloadReassembler().accept(chunk)
+		);
+
+		assertTrue(exception.getMessage().contains("Unsupported server config fragment version"));
+	}
+
+	@Test
 	public void codecRejectsExcessiveValueCountsBeforeAllocatingAList() throws IOException {
 		byte[] encoded;
 		try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();

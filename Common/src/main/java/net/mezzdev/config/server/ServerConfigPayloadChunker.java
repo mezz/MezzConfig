@@ -13,7 +13,6 @@ final class ServerConfigPayloadChunker {
 	static final int MAX_FRAGMENT_COUNT = 64;
 	static final int MAX_CHUNK_DATA_LENGTH = 30 * 1024;
 	private static final int MAGIC = ByteBuffer.wrap("MZCF".getBytes(StandardCharsets.US_ASCII)).getInt();
-	private static final byte VERSION = 1;
 	private static final int HEADER_LENGTH = Integer.BYTES + Byte.BYTES + Long.BYTES +
 		(Integer.BYTES * 3);
 	static final int MAX_NETWORK_PAYLOAD_LENGTH = HEADER_LENGTH + MAX_CHUNK_DATA_LENGTH;
@@ -48,7 +47,7 @@ final class ServerConfigPayloadChunker {
 			byte[] chunk = new byte[HEADER_LENGTH + contentLength];
 			ByteBuffer header = ByteBuffer.wrap(chunk);
 			header.putInt(MAGIC);
-			header.put(VERSION);
+			header.put(ServerConfigProtocol.CHUNK_ENVELOPE_VERSION);
 			header.putLong(messageId);
 			header.putInt(fragmentIndex);
 			header.putInt(fragmentCount);
@@ -76,7 +75,7 @@ final class ServerConfigPayloadChunker {
 			throw new IllegalArgumentException("Invalid server config fragment magic.");
 		}
 		byte version = header.get();
-		if (version != VERSION) {
+		if (version != ServerConfigProtocol.CHUNK_ENVELOPE_VERSION) {
 			throw new IllegalArgumentException("Unsupported server config fragment version: " + version);
 		}
 		long messageId = header.getLong();

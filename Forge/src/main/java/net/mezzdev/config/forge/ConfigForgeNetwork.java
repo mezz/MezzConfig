@@ -1,6 +1,7 @@
 package net.mezzdev.config.forge;
 
 import net.mezzdev.config.server.ServerConfigNetworking;
+import net.mezzdev.config.server.ServerConfigProtocol;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.server.ServerConfigSyncChunkPayload;
 import net.mezzdev.config.server.ServerIdentityPayload;
@@ -13,12 +14,11 @@ import net.minecraftforge.network.ChannelBuilder;
 import net.minecraftforge.network.NetworkDirection;
 
 public final class ConfigForgeNetwork {
-	private static final int PROTOCOL_VERSION = 2;
 	private final Channel<CustomPacketPayload> channel;
 
 	public ConfigForgeNetwork() {
 		this.channel = ChannelBuilder.named(ResourceLocation.fromNamespaceAndPath(ConfigForge.MOD_ID, "server_config"))
-			.networkProtocolVersion(PROTOCOL_VERSION)
+			.networkProtocolVersion(ServerConfigProtocol.CHANNEL_VERSION)
 			.optional()
 			.payloadChannel()
 			.play()
