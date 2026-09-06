@@ -62,8 +62,8 @@ public interface IConfigSchemaBuilder {
 	 * Import a config file that the mod used before adopting MezzConfig.
 	 * <p>
 	 * Use this when the old file was not written by MezzConfig. To move a MezzConfig file from another location, use
-	 * {@link #setLegacySources(List)}. To rename, move, or convert values inside an existing MezzConfig schema, use the
-	 * legacy methods on {@link net.mezzdev.config.api.value.builder.IConfigValueBuilder} instead.
+	 * {@link #setLegacySources(List)} and, when needed, declare renamed, moved, or converted values with the legacy methods
+	 * on {@link net.mezzdev.config.api.value.builder.IConfigValueBuilder}.
 	 * <p>
 	 * Declare and build the destination values first so the migrator can update them. The paths are checked in order, which
 	 * supports mods that used more than one old location. Migration is considered only when the new config does not exist.

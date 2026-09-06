@@ -16,11 +16,13 @@ foreign file formats. Choose the narrowest tool that matches the change.
 | Import a file that was not written by MezzConfig | `IConfigSchemaBuilder.setLegacyMigration` |
 | Import an old persistent sort order | `ISortingConfig.setLegacyMigration` |
 
-File-level migrations run only when the new destination does not already exist.
-This keeps an old file from overwriting settings that have already been saved in
-the new location. Value-level migrations follow the same rule within a file:
-the current storage key always wins, regardless of file order, and a legacy
-value is used only when that key is absent.
+Schema and value migrations run only when the new destination config does not
+already exist. This keeps an old file from overwriting settings that have
+already been saved in the new location and avoids migration work during normal
+config loads. The value-level methods describe how `setLegacySources` maps the
+selected source into the current schema; they do not migrate an existing
+destination file in place. Within the selected source, a current storage key
+wins over its legacy mappings regardless of file order.
 
 ## Rename a value
 
@@ -32,9 +34,9 @@ IConfigValue<Boolean> enabled = general.addBoolean("enabled", true)
 	.build();
 ```
 
-MezzConfig loads `[general].enableIntegration` into the new
-`[general].enabled` value and writes the current name when the file is
-canonicalized.
+When `setLegacySources` imports the old file, MezzConfig maps
+`[general].enableIntegration` to `[general].enabled` and writes the current name
+to the new destination.
 
 ## Move a value
 
@@ -47,7 +49,8 @@ IConfigValue<String> filter = search.addString("filter", "")
 	.build();
 ```
 
-The current serializer must still understand the old stored form.
+The current serializer must still understand the old stored form. This mapping
+is used when `setLegacySources` imports the old file.
 
 ## Change a value's type or format
 
@@ -70,8 +73,9 @@ IConfigValue<Duration> timeout = general.addValue(
 ```
 
 The migration source must use an old category, an old value name, or both. If a
-format changes under the same storage name, either make the current serializer
-accept both forms or move to a new storage name and migrate from the old one.
+format changes under the same storage name, move to a new storage name and
+migrate from the old one. These conversions run only while `setLegacySources`
+imports a source into a missing destination config.
 
 ## Move a MezzConfig file
 

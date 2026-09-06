@@ -173,7 +173,7 @@ public final class ConfigSerializer {
 			recoverMalformedFile(path, categories, new FailureFingerprint(e.fingerprint()), 1, settings);
 			return List.of();
 		}
-		ParsedConfigFile parsedFile = parse(path, categories, contents.lines(), true);
+		ParsedConfigFile parsedFile = parse(path, categories, contents.lines(), false);
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
 		parsedFile.values().forEach(value -> value.apply(changes));
 		if (parsedFile.problemCount() > 0) {
@@ -196,7 +196,7 @@ public final class ConfigSerializer {
 	) throws IOException, ConfigFileReader.MalformedFileException {
 		LOGGER.debug("Loading legacy MezzConfig source: {}", path);
 		ConfigFileReader.Contents contents = ConfigFileReader.read(path);
-		ParsedConfigFile parsedFile = parse(path, categories, contents.lines(), false);
+		ParsedConfigFile parsedFile = parse(path, categories, contents.lines(), true);
 		Map<ConfigValue<?>, ConfigValueUpdate<?>> updates = new LinkedHashMap<>();
 		for (ParsedConfigValue<?> value : parsedFile.values()) {
 			value.createUpdate()
@@ -216,15 +216,23 @@ public final class ConfigSerializer {
 		Path path,
 		List<ConfigCategory> categories,
 		List<String> lines,
-		boolean reportLegacyMappings
+		boolean migrateLegacyValues
 	) {
 		Map<String, ConfigCategory> categoriesMap = new LinkedHashMap<>();
 		for (ConfigCategory category : categories) {
 			categoriesMap.put(category.getName(), category);
 		}
 
+		List<ConfigValueEntry> migrationEntries;
 		List<ParsedConfigValue<?>> parsedValues = new ArrayList<>();
-		Set<ConfigValue<?>> currentStorageValues = findCurrentStorageValues(categoriesMap, lines);
+		Set<ConfigValue<?>> currentStorageValues;
+		if (migrateLegacyValues) {
+			migrationEntries = new ArrayList<>();
+			currentStorageValues = Collections.newSetFromMap(new IdentityHashMap<>());
+		} else {
+			migrationEntries = List.of();
+			currentStorageValues = Set.of();
+		}
 		Set<ConfigValue<?>> encounteredCurrentValues = Collections.newSetFromMap(new IdentityHashMap<>());
 		ProblemTracker problems = new ProblemTracker(path);
 		String categoryName = "";
@@ -240,9 +248,7 @@ public final class ConfigSerializer {
 				categoryName = categoryMatcher.group("category");
 				category = categoriesMap.get(categoryName);
 				if (category == null) {
-					if (hasMovedValues(categoryName, categories) && reportLegacyMappings) {
-						problems.log(lineNumber, line, "Legacy config category '[%s]' contains values eligible for migration.".formatted(categoryName));
-					} else if (!hasMovedValues(categoryName, categories)) {
+					if (!migrateLegacyValues || !hasMovedValues(categoryName, categories)) {
 						problems.log(lineNumber, line,
 							"""
 						'[%s]' is not a valid category name.
@@ -275,6 +281,10 @@ public final class ConfigSerializer {
 			if (keyValueMatcher.matches()) {
 				final String key = keyValueMatcher.group("key").trim();
 				final String encodedValue = keyValueMatcher.group("value").trim();
+				Optional<ConfigValue<?>> configValue = getConfigValue(category, key);
+				if (migrateLegacyValues) {
+					configValue.ifPresent(currentStorageValues::add);
+				}
 				IDeserializeResult<JsonElement> decodeResult = ConfigFileValueCodec.deserialize(encodedValue);
 				final JsonElement value = decodeResult.getResult().orElse(null);
 				if (value == null) {
@@ -285,37 +295,16 @@ public final class ConfigSerializer {
 					);
 					continue;
 				}
-				Optional<ConfigValue<?>> configValue = getConfigValue(category, key);
 				if (configValue.isEmpty()) {
 					ConfigValueReference legacyValueReference = new ConfigValueReference(categoryName, key);
-					List<ConfigValueMigration<?>> migrations = getMovedValueMigrations(categories, legacyValueReference);
+					List<ConfigValueMigration<?>> migrations = List.of();
+					if (migrateLegacyValues) {
+						migrations = getMovedValueMigrations(categories, legacyValueReference);
+					}
 					if (migrations.isEmpty()) {
 						problems.log(lineNumber, line, getUnknownConfigValueError(category, categoryName, key));
 					} else {
-						if (reportLegacyMappings) {
-							problems.log(
-								lineNumber,
-								line,
-								"Legacy config value '%s.%s' will be migrated only when its current storage key is absent."
-									.formatted(categoryName, key)
-							);
-						}
-						List<String> diagnostics = new ArrayList<>();
-						for (ConfigValueMigration<?> migration : migrations) {
-							if (currentStorageValues.contains(migration.configValue())) {
-								continue;
-							}
-							ParsedConfigValue<?> parsedValue = parseMigration(migration, value);
-							parsedValues.add(parsedValue);
-							diagnostics.addAll(parsedValue.result().getDiagnostics());
-						}
-						if (!diagnostics.isEmpty()) {
-							problems.log(
-								lineNumber,
-								line,
-								getDeserializeDiagnostics(ConfigFileValueCodec.serialize(value), diagnostics)
-							);
-						}
+						migrationEntries.add(new DeferredConfigValueMigration(lineNumber, line, value, migrations));
 					}
 				} else {
 					ConfigValue<?> knownValue = configValue.orElseThrow();
@@ -324,7 +313,11 @@ public final class ConfigSerializer {
 							.formatted(categoryName, key));
 					}
 					ParsedConfigValue<?> parsedValue = parseConfigValue(knownValue, value);
-					parsedValues.add(parsedValue);
+					if (migrateLegacyValues) {
+						migrationEntries.add(parsedValue);
+					} else {
+						parsedValues.add(parsedValue);
+					}
 					List<String> diagnostics = parsedValue.result().getDiagnostics();
 					if (!diagnostics.isEmpty()) {
 						problems.log(lineNumber, line, getDeserializeDiagnostics(ConfigFileValueCodec.serialize(value), diagnostics));
@@ -341,7 +334,43 @@ public final class ConfigSerializer {
 				);
 			}
 		}
+		if (migrateLegacyValues) {
+			parsedValues = resolveConfigValues(migrationEntries, currentStorageValues, problems);
+		}
 		return new ParsedConfigFile(parsedValues, problems.count());
+	}
+
+	private static List<ParsedConfigValue<?>> resolveConfigValues(
+		List<ConfigValueEntry> valueEntries,
+		Set<ConfigValue<?>> currentStorageValues,
+		ProblemTracker problems
+	) {
+		List<ParsedConfigValue<?>> parsedValues = new ArrayList<>();
+		for (ConfigValueEntry valueEntry : valueEntries) {
+			if (valueEntry instanceof ParsedConfigValue<?> parsedValue) {
+				parsedValues.add(parsedValue);
+				continue;
+			}
+
+			DeferredConfigValueMigration deferredMigration = (DeferredConfigValueMigration) valueEntry;
+			List<String> diagnostics = new ArrayList<>();
+			for (ConfigValueMigration<?> migration : deferredMigration.migrations()) {
+				if (currentStorageValues.contains(migration.configValue())) {
+					continue;
+				}
+				ParsedConfigValue<?> parsedValue = parseMigration(migration, deferredMigration.value());
+				parsedValues.add(parsedValue);
+				diagnostics.addAll(parsedValue.result().getDiagnostics());
+			}
+			if (!diagnostics.isEmpty()) {
+				problems.log(
+					deferredMigration.lineNumber(),
+					deferredMigration.line(),
+					getDeserializeDiagnostics(ConfigFileValueCodec.serialize(deferredMigration.value()), diagnostics)
+				);
+			}
+		}
+		return parsedValues;
 	}
 
 	private static <T> ParsedConfigValue<T> parseConfigValue(
@@ -394,31 +423,6 @@ public final class ConfigSerializer {
 			return Optional.empty();
 		}
 		return category.getConfigValue(key);
-	}
-
-	private static Set<ConfigValue<?>> findCurrentStorageValues(
-		Map<String, ConfigCategory> categories,
-		List<String> lines
-	) {
-		Set<ConfigValue<?>> values = Collections.newSetFromMap(new IdentityHashMap<>());
-		ConfigCategory category = null;
-		for (String line : lines) {
-			Matcher categoryMatcher = categoryRegex.matcher(line);
-			if (categoryMatcher.matches()) {
-				category = categories.get(categoryMatcher.group("category"));
-				continue;
-			}
-			if (line.stripLeading().startsWith("[")) {
-				category = null;
-				continue;
-			}
-			Matcher keyValueMatcher = keyValueRegex.matcher(line);
-			if (category != null && keyValueMatcher.matches()) {
-				getConfigValue(category, keyValueMatcher.group("key").trim())
-					.ifPresent(values::add);
-			}
-		}
-		return values;
 	}
 
 	private static List<ConfigValueMigration<?>> getMovedValueMigrations(List<ConfigCategory> categories, ConfigValueReference reference) {
@@ -495,11 +499,13 @@ public final class ConfigSerializer {
 		}
 	}
 
+	private sealed interface ConfigValueEntry permits ParsedConfigValue, DeferredConfigValueMigration {}
+
 	private record ParsedConfigValue<T>(
 		ConfigValue<T> configValue,
 		IDeserializeResult<T> result,
 		@Nullable ConfigValueMigration<T> migration
-	) {
+	) implements ConfigValueEntry {
 		private void apply(List<AppliedConfigValueChange<?>> changes) {
 			if (migration == null) {
 				configValue.setFromDeserializedValue(result, changes);
@@ -511,6 +517,17 @@ public final class ConfigSerializer {
 		private Optional<ConfigValueUpdate<?>> createUpdate() {
 			return result.getResult()
 				.map(value -> new ConfigValueUpdate<>(configValue, value));
+		}
+	}
+
+	private record DeferredConfigValueMigration(
+		int lineNumber,
+		String line,
+		JsonElement value,
+		List<ConfigValueMigration<?>> migrations
+	) implements ConfigValueEntry {
+		private DeferredConfigValueMigration {
+			migrations = List.copyOf(migrations);
 		}
 	}
 

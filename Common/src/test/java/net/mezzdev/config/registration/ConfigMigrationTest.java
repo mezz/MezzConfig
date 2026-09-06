@@ -377,6 +377,37 @@ public class ConfigMigrationTest {
 	}
 
 	@Test
+	public void existingDestinationDoesNotRunAlternateSourceValueMigration(@TempDir Path configRoot) throws IOException {
+		Path destination = getClientPath(configRoot, "client.ini");
+		Path legacyPath = configRoot.resolve("old/client.ini");
+		writeEnabled(destination, false);
+		writeFile(legacyPath, "[general]\noldEnabled = yes\n");
+		AtomicBoolean called = new AtomicBoolean();
+
+		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
+		IConfigSchemaBuilder builder = registration.createClientSchemaBuilder("client.ini", "migration_test.client");
+		IConfigValue<Boolean> enabled = builder.addCategory("general")
+			.addBoolean("enabled", true)
+			.addLegacyValueMigration(
+				"general",
+				"oldEnabled",
+				StringSerializer.INSTANCE,
+				legacyValue -> {
+					called.set(true);
+					return true;
+				}
+			)
+			.build();
+		builder.setLegacySources(List.of(legacyPath));
+
+		builder.build();
+
+		assertFalse(called.get());
+		assertFalse(enabled.get());
+		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(legacyPath, 1)));
+	}
+
+	@Test
 	public void missingLegacyFilesReturnSkippedResultAndCreateDefaults(@TempDir Path configRoot) {
 		Path missingLegacyPath = configRoot.resolve("old/missing.cfg");
 		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);

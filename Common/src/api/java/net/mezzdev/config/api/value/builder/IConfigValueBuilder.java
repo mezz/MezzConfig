@@ -15,8 +15,8 @@ import java.util.function.Function;
  * <p>
  * Get an instance from one of the value methods on
  * {@link net.mezzdev.config.api.schema.builder.IConfigCategoryBuilder}. Most values can be built immediately. Use this builder
- * when a setting needs a restart, a different config-screen category, or compatibility with a value previously stored by
- * MezzConfig.
+ * when a setting needs a restart, a different config-screen category, or a legacy source imported with
+ * {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacySources(java.util.List)}.
  *
  * @param <T> effectively immutable value type with stable equality
  *
@@ -66,10 +66,11 @@ public interface IConfigValueBuilder<T> {
 	IConfigValueBuilder<T> addEditorCategory(IConfigEditorCategoryBuilder categoryBuilder);
 
 	/**
-	 * Continue loading this value after renaming it within the same category.
+	 * Map this value from its old name when importing a legacy MezzConfig source.
 	 * <p>
-	 * Use this when this value has been renamed within the same storage category, but its serialized format has not
-	 * changed. Values found with the old name are loaded into this value only when the current storage key is absent.
+	 * Use this with {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacySources(java.util.List)} when
+	 * this value was renamed within the same storage category, but its serialized format did not change. Legacy mappings
+	 * are considered only while importing a source into a destination config that does not exist yet.
 	 *
 	 * @param legacyName old stable storage name for this value
 	 *
@@ -78,11 +79,11 @@ public interface IConfigValueBuilder<T> {
 	IConfigValueBuilder<T> addLegacyName(String legacyName);
 
 	/**
-	 * Continue loading this value after moving or renaming it within an existing MezzConfig schema.
+	 * Map this value from its old storage location when importing a legacy MezzConfig source.
 	 * <p>
-	 * Use this when this value has moved from another category, another name, or both, but its serialized format has
-	 * not changed. Values found at this storage location are loaded into this value only when the current storage key is
-	 * absent.
+	 * Use this with {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacySources(java.util.List)} when
+	 * this value moved from another category, another name, or both, but its serialized format did not change. Legacy
+	 * mappings are considered only while importing a source into a destination config that does not exist yet.
 	 *
 	 * @param legacyCategoryName old stable storage category name
 	 * @param legacyValueName old stable storage value name
@@ -94,13 +95,12 @@ public interface IConfigValueBuilder<T> {
 	/**
 	 * Convert a value previously stored by MezzConfig when its type or serialized form changed.
 	 * <p>
-	 * Use this for one setting that moved to a new category or name and now uses a different representation. MezzConfig
-	 * reads the old value with {@code legacySerializer} and passes the typed result to {@code migration} only when the
-	 * current storage key is absent.
+	 * Use this with {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacySources(java.util.List)} for one
+	 * setting that moved to a new category or name and now uses a different representation. While importing the selected
+	 * legacy source, MezzConfig reads the old value with {@code legacySerializer} and passes the typed result to
+	 * {@code migration}. This conversion is not run while loading an existing destination config.
 	 * <p>
-	 * To load a MezzConfig file from an older location, use
-	 * {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacySources(java.util.List)}. To import a file that was
-	 * not written by MezzConfig, use
+	 * To import a file that was not written by MezzConfig, use
 	 * {@link net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder#setLegacyMigration(java.util.List,
 	 * net.mezzdev.config.api.migration.IConfigMigrator)} instead.
 	 *

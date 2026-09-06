@@ -1,6 +1,7 @@
 package net.mezzdev.config.test.file;
 
 import net.mezzdev.config.api.value.change.IAppliedConfigValueChange;
+import net.mezzdev.config.file.ConfigFileReader;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
@@ -9,9 +10,11 @@ import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.IntegerSerializer;
 import net.mezzdev.config.serializers.ListSerializer;
 import net.mezzdev.config.serializers.StringSerializer;
+import net.mezzdev.config.value.AppliedConfigValueChange;
 import net.mezzdev.config.value.ConfigValue;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
+import net.mezzdev.config.value.ConfigValueUpdate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigSerializerMigrationTest {
 	@Test
-	public void loadMigratesLegacyValueFromOldCategory(@TempDir Path tempDir) throws IOException {
+	public void parseMigrationUpdatesMigratesLegacyValueFromOldCategory(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[legacy]",
@@ -41,13 +45,13 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
-		assertFalse(enabled.get());
+		assertFalse(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
-	public void loadMigratesLegacyValueName(@TempDir Path tempDir) throws IOException {
+	public void parseMigrationUpdatesMigratesLegacyValueName(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -59,13 +63,13 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
-		assertFalse(enabled.get());
+		assertFalse(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
-	public void loadCurrentValueTakesPrecedenceOverEarlierLegacyName(@TempDir Path tempDir) throws IOException {
+	public void parseMigrationUpdatesCurrentValueTakesPrecedenceOverEarlierLegacyName(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -78,14 +82,13 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
-		assertTrue(enabled.get());
-		assertFalse(Files.readString(path).contains("oldEnabled"));
+		assertTrue(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
-	public void loadCurrentValueTakesPrecedenceOverLaterLegacyName(@TempDir Path tempDir) throws IOException {
+	public void parseMigrationUpdatesCurrentValueTakesPrecedenceOverLaterLegacyName(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -98,14 +101,41 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
-		assertTrue(enabled.get());
-		assertFalse(Files.readString(path).contains("oldEnabled"));
+		assertTrue(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
-	public void loadMigratesLosslessArrayThroughPublicListSerializer(@TempDir Path tempDir) throws IOException {
+	public void loadDoesNotRunLegacyConverterForCurrentConfig(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[general]",
+			"oldEnabled = yes"
+		));
+		AtomicInteger migrationCount = new AtomicInteger();
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", false)
+			.addLegacyValueMigration(
+				"general",
+				"oldEnabled",
+				StringSerializer.INSTANCE,
+				legacyValue -> {
+					migrationCount.incrementAndGet();
+					return true;
+				}
+			)
+			.build();
+		ConfigCategory category = buildCategory(path, categoryBuilder);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertFalse(enabled.getEffectiveValueWithoutLoading());
+		assertEquals(0, migrationCount.get());
+	}
+
+	@Test
+	public void parseMigrationUpdatesMigratesLosslessArrayThroughPublicListSerializer(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -117,13 +147,13 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
-		assertEquals(List.of("first", "a,b", ""), names.get());
+		assertEquals(List.of("first", "a,b", ""), names.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
-	public void loadMigratesLegacyValueNameWithLegacyValueMigration(@TempDir Path tempDir) throws IOException {
+	public void parseMigrationUpdatesMigratesLegacyValueNameWithLegacyValueMigration(@TempDir Path tempDir) throws IOException {
 		// Setup: the old value used a different storage name and different serialized text.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
@@ -137,14 +167,14 @@ public class ConfigSerializerMigrationTest {
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
 		// Operation: load a legacy-name config entry.
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
 		// Assertions: the legacy-name migration converts the old serialized text into the current value.
-		assertTrue(enabled.get());
+		assertTrue(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
-	public void loadMigratesLegacyCategoryAndValueNamesWithLegacyValueMigration(@TempDir Path tempDir) throws IOException {
+	public void parseMigrationUpdatesMigratesLegacyCategoryAndValueNamesWithLegacyValueMigration(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[legacy]",
@@ -156,13 +186,13 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
-		assertFalse(enabled.get());
+		assertFalse(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
-	public void loadMigratesStructuredLegacyListAsTypedValues(@TempDir Path tempDir) throws IOException {
+	public void parseMigrationUpdatesMigratesStructuredLegacyListAsTypedValues(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -179,13 +209,13 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
-		assertEquals("1:2:3", numbers.get());
+		assertEquals("1:2:3", numbers.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
-	public void loadDoesNotMigrateWholeLegacyCategory(@TempDir Path tempDir) throws IOException {
+	public void parseMigrationUpdatesDoesNotMigrateWholeLegacyCategory(@TempDir Path tempDir) throws IOException {
 		// Setup: only one value declares that it moved from the old category.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
@@ -202,15 +232,15 @@ public class ConfigSerializerMigrationTest {
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
 		// Operation: load a file where the old category contains another value with a matching current name.
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
 		// Assertions: only the explicitly declared legacy value migrates.
-		assertFalse(enabled.get());
-		assertTrue(visible.get());
+		assertFalse(enabled.getEffectiveValueWithoutLoading());
+		assertTrue(visible.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
-	public void loadMigratesLegacyValueFromUnknownCategory(@TempDir Path tempDir) throws IOException {
+	public void parseMigrationUpdatesMigratesLegacyValueFromUnknownCategory(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[legacy]",
@@ -235,13 +265,13 @@ public class ConfigSerializerMigrationTest {
 			Map.of(legacyValue, List.of(migration))
 		);
 
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
-		assertFalse(value.get());
+		assertFalse(value.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
-	public void loadMigratesLegacyValueToMultipleCurrentValues(@TempDir Path tempDir) throws IOException {
+	public void parseMigrationUpdatesMigratesLegacyValueToMultipleCurrentValues(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[legacy]",
@@ -283,7 +313,7 @@ public class ConfigSerializerMigrationTest {
 		first.addBatchListener(changes -> firstBatches.add(formatBatch(changes, first.get(), second.get())));
 		second.addBatchListener(changes -> secondBatches.add(formatBatch(changes, first.get(), second.get())));
 
-		ConfigSerializer.load(path, List.of(category));
+		migrate(path, List.of(category));
 
 		assertTrue(first.get());
 		assertFalse(second.get());
@@ -319,5 +349,21 @@ public class ConfigSerializerMigrationTest {
 		);
 		return schema.getCategories()
 			.getFirst();
+	}
+
+	private static void migrate(Path path, List<ConfigCategory> categories) throws IOException {
+		try {
+			List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
+			for (ConfigValueUpdate<?> update : ConfigSerializer.parseMigrationUpdates(path, categories)) {
+				AppliedConfigValueChange<?> change = update.apply();
+				if (change != null) {
+					changes.add(change);
+				}
+			}
+			ConfigValue.notifyPendingChangedValues(changes);
+			ConfigValue.notifyChangedValues(changes);
+		} catch (ConfigFileReader.MalformedFileException e) {
+			throw new AssertionError("Test migration source must be a valid config file", e);
+		}
 	}
 }
