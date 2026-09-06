@@ -1,17 +1,9 @@
 # MezzConfig API guide
 
-This guide gets a mod from a MezzConfig dependency to a working typed config.
-It covers Minecraft 1.21.1 on Fabric, Forge, and NeoForge.
+This guide helps you set up a MezzConfig dependency and a working typed config.
 
 Start by adding the dependency for your loader from the
-[project README](../README.md#add-mezzconfig-to-your-mod). This guide uses only
-the stable API under `net.mezzdev.config.api`.
-
-The main runtime interfaces stay at the root of their domains:
-`IConfigSchema`, `ISortingConfig`, and `IConfigValue`. Supporting builders,
-categories, updates, listeners, editor metadata, colors, serializers, and
-migration helpers live in child packages and can be discovered from the methods
-that expose them.
+[project README](../README.md#add-mezzconfig-to-your-mod).
 
 ## Create a config
 
@@ -39,10 +31,8 @@ public final class ExampleConfig {
 		);
 		IConfigCategoryBuilder general = schema.addCategory("general");
 
-		ENABLED = general.addBoolean("enabled", true)
-			.build();
-		MAX_ENTRIES = general.addInteger("maxEntries", 16, 1, 128)
-			.build();
+		ENABLED = general.addBoolean("enabled", true).build();
+		MAX_ENTRIES = general.addInteger("maxEntries", 16, 1, 128).build();
 
 		CLIENT = schema.build();
 	}
@@ -88,6 +78,7 @@ ExampleConfig.ENABLED.addListener(change -> {
 });
 ```
 
+Adding a listener also returns a removal callback.
 Most listeners live as long as their config values and can remain registered for
 the lifetime of the mod, so their returned removal callbacks can be ignored.
 Keep and run a removal callback when a listener captures a shorter-lived object,
@@ -99,12 +90,12 @@ Listeners run synchronously on the thread applying the change.
 
 The builder factory determines who owns a config and when it is active.
 
-| Factory | Use it for |
-| --- | --- |
-| `createClientSchemaBuilder` | Client preferences shared across worlds and servers. |
-| `createClientPerWorldSchemaBuilder` | Client preferences that vary by singleplayer world or multiplayer server. |
-| `createServerSchemaBuilder` | World-owned settings controlled by the server and synchronized to clients. |
-| `createClientSchemaBuilderAtLocation` | A client config stored at one complete, explicit path. |
+| Factory                               | Use it for                                                                 |
+|---------------------------------------|----------------------------------------------------------------------------|
+| `createClientSchemaBuilder`           | Client preferences shared across all worlds and servers.                   |
+| `createClientPerWorldSchemaBuilder`   | Client preferences that vary by singleplayer world or multiplayer server.  |
+| `createServerSchemaBuilder`           | World-owned settings controlled by the server and synchronized to clients. |
+| `createClientSchemaBuilderAtLocation` | A client config stored at one complete, explicit path.                     |
 
 Client schemas are safe to declare from common initialization code. On a
 dedicated server they remain inactive and default-backed, without touching a
@@ -120,11 +111,12 @@ metadata.
 
 `IConfigCategoryBuilder` includes helpers for:
 
-- booleans and strings;
-- integers, longs, and finite doubles, with optional bounds;
-- RGB and ARGB packed colors;
-- enums, including restricted sets of valid constants;
-- typed lists of every built-in type.
+- booleans
+- strings
+- integers, longs, and finite doubles (with optional bounds)
+- RGB and ARGB packed colors
+- enums, including restricted sets of valid constants
+- typed lists of every built-in type
 
 Most configs should use these helpers. For a mod-specific immutable type, see
 [Custom values](custom-values.md).
