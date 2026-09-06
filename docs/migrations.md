@@ -10,10 +10,10 @@ foreign file formats. Choose the narrowest tool that matches the change.
 | Change | API |
 | --- | --- |
 | Rename a value in the same category | `IConfigValueBuilder.addLegacyName` |
-| Move or rename a value inside a MezzConfig schema | `addLegacyValue` |
-| Move a value and change its type or serialized form | `addLegacyValueMigration` |
+| Move or rename a value inside a MezzConfig schema | `IConfigValueBuilder.addLegacyValue` |
+| Move a value and change its type or serialized form | `IConfigValueBuilder.addLegacyValueMigration` |
 | Move an entire MezzConfig file | `IConfigSchemaBuilder.setLegacySources` |
-| Import a file that was not written by MezzConfig | `setLegacyMigration` |
+| Import a file that was not written by MezzConfig | `IConfigSchemaBuilder.setLegacyMigration` |
 | Import an old persistent sort order | `ISortingConfig.setLegacyMigration` |
 
 File-level migrations run only when the new destination does not already exist.
