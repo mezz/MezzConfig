@@ -65,6 +65,46 @@ public class ConfigSerializerMigrationTest {
 	}
 
 	@Test
+	public void loadCurrentValueTakesPrecedenceOverEarlierLegacyName(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[general]",
+			"oldEnabled = false",
+			"enabled = true"
+		));
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", false)
+			.addLegacyName("oldEnabled")
+			.build();
+		ConfigCategory category = buildCategory(path, categoryBuilder);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertTrue(enabled.get());
+		assertFalse(Files.readString(path).contains("oldEnabled"));
+	}
+
+	@Test
+	public void loadCurrentValueTakesPrecedenceOverLaterLegacyName(@TempDir Path tempDir) throws IOException {
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[general]",
+			"enabled = true",
+			"oldEnabled = false"
+		));
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = categoryBuilder.addBoolean("enabled", false)
+			.addLegacyName("oldEnabled")
+			.build();
+		ConfigCategory category = buildCategory(path, categoryBuilder);
+
+		ConfigSerializer.load(path, List.of(category));
+
+		assertTrue(enabled.get());
+		assertFalse(Files.readString(path).contains("oldEnabled"));
+	}
+
+	@Test
 	public void loadMigratesLosslessArrayThroughPublicListSerializer(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(

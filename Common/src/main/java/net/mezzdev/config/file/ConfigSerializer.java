@@ -224,7 +224,8 @@ public final class ConfigSerializer {
 		}
 
 		List<ParsedConfigValue<?>> parsedValues = new ArrayList<>();
-		Set<ConfigValue<?>> encounteredValues = Collections.newSetFromMap(new IdentityHashMap<>());
+		Set<ConfigValue<?>> currentStorageValues = findCurrentStorageValues(categoriesMap, lines);
+		Set<ConfigValue<?>> encounteredCurrentValues = Collections.newSetFromMap(new IdentityHashMap<>());
 		ProblemTracker problems = new ProblemTracker(path);
 		String categoryName = "";
 		ConfigCategory category = null;
@@ -240,7 +241,7 @@ public final class ConfigSerializer {
 				category = categoriesMap.get(categoryName);
 				if (category == null) {
 					if (hasMovedValues(categoryName, categories) && reportLegacyMappings) {
-						problems.log(lineNumber, line, "Legacy config category '[%s]' will be migrated.".formatted(categoryName));
+						problems.log(lineNumber, line, "Legacy config category '[%s]' contains values eligible for migration.".formatted(categoryName));
 					} else if (!hasMovedValues(categoryName, categories)) {
 						problems.log(lineNumber, line,
 							"""
@@ -292,16 +293,21 @@ public final class ConfigSerializer {
 						problems.log(lineNumber, line, getUnknownConfigValueError(category, categoryName, key));
 					} else {
 						if (reportLegacyMappings) {
-							problems.log(lineNumber, line, "Legacy config value '%s.%s' will be migrated.".formatted(categoryName, key));
+							problems.log(
+								lineNumber,
+								line,
+								"Legacy config value '%s.%s' will be migrated only when its current storage key is absent."
+									.formatted(categoryName, key)
+							);
 						}
 						List<String> diagnostics = new ArrayList<>();
 						for (ConfigValueMigration<?> migration : migrations) {
+							if (currentStorageValues.contains(migration.configValue())) {
+								continue;
+							}
 							ParsedConfigValue<?> parsedValue = parseMigration(migration, value);
 							parsedValues.add(parsedValue);
 							diagnostics.addAll(parsedValue.result().getDiagnostics());
-							if (parsedValue.hasValue()) {
-								encounteredValues.add(parsedValue.configValue());
-							}
 						}
 						if (!diagnostics.isEmpty()) {
 							problems.log(
@@ -313,7 +319,7 @@ public final class ConfigSerializer {
 					}
 				} else {
 					ConfigValue<?> knownValue = configValue.orElseThrow();
-					if (!encounteredValues.add(knownValue)) {
+					if (!encounteredCurrentValues.add(knownValue)) {
 						problems.log(lineNumber, line, "Config value '%s.%s' was declared more than once; the last usable value wins."
 							.formatted(categoryName, key));
 					}
@@ -388,6 +394,31 @@ public final class ConfigSerializer {
 			return Optional.empty();
 		}
 		return category.getConfigValue(key);
+	}
+
+	private static Set<ConfigValue<?>> findCurrentStorageValues(
+		Map<String, ConfigCategory> categories,
+		List<String> lines
+	) {
+		Set<ConfigValue<?>> values = Collections.newSetFromMap(new IdentityHashMap<>());
+		ConfigCategory category = null;
+		for (String line : lines) {
+			Matcher categoryMatcher = categoryRegex.matcher(line);
+			if (categoryMatcher.matches()) {
+				category = categories.get(categoryMatcher.group("category"));
+				continue;
+			}
+			if (line.stripLeading().startsWith("[")) {
+				category = null;
+				continue;
+			}
+			Matcher keyValueMatcher = keyValueRegex.matcher(line);
+			if (category != null && keyValueMatcher.matches()) {
+				getConfigValue(category, keyValueMatcher.group("key").trim())
+					.ifPresent(values::add);
+			}
+		}
+		return values;
 	}
 
 	private static List<ConfigValueMigration<?>> getMovedValueMigrations(List<ConfigCategory> categories, ConfigValueReference reference) {
@@ -469,10 +500,6 @@ public final class ConfigSerializer {
 		IDeserializeResult<T> result,
 		@Nullable ConfigValueMigration<T> migration
 	) {
-		private boolean hasValue() {
-			return result.getResult().isPresent();
-		}
-
 		private void apply(List<AppliedConfigValueChange<?>> changes) {
 			if (migration == null) {
 				configValue.setFromDeserializedValue(result, changes);

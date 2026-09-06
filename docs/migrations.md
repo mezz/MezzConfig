@@ -18,8 +18,9 @@ foreign file formats. Choose the narrowest tool that matches the change.
 
 File-level migrations run only when the new destination does not already exist.
 This keeps an old file from overwriting settings that have already been saved in
-the new location. Value-level migrations are applied while MezzConfig reads a
-schema containing the old storage name.
+the new location. Value-level migrations follow the same rule within a file:
+the current storage key always wins, regardless of file order, and a legacy
+value is used only when that key is absent.
 
 ## Rename a value
 
