@@ -32,6 +32,8 @@ import net.mezzdev.config.server.ServerConfigValueData;
 import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -1028,6 +1030,98 @@ public class ConfigSchemaTest {
 		assertTrue(enabled.getEditorInfo().getPendingValue());
 		assertEquals(List.of("enabled: false -> true"), pendingChanges);
 		assertEquals(0, effectiveNotifications.get());
+	}
+
+	@ParameterizedTest
+	@EnumSource(value = ConfigSchemaType.class, names = {"CLIENT_PER_WORLD", "SERVER"})
+	public void worldTransitionsNotifyVisibleChangesAndRetainGameRestartState(
+		ConfigSchemaType type,
+		@TempDir Path tempDir
+	) throws IOException {
+		Path firstPath = tempDir.resolve("first.ini");
+		Path secondPath = tempDir.resolve("second.ini");
+		Files.write(firstPath, List.of("[category]", "immediate = true", "world = true", "game = true"));
+		Files.write(secondPath, List.of("[category]", "immediate = false", "world = false", "game = false"));
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.of(firstPath));
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> immediate = builder.addBoolean("immediate", false).build();
+		ConfigValue<Boolean> world = builder.addBoolean("world", false)
+			.setRestartRequirement(ConfigValueRestartRequirement.WORLD_RESTART).build();
+		ConfigValue<Boolean> game = builder.addBoolean("game", false)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART).build();
+		ServerConfigKey serverKey = null;
+		if (type == ConfigSchemaType.SERVER) {
+			serverKey = new ServerConfigKey("test_mod", "server.ini");
+		}
+		ConfigSchema schema = new ConfigSchema(
+			"test_mod", activePath::get, List.of(builder), List.of(builder),
+			(command, delay) -> CompletableFuture.completedFuture(null), type,
+			serverKey
+		);
+		schema.loadIfNeeded();
+		List<String> effectiveChanges = new ArrayList<>();
+		List<String> pendingChanges = new ArrayList<>();
+		List<Boolean> gameChanges = new ArrayList<>();
+		schema.addBatchListener(changes -> effectiveChanges.add(formatChanges(changes)));
+		schema.addPendingBatchListener(changes -> pendingChanges.add(formatChanges(changes)));
+		game.addListener(change -> {
+			assertEquals(change.newValue(), game.get());
+			gameChanges.add(change.newValue());
+		});
+
+		activePath.set(Optional.empty());
+		assertFalse(game.get());
+		assertFalse(world.get());
+		assertFalse(immediate.get());
+		assertEquals(List.of("immediate: true -> false, world: true -> false, game: true -> false"), effectiveChanges);
+		assertEquals(effectiveChanges, pendingChanges);
+		assertEquals(List.of(false), gameChanges);
+
+		activePath.set(Optional.of(firstPath));
+		assertTrue(game.get());
+		assertTrue(world.get());
+		assertTrue(immediate.get());
+		assertEquals(List.of(
+			"immediate: true -> false, world: true -> false, game: true -> false",
+			"immediate: false -> true, world: false -> true, game: false -> true"
+		), effectiveChanges);
+		assertEquals(effectiveChanges, pendingChanges);
+		assertEquals(List.of(false, true), gameChanges);
+
+		activePath.set(Optional.empty());
+		schema.loadIfNeeded();
+		activePath.set(Optional.of(secondPath));
+		schema.promotePendingValuesAfterWorldRestart();
+		assertFalse(immediate.get());
+		assertFalse(world.get());
+		assertTrue(game.get());
+		assertFalse(game.getEditorInfo().getPendingValue());
+		assertEquals(List.of(false, true, false, true), gameChanges);
+	}
+
+	@Test
+	public void remoteActivationNotifiesAgainstDefaultsAfterLeavingLocalWorld(@TempDir Path tempDir) throws IOException {
+		Path localPath = tempDir.resolve("server.ini");
+		Files.write(localPath, List.of("[category]", "enabled = true"));
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.of(localPath));
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("test_mod.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", false)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART).build();
+		ConfigSchema schema = new ConfigSchema(
+			"test_mod", activePath::get, List.of(builder), List.of(builder),
+			(command, delay) -> CompletableFuture.completedFuture(null), ConfigSchemaType.SERVER,
+			new ServerConfigKey("test_mod", "server.ini")
+		);
+		assertTrue(enabled.get());
+		activePath.set(Optional.empty());
+		assertFalse(enabled.get());
+		List<String> changes = new ArrayList<>();
+		schema.addBatchListener(batch -> changes.add(formatChanges(batch)));
+
+		schema.applyRemoteSnapshot(List.of(new ServerConfigValueData("category", "enabled", "true")));
+
+		assertTrue(enabled.get());
+		assertEquals(List.of("enabled: false -> true"), changes);
 	}
 
 	@Test

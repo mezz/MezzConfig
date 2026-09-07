@@ -70,7 +70,8 @@ maxEntries.addListener(change -> {
 Config values and their usual listeners both live for the lifetime of the mod,
 so most mods do not need to keep the returned removal callback. This also applies
 to client-per-world values: the same listener remains registered and is notified
-when joining a world changes the effective value.
+when joining or leaving a world changes the effective value, including the
+transition back to declared defaults outside a world.
 
 Keep and call the removal callback only when the listener captures something
 shorter-lived than the config value, such as a config screen, reloadable runtime,

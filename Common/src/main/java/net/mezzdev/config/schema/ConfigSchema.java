@@ -307,10 +307,9 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private synchronized LoadResult loadIfNeededWithoutNotifying() {
-		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
-		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
-		boolean previousRestartValuesInitialized = restartValuesInitialized;
-		boolean previousRemotelyActive = remotelyActive;
+		LoadState previousState = new LoadState(
+			getEffectiveValues(), getPendingValues(), restartValuesInitialized, remotelyActive, usesDeclaredDefaults()
+		);
 		Path previousDefaultPath = activeDefaultPath;
 		Path previousPath = activePath;
 		updatePathReservations(previousDefaultPath, previousPath);
@@ -324,7 +323,7 @@ public class ConfigSchema implements IConfigSchema {
 		if (isSynchronizedServerSchema() && remotelyActive && path == null) {
 			transitionActivePaths(defaultPath, null, previousDefaultPath, previousPath);
 			needsLoad.set(false);
-			return createLoadResult(previousEffectiveValues, previousPendingValues, List.of());
+			return createLoadResult(previousState, List.of());
 		}
 		if (path != null) {
 			remotelyActive = false;
@@ -346,30 +345,21 @@ public class ConfigSchema implements IConfigSchema {
 			if (previousPath != null) {
 				resetValuesToDefaults();
 				return completeServerLoad(
-					previousEffectiveValues,
-					previousPendingValues,
-					previousRestartValuesInitialized,
-					previousRemotelyActive,
+					previousState,
 					initialSaves
 				);
 			}
 			if (shouldInitializeDefault) {
 				return completeServerLoad(
-					previousEffectiveValues,
-					previousPendingValues,
-					previousRestartValuesInitialized,
-					previousRemotelyActive,
+					previousState,
 					initialSaves
 				);
 			}
-			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSaves);
+			return createLoadResult(previousState, initialSaves);
 		}
 
 		if (!needsLoad.compareAndSet(true, false)) {
-			if (pathsChanged) {
-				return createLoadResult(previousEffectiveValues, previousPendingValues, List.of());
-			}
-			return createLoadResult(previousEffectiveValues, previousPendingValues, List.of());
+			return createLoadResult(previousState, List.of());
 		}
 
 		resetValuesToDefaults();
@@ -383,10 +373,7 @@ public class ConfigSchema implements IConfigSchema {
 			restartValuesInitialized = true;
 		}
 		return completeServerLoad(
-			previousEffectiveValues,
-			previousPendingValues,
-			previousRestartValuesInitialized,
-			previousRemotelyActive,
+			previousState,
 			getInitialSaves(
 				defaultPath,
 				path,
@@ -564,22 +551,19 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private LoadResult completeServerLoad(
-		Map<ConfigValue<?>, Object> previousEffectiveValues,
-		Map<ConfigValue<?>, Object> previousPendingValues,
-		boolean previousRestartValuesInitialized,
-		boolean previousRemotelyActive,
+		LoadState previousState,
 		List<InitialSave> initialSaves
 	) {
 		if (!isSynchronizedServerSchema()) {
-			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSaves);
+			return createLoadResult(previousState, initialSaves);
 		}
 		try {
 			validateCurrentServerSnapshot();
-			return createLoadResult(previousEffectiveValues, previousPendingValues, initialSaves);
+			return createLoadResult(previousState, initialSaves);
 		} catch (RuntimeException e) {
-			restoreValues(previousEffectiveValues, previousPendingValues);
-			restartValuesInitialized = previousRestartValuesInitialized;
-			remotelyActive = previousRemotelyActive;
+			restoreValues(previousState.effectiveValues(), previousState.pendingValues());
+			restartValuesInitialized = previousState.restartValuesInitialized();
+			remotelyActive = previousState.remotelyActive();
 			if (!registered || registrationInProgress) {
 				throw e;
 			}
@@ -588,18 +572,17 @@ public class ConfigSchema implements IConfigSchema {
 				activePath,
 				e
 			);
-			return createLoadResult(previousEffectiveValues, previousPendingValues, List.of());
+			return createLoadResult(previousState, List.of());
 		}
 	}
 
 	private LoadResult createLoadResult(
-		Map<ConfigValue<?>, Object> previousEffectiveValues,
-		Map<ConfigValue<?>, Object> previousPendingValues,
+		LoadState previousState,
 		List<InitialSave> initialSaves
 	) {
 		return new LoadResult(
-			getEffectiveChanges(previousEffectiveValues),
-			getPendingChanges(previousPendingValues),
+			getChanges(previousState.effectiveValues(), false, previousState.usesDeclaredDefaults()),
+			getChanges(previousState.pendingValues(), true, previousState.usesDeclaredDefaults()),
 			List.copyOf(initialSaves)
 		);
 	}
@@ -658,10 +641,21 @@ public class ConfigSchema implements IConfigSchema {
 		Map<ConfigValue<?>, Object> previousValues,
 		boolean pending
 	) {
+		return getChanges(previousValues, pending, false);
+	}
+
+	private List<AppliedConfigValueChange<?>> getChanges(
+		Map<ConfigValue<?>, Object> previousValues,
+		boolean pending,
+		boolean previouslyUsedDeclaredDefaults
+	) {
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
 		for (ConfigValue<?> configValue : getConfigValues()) {
 			Object oldValue = previousValues.get(configValue);
-			AppliedConfigValueChange<?> change = getChange(configValue, oldValue, pending);
+			if (previouslyUsedDeclaredDefaults) {
+				oldValue = configValue.getDefaultValue();
+			}
+			AppliedConfigValueChange<?> change = getChange(configValue, oldValue, pending, usesDeclaredDefaults());
 			if (change != null) {
 				changes.add(change);
 			}
@@ -679,10 +673,13 @@ public class ConfigSchema implements IConfigSchema {
 	private static <T> @Nullable AppliedConfigValueChange<T> getChange(
 		ConfigValue<T> configValue,
 		Object oldValue,
-		boolean pending
+		boolean pending,
+		boolean useDeclaredDefault
 	) {
 		T currentValue;
-		if (pending) {
+		if (useDeclaredDefault) {
+			currentValue = configValue.getDefaultValue();
+		} else if (pending) {
 			currentValue = configValue.getPendingValueWithoutLoading();
 		} else {
 			currentValue = configValue.getEffectiveValueWithoutLoading();
@@ -1240,7 +1237,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	public synchronized <T> T getEffectiveValue(ConfigValue<T> configValue) {
 		loadIfNeeded();
-		if (type != ConfigSchemaType.CLIENT && activePath == null && !remotelyActive) {
+		if (usesDeclaredDefaults()) {
 			return configValue.getDefaultValue();
 		}
 		return configValue.getEffectiveValueWithoutLoading();
@@ -1248,10 +1245,14 @@ public class ConfigSchema implements IConfigSchema {
 
 	public synchronized <T> T getPendingValue(ConfigValue<T> configValue) {
 		loadIfNeeded();
-		if (type != ConfigSchemaType.CLIENT && activePath == null && !remotelyActive) {
+		if (usesDeclaredDefaults()) {
 			return configValue.getDefaultValue();
 		}
 		return configValue.getPendingValueWithoutLoading();
+	}
+
+	private boolean usesDeclaredDefaults() {
+		return type != ConfigSchemaType.CLIENT && activePath == null && !remotelyActive;
 	}
 
 	public synchronized List<ServerConfigValueData> serializeValues() {
@@ -1415,12 +1416,13 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
 		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
+		boolean previouslyUsedDeclaredDefaults = usesDeclaredDefaults();
 		resetAllValuesToDefaults();
 		synchronizedValues.forEach(SynchronizedConfigValue::apply);
 		remotelyActive = true;
 		needsLoad.set(false);
-		List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
-		List<AppliedConfigValueChange<?>> pendingChanges = getPendingChanges(previousPendingValues);
+		List<AppliedConfigValueChange<?>> effectiveChanges = getChanges(previousEffectiveValues, false, previouslyUsedDeclaredDefaults);
+		List<AppliedConfigValueChange<?>> pendingChanges = getChanges(previousPendingValues, true, previouslyUsedDeclaredDefaults);
 		notifyChanges(effectiveChanges, pendingChanges);
 	}
 
@@ -1447,6 +1449,14 @@ public class ConfigSchema implements IConfigSchema {
 		List<AppliedConfigValueChange<?>> pendingChanges = getPendingChanges(previousPendingValues);
 		notifyChanges(effectiveChanges, pendingChanges);
 	}
+
+	private record LoadState(
+		Map<ConfigValue<?>, Object> effectiveValues,
+		Map<ConfigValue<?>, Object> pendingValues,
+		boolean restartValuesInitialized,
+		boolean remotelyActive,
+		boolean usesDeclaredDefaults
+	) {}
 
 	private record LoadResult(
 		List<AppliedConfigValueChange<?>> effectiveChanges,
