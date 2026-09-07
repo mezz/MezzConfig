@@ -34,7 +34,10 @@ public interface IConfigMigrator {
 	 * Receive the final migration outcome for logging, diagnostics, or user-facing feedback.
 	 * <p>
 	 * Override this when the mod needs to handle skipped migrations or failures that happen after {@link #migrate} returns.
-	 * Lambdas may ignore it. MezzConfig calls it once for every registered migration after reaching a final outcome. An
+	 * Lambdas may ignore it. MezzConfig calls it once for every registered migration after reaching a final outcome.
+	 * World-scoped schemas wait until their first local destination becomes active; waiting for a world or receiving a
+	 * remote server snapshot does not complete the migration. Permanently inactive declarations report
+	 * {@link ConfigMigrationStatus#SKIPPED_INACTIVE}. An
 	 * exception from this method is logged and does not change that outcome.
 	 *
 	 * @param result final structured migration result

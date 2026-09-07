@@ -24,6 +24,13 @@ selected source into the current schema; they do not migrate an existing
 destination file in place. Within the selected source, a current storage key
 wins over its legacy mappings regardless of file order.
 
+For `CLIENT_PER_WORLD` and `SERVER` schemas, the migration waits until the first
+local world destination becomes active. Building the schema at the title screen
+or receiving settings from a remote server does not complete the migration.
+It is considered once per schema instance, not again for each world visited.
+Permanently inactive client declarations on a dedicated server report
+`SKIPPED_INACTIVE` without reading the legacy files.
+
 ## Rename a value
 
 Use `addLegacyName` when only the value's storage name changed:

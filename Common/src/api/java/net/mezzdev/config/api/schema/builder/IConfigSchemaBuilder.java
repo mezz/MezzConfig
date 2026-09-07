@@ -47,6 +47,8 @@ public interface IConfigSchemaBuilder {
 	 * Use this when a mod moves or renames a MezzConfig file. Values are matched by their current storage names and by the
 	 * legacy names and migrations declared on {@link IConfigValueBuilder}. The first existing source is preserved and backed
 	 * up, and MezzConfig writes the imported values to the new location in its current format.
+	 * World-scoped schemas defer this check until their first local world destination becomes active. The migration is
+	 * considered once per schema instance, not again for each subsequent world.
 	 * <p>
 	 * To import a file that was not written by MezzConfig, use {@link #setLegacyMigration(List, IConfigMigrator)} instead.
 	 *
@@ -69,6 +71,8 @@ public interface IConfigSchemaBuilder {
 	 * <p>
 	 * Declare and build the destination values first so the migrator can update them. The paths are checked in order, which
 	 * supports mods that used more than one old location. Migration is considered only when the new config does not exist.
+	 * World-scoped schemas defer this check until their first local world destination becomes active. The migration is
+	 * considered once per schema instance, not again for each subsequent world.
 	 * <p>
 	 * The migrator parses the old format and supplies typed values; MezzConfig preserves and backs up the source, validates
 	 * the complete import, and writes the new format atomically. See {@link IConfigMigrator} for an example.

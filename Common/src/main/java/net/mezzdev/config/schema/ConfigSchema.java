@@ -321,9 +321,6 @@ public class ConfigSchema implements IConfigSchema {
 			.map(Path::normalize);
 		Path path = resolvedPath.orElse(null);
 		updatePathReservations(defaultPath, path, previousDefaultPath, previousPath);
-		if (resolvedPath.isEmpty()) {
-			completeInactiveMigration();
-		}
 		if (isSynchronizedServerSchema() && remotelyActive && path == null) {
 			transitionActivePaths(defaultPath, null, previousDefaultPath, previousPath);
 			needsLoad.set(false);

@@ -6,21 +6,34 @@ import net.mezzdev.config.api.migration.IConfigMigrationContext;
 import net.mezzdev.config.api.migration.IConfigMigrationResult;
 import net.mezzdev.config.api.migration.IConfigMigrator;
 import net.mezzdev.config.api.schema.builder.IConfigSchemaBuilder;
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.sorting.ISortingConfig;
 import net.mezzdev.config.api.migration.ISortingConfigMigrationContext;
 import net.mezzdev.config.api.migration.ISortingConfigMigrator;
 import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.file.ConfigFileUtil;
+import net.mezzdev.config.file.ConfigFileWatcherSettings;
+import net.mezzdev.config.file.ConfigManager;
+import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchemaBuilder;
+import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
+import net.mezzdev.config.server.ServerConfigKey;
+import net.mezzdev.config.server.ServerConfigValueData;
 import net.mezzdev.config.serializers.StringSerializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,6 +42,113 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigMigrationTest {
 	private static final String MOD_ID = "migration_test";
+
+	@ParameterizedTest
+	@EnumSource(value = ConfigSchemaType.class, names = {"CLIENT_PER_WORLD", "SERVER"})
+	public void migrationWaitsForFirstLocalWorldAndCompletesOnce(ConfigSchemaType type, @TempDir Path configRoot) throws IOException {
+		Path legacyPath = configRoot.resolve("legacy.cfg");
+		Files.writeString(legacyPath, "42");
+		Path firstPath = configRoot.resolve("worlds/first.ini");
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.empty());
+		ConfigSchemaBuilder builder = createWorldBuilder(type, configRoot, activePath);
+		IConfigValue<Integer> count = builder.addCategory("general").addInteger("count", 1).build();
+		AtomicInteger migrations = new AtomicInteger();
+		RecordingMigrator migrator = new RecordingMigrator((path, context) -> {
+			migrations.incrementAndGet();
+			context.set(count, Integer.parseInt(Files.readString(path)));
+		});
+		builder.setLegacyMigration(List.of(legacyPath), migrator);
+		ConfigSchema schema = builder.build();
+
+		assertEquals(1, count.get());
+		assertEquals(0, migrator.completionCount);
+		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(legacyPath, 1)));
+		if (type == ConfigSchemaType.SERVER) {
+			schema.applyRemoteSnapshot(List.of(new ServerConfigValueData("general", "count", "7")));
+			assertEquals(7, count.get());
+			schema.clearRemoteSnapshot();
+			assertEquals(0, migrator.completionCount);
+		}
+
+		activePath.set(Optional.of(firstPath));
+		schema.loadIfNeeded();
+		assertEquals(42, count.get());
+		assertEquals(ConfigMigrationStatus.MIGRATED, migrator.getResult().getStatus());
+		assertEquals(firstPath, migrator.getResult().getDestinationPath().orElseThrow());
+		assertTrue(Files.isRegularFile(firstPath));
+		assertEquals("42", Files.readString(ConfigFileUtil.getBackupPath(legacyPath, 1)));
+
+		activePath.set(Optional.empty());
+		schema.loadIfNeeded();
+		activePath.set(Optional.of(configRoot.resolve("worlds/second.ini")));
+		schema.loadIfNeeded();
+		assertEquals(1, count.get());
+		assertEquals(1, migrations.get());
+		assertEquals(1, migrator.completionCount);
+	}
+
+	@ParameterizedTest
+	@EnumSource(value = ConfigSchemaType.class, names = {"CLIENT_PER_WORLD", "SERVER"})
+	public void alternateSourcesWaitForWorldActivation(ConfigSchemaType type, @TempDir Path configRoot) throws IOException {
+		Path legacyPath = configRoot.resolve("legacy.ini");
+		Files.writeString(legacyPath, "[general]\noldCount = 42\n");
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.empty());
+		ConfigSchemaBuilder builder = createWorldBuilder(type, configRoot, activePath);
+		IConfigValue<Integer> count = builder.addCategory("general").addInteger("count", 1)
+			.addLegacyName("oldCount").build();
+		builder.setLegacySources(List.of(legacyPath));
+		ConfigSchema schema = builder.build();
+		assertEquals(1, count.get());
+		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(legacyPath, 1)));
+
+		Path destinationPath = configRoot.resolve("worlds/first.ini");
+		activePath.set(Optional.of(destinationPath));
+		schema.loadIfNeeded();
+
+		assertEquals(42, count.get());
+		assertTrue(Files.readString(destinationPath).contains("count = 42"));
+		assertTrue(Files.isRegularFile(ConfigFileUtil.getBackupPath(legacyPath, 1)));
+	}
+
+	@Test
+	public void permanentlyInactiveDeclarationCompletesWithoutReadingLegacyFile(@TempDir Path configRoot) throws IOException {
+		Path legacyPath = configRoot.resolve("legacy.cfg");
+		Files.writeString(legacyPath, "42");
+		ConfigFileWatcherSettings disabled = ConfigFileWatcherSettings.clientDefaults().withEnabled(false);
+		ConfigSchemaBuilder builder = new ConfigSchemaBuilder(
+			MOD_ID, Optional::empty, MOD_ID, new ConfigManager(MOD_ID, disabled, disabled),
+			ConfigSchemaType.CLIENT, null, false
+		);
+		IConfigValue<Integer> count = builder.addCategory("general").addInteger("count", 1).build();
+		AtomicBoolean migrated = new AtomicBoolean();
+		RecordingMigrator migrator = new RecordingMigrator((path, context) -> migrated.set(true));
+		builder.setLegacyMigration(List.of(legacyPath), migrator);
+		ConfigSchema schema = builder.build();
+		schema.loadIfNeeded();
+
+		assertEquals(1, count.get());
+		assertFalse(migrated.get());
+		assertEquals(ConfigMigrationStatus.SKIPPED_INACTIVE, migrator.getResult().getStatus());
+		assertEquals(1, migrator.completionCount);
+		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(legacyPath, 1)));
+	}
+
+	private static ConfigSchemaBuilder createWorldBuilder(
+		ConfigSchemaType type,
+		Path configRoot,
+		AtomicReference<Optional<Path>> activePath
+	) {
+		ConfigFileWatcherSettings disabled = ConfigFileWatcherSettings.clientDefaults().withEnabled(false);
+		ServerConfigKey serverKey = null;
+		if (type == ConfigSchemaType.SERVER) {
+			serverKey = new ServerConfigKey(MOD_ID, "server.ini");
+		}
+		return new ConfigSchemaBuilder(
+			MOD_ID, new LayeredConfigSchemaPathResolver(configRoot.resolve("default/schema.ini"), activePath::get),
+			MOD_ID, new ConfigManager(MOD_ID, disabled, disabled), type,
+			serverKey
+		);
+	}
 
 	@Test
 	public void migratesFirstExistingLegacyFileAsOneTypedTransaction(@TempDir Path configRoot) throws IOException {
@@ -447,6 +567,7 @@ public class ConfigMigrationTest {
 	private static final class RecordingMigrator implements IConfigMigrator {
 		private final IConfigMigrator delegate;
 		private IConfigMigrationResult result;
+		private int completionCount;
 
 		private RecordingMigrator(IConfigMigrator delegate) {
 			this.delegate = delegate;
@@ -460,6 +581,7 @@ public class ConfigMigrationTest {
 		@Override
 		public void onMigrationComplete(IConfigMigrationResult result) {
 			this.result = result;
+			completionCount++;
 		}
 
 		private IConfigMigrationResult getResult() {
