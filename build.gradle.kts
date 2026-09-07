@@ -245,6 +245,16 @@ tasks.register<ValidateFabricEmbedding>("validateFabricEmbedding") {
     ))
 }
 
+tasks.register<GradleBuild>("validateNeoForgeEmbedding") {
+    group = "verification"
+    description = "Builds a ModDevGradle consumer and checks its embedded runtime and API."
+    dependsOn(validatePublishing)
+    dir = file("validation/neoforge-embedding")
+    tasks = listOf("check")
+    startParameter.projectProperties = mapOf("mezzConfigVersion" to projectVersion)
+    notCompatibleWithConfigurationCache("Runs a separate consumer build against the local validation repository.")
+}
+
 subprojects {
     version = projectVersion
     group = modGroup

@@ -57,7 +57,7 @@ You can include MezzConfig when your mod must work as a single download. This
 makes installation simpler, but increases your jar size and packages another
 copy in every mod that uses this option.
 
-Add the supported range and Jar-in-Jar dependency:
+Add the supported range and both Jar-in-Jar dependencies:
 
 ```kotlin
 val mezzConfigVersionRange = "[0.5.0,1.0.0)"
@@ -66,8 +66,12 @@ jarJar.enable()
 
 dependencies {
 	jarJar("net.mezzdev.config:mezz_config-1.21.1-forge:$mezzConfigVersionRange") { jarJar.pin(this, mezzConfigVersion) }
+	jarJar("net.mezzdev.config:mezz_config-1.21.1-config:$mezzConfigVersionRange") { jarJar.pin(this, mezzConfigVersion) }
 }
 ```
+
+The Forge Maven artifact contains the loader adapter. Explicitly include the
+`config` artifact as well to bundle the Common runtime and API.
 
 Keep the range the same as the one in `mods.toml`. Run `./gradlew jarJar` and
 distribute the generated `-all.jar`, not the plain jar. The included copy
