@@ -707,7 +707,7 @@ public class ConfigSchemaTest {
 			updater.set(second, false);
 		});
 		assertEquals(
-			List.of("first single", "first batch old", "second single old", "schema old"),
+			List.of("first single", "second single old", "first batch old", "schema old"),
 			notifications
 		);
 
@@ -717,9 +717,76 @@ public class ConfigSchemaTest {
 			updater.set(second, true);
 		});
 		assertEquals(
-			List.of("first single", "first batch new", "second single new", "schema new"),
+			List.of("first single", "second single new", "first batch new", "schema new"),
 			notifications
 		);
+	}
+
+	@Test
+	public void pendingAndEffectiveListenersUseOneSnapshotAndRunInPhases() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> first = builder.addBoolean("first", false).build();
+		ConfigValue<Boolean> second = builder.addBoolean("second", false).build();
+		ConfigSchema schema = createSchema(builder);
+		List<String> notifications = new ArrayList<>();
+		Runnable removeSingle = second.addListener(change -> notifications.add("old effective single"));
+		Runnable removeBatch = first.addBatchListener(changes -> notifications.add("old effective batch"));
+		Runnable removeSchema = schema.addBatchListener(changes -> notifications.add("old effective schema"));
+		first.addPendingListener(change -> {
+			notifications.add("first pending single");
+			if (change.newValue()) {
+				removeSingle.run();
+				removeBatch.run();
+				removeSchema.run();
+				second.addListener(next -> notifications.add("new effective single"));
+				first.addBatchListener(changes -> notifications.add("new effective batch"));
+				schema.addBatchListener(changes -> notifications.add("new effective schema"));
+			}
+		});
+		first.addPendingBatchListener(changes -> notifications.add("pending batch"));
+		second.addPendingListener(change -> notifications.add("second pending single"));
+		schema.addPendingBatchListener(changes -> notifications.add("pending schema"));
+		first.addListener(change -> notifications.add("first effective single"));
+
+		schema.batchUpdate(updater -> {
+			updater.set(first, true);
+			updater.set(second, true);
+		});
+		assertEquals(List.of(
+			"first pending single", "second pending single", "pending batch", "pending schema",
+			"first effective single", "old effective single", "old effective batch", "old effective schema"
+		), notifications);
+
+		notifications.clear();
+		schema.batchUpdate(updater -> {
+			updater.set(first, false);
+			updater.set(second, false);
+		});
+		assertEquals(List.of(
+			"first pending single", "second pending single", "pending batch", "pending schema",
+			"first effective single", "new effective single", "new effective batch", "new effective schema"
+		), notifications);
+	}
+
+	@Test
+	public void reentrantPendingUpdateUsesNewListenersWithoutChangingOuterSnapshot() {
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", false).build();
+		createSchema(builder);
+		List<String> notifications = new ArrayList<>();
+		Runnable removeEffective = enabled.addListener(change -> notifications.add("old: " + change.newValue()));
+		enabled.addPendingListener(change -> {
+			if (change.newValue()) {
+				removeEffective.run();
+				enabled.addListener(next -> notifications.add("new: " + next.newValue()));
+				enabled.set(false);
+			}
+		});
+
+		enabled.set(true);
+
+		assertFalse(enabled.get());
+		assertEquals(List.of("new: false", "old: true"), notifications);
 	}
 
 	@Test

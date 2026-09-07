@@ -245,10 +245,14 @@ public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T
 			return false;
 		}
 		markDirty();
-		notifyPendingChangedValues(List.of(change));
+		List<AppliedConfigValueChange<?>> effectiveChanges = List.of();
 		if (!previousEffectiveValue.equals(effectiveValue)) {
-			notifyChangedValues(List.of(new AppliedConfigValueChange<>(this, previousEffectiveValue, effectiveValue)));
+			effectiveChanges = List.of(new AppliedConfigValueChange<>(this, previousEffectiveValue, effectiveValue));
 		}
+		Runnable pendingNotifications = snapshotChangedValueNotifications(List.of(change), true);
+		Runnable effectiveNotifications = snapshotChangedValueNotifications(effectiveChanges, false);
+		pendingNotifications.run();
+		effectiveNotifications.run();
 		return true;
 	}
 
@@ -365,19 +369,27 @@ public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T
 		List<? extends AppliedConfigValueChange<?>> changes,
 		boolean pending
 	) {
-		if (changes.isEmpty()) {
-			return List.of();
-		}
 		List<AppliedConfigValueChange<?>> immutableChanges = List.copyOf(changes);
-		BatchListenerTracker batchListenerTracker = new BatchListenerTracker();
-		List<Runnable> notifications = immutableChanges.stream()
-			.map(change -> change.configValue().snapshotNotifications(immutableChanges, pending, batchListenerTracker))
-			.toList();
-		notifications.forEach(Runnable::run);
+		snapshotChangedValueNotifications(immutableChanges, pending).run();
 		return immutableChanges;
 	}
 
-	private Runnable snapshotNotifications(
+	public static Runnable snapshotChangedValueNotifications(
+		List<? extends AppliedConfigValueChange<?>> changes,
+		boolean pending
+	) {
+		List<AppliedConfigValueChange<?>> immutableChanges = List.copyOf(changes);
+		BatchListenerTracker batchListenerTracker = new BatchListenerTracker();
+		List<ValueNotifications> notifications = immutableChanges.stream()
+			.map(change -> change.configValue().snapshotNotifications(immutableChanges, pending, batchListenerTracker))
+			.toList();
+		return () -> {
+			notifications.forEach(notification -> notification.singleListeners().run());
+			notifications.forEach(notification -> notification.batchListeners().run());
+		};
+	}
+
+	private ValueNotifications snapshotNotifications(
 		List<? extends AppliedConfigValueChange<?>> changes,
 		boolean pending,
 		BatchListenerTracker batchListenerTracker
@@ -398,25 +410,16 @@ public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T
 			listenerDescription = "Config value listener";
 			batchListenerDescription = "Config value batch listener";
 		}
-		return () -> notifyListeners(
-			change,
-			changes,
-			listenerSnapshot,
-			batchListenerSnapshot,
-			listenerDescription,
-			batchListenerDescription,
-			batchListenerTracker
+		return new ValueNotifications(
+			() -> notifySingleListeners(change, listenerSnapshot, listenerDescription),
+			() -> notifyBatchListeners(changes, batchListenerSnapshot, batchListenerDescription, batchListenerTracker)
 		);
 	}
 
-	private void notifyListeners(
+	private void notifySingleListeners(
 		AppliedConfigValueChange<T> change,
-		List<? extends AppliedConfigValueChange<?>> changes,
 		List<IConfigValueChangeListener<T>> listenerSnapshot,
-		List<IConfigValueBatchChangeListener> batchListenerSnapshot,
-		String listenerDescription,
-		String batchListenerDescription,
-		BatchListenerTracker batchListenerTracker
+		String listenerDescription
 	) {
 		for (IConfigValueChangeListener<T> listener : listenerSnapshot) {
 			try {
@@ -425,6 +428,14 @@ public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T
 				LOGGER.error("{} failed for '{}'.", listenerDescription, name, e);
 			}
 		}
+	}
+
+	private void notifyBatchListeners(
+		List<? extends AppliedConfigValueChange<?>> changes,
+		List<IConfigValueBatchChangeListener> batchListenerSnapshot,
+		String batchListenerDescription,
+		BatchListenerTracker batchListenerTracker
+	) {
 		for (IConfigValueBatchChangeListener listener : batchListenerSnapshot) {
 			if (!batchListenerTracker.shouldNotify(this, listener)) {
 				continue;
@@ -436,6 +447,8 @@ public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T
 			}
 		}
 	}
+
+	private record ValueNotifications(Runnable singleListeners, Runnable batchListeners) {}
 
 	private static final class BatchListenerTracker {
 		private final Map<IConfigValueBatchChangeListener, ConfigValue<?>> firstOwners = new IdentityHashMap<>();

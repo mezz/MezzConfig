@@ -26,7 +26,8 @@ import java.util.function.Consumer;
  * Runtime methods are thread-safe. Listeners run synchronously after a complete change has been applied; listener failures
  * are logged, and reentrant updates start a separate nested notification. Pending listeners run before effective listeners
  * for the same operation. Within either kind, single-value listeners run before value-scoped batch listeners, and schema
- * batch listeners run last. Listener changes made during a callback affect the next notification.
+ * batch listeners run last. All listeners for an operation are snapshotted before its first callback. Listener changes
+ * made during a callback affect subsequent operations, including reentrant updates, but not the operation in progress.
  * <p>
  * Listener registrations normally live as long as this schema, which is usually the full mod lifetime, so callers may
  * ignore their returned removal callbacks. Keep and run a removal callback when its listener captures a shorter-lived

@@ -98,9 +98,13 @@ public final class ConfigSerializer {
 			.flatMap(category -> category.getConfigValues().stream())
 			.forEach(value -> previousEffectiveValues.put(value, value.getEffectiveValueWithoutLoading()));
 		List<AppliedConfigValueChange<?>> pendingChanges = loadWithoutNotifying(path, categories);
-		List<AppliedConfigValueChange<?>> immutablePendingChanges = ConfigValue.notifyPendingChangedValues(pendingChanges);
-		ConfigValue.notifyChangedValues(getEffectiveChanges(pendingChanges, previousEffectiveValues));
-		return immutablePendingChanges;
+		Runnable pendingNotifications = ConfigValue.snapshotChangedValueNotifications(pendingChanges, true);
+		Runnable effectiveNotifications = ConfigValue.snapshotChangedValueNotifications(
+			getEffectiveChanges(pendingChanges, previousEffectiveValues), false
+		);
+		pendingNotifications.run();
+		effectiveNotifications.run();
+		return List.copyOf(pendingChanges);
 	}
 
 	private static List<AppliedConfigValueChange<?>> getEffectiveChanges(

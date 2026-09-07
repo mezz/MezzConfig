@@ -1144,15 +1144,19 @@ public class ConfigSchema implements IConfigSchema {
 			return;
 		}
 		changeVersion.incrementAndGet();
-		if (!pendingChanges.isEmpty()) {
-			List<IConfigValueBatchChangeListener> listenerSnapshot = pendingBatchListeners.snapshot();
-			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyPendingChangedValues(pendingChanges);
-			notifyListeners(immutableChanges, listenerSnapshot, "pending config schema");
+		List<AppliedConfigValueChange<?>> immutablePendingChanges = List.copyOf(pendingChanges);
+		List<AppliedConfigValueChange<?>> immutableEffectiveChanges = List.copyOf(effectiveChanges);
+		Runnable pendingNotifications = ConfigValue.snapshotChangedValueNotifications(immutablePendingChanges, true);
+		Runnable effectiveNotifications = ConfigValue.snapshotChangedValueNotifications(immutableEffectiveChanges, false);
+		List<IConfigValueBatchChangeListener> pendingSchemaListeners = pendingBatchListeners.snapshot();
+		List<IConfigValueBatchChangeListener> effectiveSchemaListeners = batchListeners.snapshot();
+		if (!immutablePendingChanges.isEmpty()) {
+			pendingNotifications.run();
+			notifyListeners(immutablePendingChanges, pendingSchemaListeners, "pending config schema");
 		}
-		if (!effectiveChanges.isEmpty()) {
-			List<IConfigValueBatchChangeListener> listenerSnapshot = batchListeners.snapshot();
-			List<AppliedConfigValueChange<?>> immutableChanges = ConfigValue.notifyChangedValues(effectiveChanges);
-			notifyListeners(immutableChanges, listenerSnapshot, "config schema");
+		if (!immutableEffectiveChanges.isEmpty()) {
+			effectiveNotifications.run();
+			notifyListeners(immutableEffectiveChanges, effectiveSchemaListeners, "config schema");
 			if (registered && isSynchronizedServerSchema()) {
 				ServerConfigRuntime.onServerSchemaChanged(this);
 			}
