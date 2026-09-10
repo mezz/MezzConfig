@@ -39,6 +39,7 @@ pluginManagement {
 
 rootProject.name = "MezzConfig"
 include(
+	"Changelog",
 	"Common",
 	"Fabric", "Forge", "NeoForge"
 )

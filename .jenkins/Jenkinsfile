@@ -132,6 +132,7 @@ pipeline {
                 junit allowEmptyResults: true, testResults: '*/build/test-results/**/*.xml'
                 archiveArtifacts allowEmptyArchive: true, artifacts: '*/build/libs/*.jar'
                 archiveArtifacts artifacts: '*/build/publishMods/**'
+                archiveArtifacts artifacts: 'Changelog/build/changelog.*'
             }
         }
 

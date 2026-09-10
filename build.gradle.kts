@@ -198,6 +198,9 @@ fun normalizeReleaseVersion(value: String): String {
     return tagName.removePrefix("v")
 }
 
+fun Configuration.singleFileContents(): Provider<String> =
+    incoming.files.elements.map { elements -> elements.single().asFile.readText() }
+
 val configuredReleaseVersion = providers.gradleProperty("RELEASE_VERSION")
     .orElse(providers.environmentVariable("TAG_NAME"))
     .orNull
@@ -267,20 +270,40 @@ subprojects {
 
     plugins.withId("me.modmuss50.mod-publish-plugin") {
         val loaderName = project.name
+        val changelogHtml = configurations.create("changelogHtml") {
+            isCanBeConsumed = false
+            isCanBeResolved = true
+            isVisible = false
+            attributes {
+                attribute(Usage.USAGE_ATTRIBUTE, objects.named<Usage>("changelogHtml"))
+            }
+        }
+        val changelogMarkdown = configurations.create("changelogMarkdown") {
+            isCanBeConsumed = false
+            isCanBeResolved = true
+            isVisible = false
+            attributes {
+                attribute(Usage.USAGE_ATTRIBUTE, objects.named<Usage>("changelogMarkdown"))
+            }
+        }
+        dependencies {
+            add(changelogHtml.name, project(":Changelog"))
+            add(changelogMarkdown.name, project(":Changelog"))
+        }
         extensions.configure<ModPublishExtension> {
             dryRun.set(modPublishDryRun)
             version.set(projectVersion)
             displayName.set("$modName $projectVersion for $loaderName $minecraftVersion")
             type.set(BETA)
             modLoaders.add(loaderName.lowercase(Locale.ROOT))
-            changelog.set(providers.fileContents(
-                rootProject.layout.projectDirectory.file("changelogs/$releaseSpecificationVersion.md")
-            ).asText)
+            changelog.set(changelogMarkdown.singleFileContents())
 
             curseforge {
                 projectId.set(providers.gradleProperty("curseProjectId"))
                 projectSlug.set("mezzconfig")
                 accessToken.set(providers.gradleProperty("curseforgeApikey"))
+                changelog.set(changelogHtml.singleFileContents())
+                changelogType.set("html")
                 apiEndpoint.set("https://www.curseforge.com")
                 minecraftVersions.add(minecraftVersion)
                 javaVersions.add(JavaVersion.toVersion(modJavaVersion))
