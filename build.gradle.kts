@@ -304,7 +304,6 @@ subprojects {
                 accessToken.set(providers.gradleProperty("curseforgeApikey"))
                 changelog.set(changelogHtml.singleFileContents())
                 changelogType.set("html")
-                apiEndpoint.set("https://www.curseforge.com")
                 minecraftVersions.add(minecraftVersion)
                 javaVersions.add(JavaVersion.toVersion(modJavaVersion))
                 clientRequired.set(true)
