@@ -37,3 +37,6 @@ jobs:
 
       - name: Run Fabric and Forge loader smoke tests
         run: ./gradlew --stacktrace --no-configuration-cache :Fabric:runServerSmokeTest :Forge:runServerSmokeTest
+
+      - name: Dry run CurseForge and Modrinth publishing
+        run: ./gradlew --stacktrace :Fabric:publishMods :Forge:publishMods :NeoForge:publishMods -PpublishDryRun=true

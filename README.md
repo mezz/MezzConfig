@@ -53,6 +53,7 @@ Run the automated release checks used by CI with:
 ./gradlew --no-configuration-cache validateNeoForgeEmbedding
 ./gradlew :NeoForge:runGameTestServer
 ./gradlew --no-configuration-cache :Fabric:runServerSmokeTest :Forge:runServerSmokeTest
+./gradlew :Fabric:publishMods :Forge:publishMods :NeoForge:publishMods -PpublishDryRun=true
 ```
 
 The embedding checks also run `validatePublishing`, which writes artifacts only

@@ -12,10 +12,10 @@ def getMavenDeployDir() {
 }
 
 def getReleaseVersion() {
-    if (!env.TAG_NAME?.trim()) {
-        error 'TAG_NAME is not set; refusing to publish without a tag version.'
+    if (!env.RELEASE_TAG?.trim()) {
+        error 'No release tag was found on HEAD; refusing to publish without a tag version.'
     }
-    def tagName = env.TAG_NAME.trim()
+    def tagName = env.RELEASE_TAG.trim()
     if (tagName.startsWith('refs/tags/')) {
         tagName = tagName.substring('refs/tags/'.length())
     }
@@ -23,7 +23,7 @@ def getReleaseVersion() {
         tagName = tagName.substring(1)
     }
     if (!tagName) {
-        error "Could not determine release version from TAG_NAME='${env.TAG_NAME}'."
+        error "Could not determine release version from RELEASE_TAG='${env.RELEASE_TAG}'."
     }
     return tagName
 }
@@ -33,7 +33,7 @@ def shellQuote(String value) {
 }
 
 def getReleaseGradleArgs() {
-    if (env.TAG_NAME?.trim()) {
+    if (env.RELEASE_TAG?.trim()) {
         return "-PRELEASE_VERSION=${shellQuote(getReleaseVersion())}"
     }
     return ''
@@ -54,6 +54,36 @@ pipeline {
             steps {
                 checkout scm
                 sh "chmod +x gradlew"
+            }
+        }
+
+        stage('Resolve Release Tag') {
+            when {
+                branch '1.21.1'
+            }
+            steps {
+                script {
+                    sh 'git fetch --tags'
+                    env.RELEASE_TAG = sh(
+                        script: '''
+                            head_commit="$(git rev-parse HEAD)"
+                            git for-each-ref --sort=-v:refname --format='%(refname:short)' 'refs/tags/v[0-9]*.[0-9]*.[0-9]*' |
+                                while IFS= read -r tag; do
+                                    tag_commit="$(git rev-list -n 1 "$tag")"
+                                    if [ "$tag_commit" = "$head_commit" ]; then
+                                        echo "$tag"
+                                        break
+                                    fi
+                                done
+                        ''',
+                        returnStdout: true
+                    ).trim()
+                    if (env.RELEASE_TAG) {
+                        echo "Release tag found on HEAD: ${env.RELEASE_TAG}"
+                    } else {
+                        echo 'No release tag found on HEAD; publishing will be skipped.'
+                    }
+                }
             }
         }
 
@@ -81,16 +111,36 @@ pipeline {
             }
         }
 
+        stage('NeoForge Consumer Embedding') {
+            steps {
+                script {
+                    sh "./gradlew --no-configuration-cache validateNeoForgeEmbedding ${getReleaseGradleArgs()} --no-daemon"
+                }
+            }
+        }
+
+        stage('Dry Run Mod Publishing') {
+            steps {
+                script {
+                    sh "./gradlew :Fabric:publishMods :Forge:publishMods :NeoForge:publishMods -PpublishDryRun=true ${getReleaseGradleArgs()} --no-daemon"
+                }
+            }
+        }
+
         stage('Archive') {
             steps {
                 junit allowEmptyResults: true, testResults: '*/build/test-results/**/*.xml'
                 archiveArtifacts allowEmptyArchive: true, artifacts: '*/build/libs/*.jar'
+                archiveArtifacts artifacts: '*/build/publishMods/**'
             }
         }
 
         stage('Publish Maven') {
             when {
-                buildingTag()
+                allOf {
+                    branch '1.21.1'
+                    expression { env.RELEASE_TAG?.trim() }
+                }
             }
             steps {
                 script {
@@ -100,6 +150,40 @@ pipeline {
                         error 'Jared Maven environment is not set; expected MAVEN_DEPLOY_DIR, local_maven_url, or local_maven.'
                     }
                     sh "./gradlew validateReleaseVersion publish -PDEPLOY_DIR=${shellQuote(deployDir)} -PRELEASE_VERSION=${shellQuote(releaseVersion)} --no-daemon"
+                }
+            }
+        }
+
+        stage('Publish CurseForge') {
+            when {
+                allOf {
+                    branch '1.21.1'
+                    expression { env.RELEASE_TAG?.trim() }
+                }
+            }
+            environment {
+                ORG_GRADLE_PROJECT_curseforgeApikey = credentials('jei-curseforge-key')
+            }
+            steps {
+                script {
+                    sh "./gradlew --no-configuration-cache :Fabric:publishCurseforge :Forge:publishCurseforge :NeoForge:publishCurseforge -PpublishDryRun=false ${getReleaseGradleArgs()} --no-daemon"
+                }
+            }
+        }
+
+        stage('Publish Modrinth') {
+            when {
+                allOf {
+                    branch '1.21.1'
+                    expression { env.RELEASE_TAG?.trim() }
+                }
+            }
+            environment {
+                ORG_GRADLE_PROJECT_modrinthToken = credentials('modrinth-auth-token')
+            }
+            steps {
+                script {
+                    sh "./gradlew --no-configuration-cache :Fabric:publishModrinth :Forge:publishModrinth :NeoForge:publishModrinth -PpublishDryRun=false ${getReleaseGradleArgs()} --no-daemon"
                 }
             }
         }
