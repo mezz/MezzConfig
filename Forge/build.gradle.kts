@@ -7,6 +7,11 @@ plugins {
 	id("eclipse")
 	id("maven-publish")
 	id("net.minecraftforge.gradle")
+	id("me.modmuss50.mod-publish-plugin")
+}
+
+publishMods {
+	file.set(tasks.jar.flatMap { it.archiveFile })
 }
 
 // gradle.properties

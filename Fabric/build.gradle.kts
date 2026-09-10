@@ -6,6 +6,11 @@ plugins {
     idea
     `maven-publish`
     id("fabric-loom")
+    id("me.modmuss50.mod-publish-plugin")
+}
+
+publishMods {
+    file.set(tasks.named<RemapJarTask>("remapJar").flatMap { it.archiveFile })
 }
 
 repositories {

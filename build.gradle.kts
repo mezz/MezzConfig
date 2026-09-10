@@ -1,3 +1,5 @@
+import me.modmuss50.mpp.ModPublishExtension
+import me.modmuss50.mpp.PublishModTask
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -19,6 +21,8 @@ import java.util.Locale
 import java.util.zip.ZipFile
 
 plugins {
+    id("me.modmuss50.mod-publish-plugin") version("1.1.0") apply(false)
+
     // https://github.com/mezz/JavaFormatting
     id("net.mezzdev.java-formatting") version("0.4.0")
 
@@ -70,6 +74,8 @@ val modJavaVersion: String by extra
 val modName: String by extra
 val specificationVersion: String by extra
 val releaseSpecificationVersion = specificationVersion
+val modPublishDryRun = providers.gradleProperty("publishDryRun").orElse("true")
+    .map { it.toBooleanStrict() }.get()
 
 abstract class ValidateReleaseVersion : DefaultTask() {
     @get:Input
@@ -258,6 +264,48 @@ tasks.register<GradleBuild>("validateNeoForgeEmbedding") {
 subprojects {
     version = projectVersion
     group = modGroup
+
+    plugins.withId("me.modmuss50.mod-publish-plugin") {
+        val loaderName = project.name
+        extensions.configure<ModPublishExtension> {
+            dryRun.set(modPublishDryRun)
+            version.set(projectVersion)
+            displayName.set("$modName $projectVersion for $loaderName $minecraftVersion")
+            type.set(BETA)
+            modLoaders.add(loaderName.lowercase(Locale.ROOT))
+            changelog.set(providers.fileContents(
+                rootProject.layout.projectDirectory.file("changelogs/$releaseSpecificationVersion.md")
+            ).asText)
+
+            curseforge {
+                projectId.set(providers.gradleProperty("curseProjectId"))
+                projectSlug.set("mezzconfig")
+                accessToken.set(providers.gradleProperty("curseforgeApikey"))
+                apiEndpoint.set("https://www.curseforge.com")
+                minecraftVersions.add(minecraftVersion)
+                javaVersions.add(JavaVersion.toVersion(modJavaVersion))
+                clientRequired.set(true)
+                serverRequired.set(true)
+                if (loaderName == "Fabric") {
+                    requires("fabric-api")
+                }
+            }
+
+            modrinth {
+                projectId.set(providers.gradleProperty("modrinthId"))
+                accessToken.set(providers.gradleProperty("modrinthToken"))
+                minecraftVersions.add(minecraftVersion)
+                if (loaderName == "Fabric") {
+                    requires("fabric-api")
+                }
+            }
+        }
+        tasks.withType<PublishModTask>().configureEach {
+            if (!modPublishDryRun) {
+                dependsOn(rootProject.tasks.named("validateReleaseVersion"))
+            }
+        }
+    }
 
     plugins.withId("maven-publish") {
         extensions.configure<PublishingExtension> {
