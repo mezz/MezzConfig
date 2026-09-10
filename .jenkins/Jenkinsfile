@@ -119,10 +119,10 @@ pipeline {
             }
         }
 
-        stage('Dry Run Mod Publishing') {
+        stage('Create Changelogs') {
             steps {
                 script {
-                    sh "./gradlew :Fabric:publishMods :Forge:publishMods :NeoForge:publishMods -PpublishDryRun=true ${getReleaseGradleArgs()} --no-daemon"
+                    sh "./gradlew :Changelog:makeChangelog ${getReleaseGradleArgs()} --no-daemon"
                 }
             }
         }
@@ -131,7 +131,6 @@ pipeline {
             steps {
                 junit allowEmptyResults: true, testResults: '*/build/test-results/**/*.xml'
                 archiveArtifacts allowEmptyArchive: true, artifacts: '*/build/libs/*.jar'
-                archiveArtifacts artifacts: '*/build/publishMods/**'
                 archiveArtifacts artifacts: 'Changelog/build/changelog.*'
             }
         }
