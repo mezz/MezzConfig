@@ -10,6 +10,7 @@ import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.client.ClientWorldConfigPathUtil;
 import net.mezzdev.config.file.ConfigFileWatcherSettings;
 import net.mezzdev.config.file.ConfigManager;
+import net.mezzdev.config.file.MezzConfigSettings;
 import net.mezzdev.config.schema.ClientWorldConfigSchemaPathResolver;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
@@ -220,6 +221,15 @@ public final class ConfigProvider implements Configs.IConfigProvider {
 	}
 
 	private static ConfigManager createConfigManager() {
+		if (CLIENT_CONFIGS_AVAILABLE) {
+			ConfigManager configManager = MezzConfigSettings.createManager(
+				"MezzConfig File Watcher",
+				PHYSICAL_SIDE_PROVIDER.getConfigRoot(),
+				PHYSICAL_SIDE_PROVIDER.isDevelopmentEnvironment()
+			);
+			configManager.startWatching();
+			return configManager;
+		}
 		ConfigManager configManager = new ConfigManager(
 			"MezzConfig File Watcher",
 			ConfigFileWatcherSettings.clientDefaults(),

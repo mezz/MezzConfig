@@ -70,9 +70,26 @@ public class ConfigManager {
 		ConfigFileWatcherSettings serverFileWatcherSettings,
 		boolean logUntranslatedKeys
 	) {
+		this(
+			fileWatcherThreadName,
+			clientFileWatcherSettings,
+			serverFileWatcherSettings,
+			logUntranslatedKeys,
+			createSaveExecutor()
+		);
+	}
+
+	ConfigManager(
+		String fileWatcherThreadName,
+		ConfigFileWatcherSettings clientFileWatcherSettings,
+		ConfigFileWatcherSettings serverFileWatcherSettings,
+		boolean logUntranslatedKeys,
+		DelayedExecutor saveExecutor
+	) {
 		fileWatcherThreadName = ErrorUtil.checkNotNull(fileWatcherThreadName, "fileWatcherThreadName");
 		clientFileWatcherSettings = ErrorUtil.checkNotNull(clientFileWatcherSettings, "clientFileWatcherSettings");
 		serverFileWatcherSettings = ErrorUtil.checkNotNull(serverFileWatcherSettings, "serverFileWatcherSettings");
+		this.saveExecutor = ErrorUtil.checkNotNull(saveExecutor, "saveExecutor");
 		this.clientFileWatcher = new FileWatcherRegistration(
 			fileWatcherThreadName,
 			clientFileWatcherSettings,
@@ -84,9 +101,12 @@ public class ConfigManager {
 			"server"
 		);
 		this.logUntranslatedKeys = logUntranslatedKeys;
-		this.saveExecutor = new DelayedExecutor(SAVE_SHUTDOWN_TIMEOUT, SAVE_SCHEDULER_THREAD_NAME);
 		Runtime.getRuntime()
 			.addShutdownHook(new Thread(saveExecutor::shutdown, SAVE_SCHEDULER_THREAD_NAME + " Shutdown"));
+	}
+
+	static DelayedExecutor createSaveExecutor() {
+		return new DelayedExecutor(SAVE_SHUTDOWN_TIMEOUT, SAVE_SCHEDULER_THREAD_NAME);
 	}
 
 	public DelayedTaskScheduler getSaveScheduler() {

@@ -60,6 +60,18 @@ public class ConfigsTest {
 	};
 
 	@Test
+	public void mezzConfigSettingsSchemaIsDiscoverable() {
+		IConfigSchema settingsSchema = Configs.getSchemas().stream()
+			.filter(schema -> schema.getModId().equals("mezz_config"))
+			.findFirst()
+			.orElseThrow();
+
+		assertEquals("settings.ini", settingsSchema.getId());
+		assertEquals(ConfigSchemaType.CLIENT, settingsSchema.getType());
+		assertTrue(settingsSchema.isActive());
+	}
+
+	@Test
 	public void factoriesCreateCompleteClientAndServerSchemaTypes(@TempDir Path configRoot) throws IOException {
 		IConfigRegistration registration = createRegistration(configRoot);
 		Path clientPath = getClientPath(configRoot, "client.ini");
