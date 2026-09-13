@@ -219,12 +219,6 @@ publishing {
             artifact(tasks.named<RemapSourcesJarTask>("remapSourcesJar"))
         }
     }
-    repositories {
-        val deployDir = project.findProperty("DEPLOY_DIR")
-        if (deployDir != null) {
-            maven(deployDir)
-        }
-    }
 }
 
 idea {

@@ -301,16 +301,6 @@ publishing {
                 }
             }
         }
-        register<MavenPublication>("configJar") {
-            artifactId = baseArchivesName
-            from(components["java"])
-        }
-    }
-    repositories {
-        val deployDir = project.findProperty("DEPLOY_DIR")
-        if (deployDir != null) {
-            maven(deployDir)
-        }
     }
 }
 

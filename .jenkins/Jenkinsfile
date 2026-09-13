@@ -170,7 +170,7 @@ pipeline {
                     if (!deployDir) {
                         error 'Jared Maven environment is not set; expected MAVEN_DEPLOY_DIR, local_maven_url, or local_maven.'
                     }
-                    sh "./gradlew validateReleaseVersion publish -PDEPLOY_DIR=${shellQuote(deployDir)} -PRELEASE_VERSION=${shellQuote(releaseVersion)} --no-daemon"
+                    sh "./gradlew publishMavenRelease -PDEPLOY_DIR=${shellQuote(deployDir)} -PRELEASE_VERSION=${shellQuote(releaseVersion)} --no-daemon"
                 }
             }
         }

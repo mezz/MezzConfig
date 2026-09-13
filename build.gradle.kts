@@ -224,6 +224,12 @@ val validatePublishing = tasks.register("validatePublishing") {
     description = "Publishes every Maven publication to a local validation repository."
 }
 
+val publishMavenRelease = tasks.register("publishMavenRelease") {
+    group = "publishing"
+    description = "Publishes the supported Maven artifacts to the release repository."
+    dependsOn(tasks.named("validateReleaseVersion"))
+}
+
 val projectMarkdownFiles = fileTree(rootDir) {
     include("*.md", "docs/**/*.md")
 }
@@ -326,6 +332,12 @@ subprojects {
                 maven {
                     name = "validation"
                     url = rootProject.layout.buildDirectory.dir("publication-validation").get().asFile.toURI()
+                }
+                providers.gradleProperty("DEPLOY_DIR").orNull?.let { deployDir ->
+                    maven {
+                        name = "release"
+                        url = uri(deployDir)
+                    }
                 }
             }
             publications.withType<MavenPublication>().configureEach {
@@ -439,6 +451,21 @@ subprojects {
     tasks.withType<AbstractArchiveTask>().configureEach {
         isPreserveFileTimestamps = false
         isReproducibleFileOrder = true
+    }
+}
+
+publishMavenRelease.configure {
+    if (providers.gradleProperty("DEPLOY_DIR").isPresent) {
+        dependsOn(
+            ":Common:publishConfigApiJarPublicationToReleaseRepository",
+            ":Fabric:publishConfigFabricJarPublicationToReleaseRepository",
+            ":Forge:publishConfigForgeJarPublicationToReleaseRepository",
+            ":NeoForge:publishConfigNeoForgeJarPublicationToReleaseRepository"
+        )
+    } else {
+        doFirst {
+            throw GradleException("No Maven release repository was provided; set DEPLOY_DIR.")
+        }
     }
 }
 

@@ -205,12 +205,6 @@ publishing {
             artifact(sourcesJarTask)
         }
     }
-    repositories {
-        val deployDir = project.findProperty("DEPLOY_DIR")
-        if (deployDir != null) {
-            maven(deployDir)
-        }
-    }
 }
 
 idea {
