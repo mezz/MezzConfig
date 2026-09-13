@@ -245,6 +245,9 @@ pipeline {
                 def notification = [workerJob: '/mezz/release-notifier-worker']
                 if (env.RELEASE_TAG?.trim()) {
                     notification.version = getReleaseVersion()
+                } else {
+                    // Successful branch builds are not releases, so suppress fallback download links.
+                    notification.releaseLinks = []
                 }
                 discordNotifier(notification)
             }
