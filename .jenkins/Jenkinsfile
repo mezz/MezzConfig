@@ -1,3 +1,11 @@
+library(
+    identifier: 'jenkins-release-notifier@v0.2.0',
+    retriever: modernSCM([
+        $class: 'GitSCMSource',
+        remote: 'https://github.com/mezz/jenkins-release-notifier.git'
+    ])
+)
+
 def getMavenDeployDir() {
     if (env.MAVEN_DEPLOY_DIR?.trim()) {
         return env.MAVEN_DEPLOY_DIR.trim()
@@ -37,6 +45,19 @@ def getReleaseGradleArgs() {
         return "-PRELEASE_VERSION=${shellQuote(getReleaseVersion())}"
     }
     return ''
+}
+
+def findPreviousReleaseCommit() {
+    def descriptionPrefix = 'jenkins-release-notifier-source:v1:'
+    def previousBuild = currentBuild.previousBuild
+    while (previousBuild != null) {
+        def description = previousBuild.description ?: ''
+        if (description.startsWith(descriptionPrefix)) {
+            return description.substring(descriptionPrefix.length())
+        }
+        previousBuild = previousBuild.previousBuild
+    }
+    return env.GIT_PREVIOUS_SUCCESSFUL_COMMIT
 }
 
 pipeline {
@@ -185,6 +206,47 @@ pipeline {
                 script {
                     sh "./gradlew --no-configuration-cache :Fabric:publishModrinth :Forge:publishModrinth :NeoForge:publishModrinth -PpublishDryRun=false ${getReleaseGradleArgs()} --no-daemon"
                 }
+            }
+        }
+
+        stage('Notify Released Issues') {
+            when {
+                allOf {
+                    branch '1.21.1'
+                    expression { env.RELEASE_TAG?.trim() }
+                    expression { currentBuild.currentResult == 'SUCCESS' }
+                }
+            }
+            steps {
+                script {
+                    def releaseMetadata = discordNotifier.getGradleReleaseMetadata(
+                        version: getReleaseVersion()
+                    )
+                    releaseNotifier(
+                        workerJob: '/mezz/release-notifier-worker',
+                        repository: 'mezz/MezzConfig',
+                        channel: releaseMetadata.minecraftVersion,
+                        projectName: releaseMetadata.projectName,
+                        version: releaseMetadata.version,
+                        baseCommit: findPreviousReleaseCommit(),
+                        headCommit: env.GIT_COMMIT,
+                        releaseLinks: releaseMetadata.releaseLinks,
+                        minecraftVersions: [releaseMetadata.minecraftVersion],
+                        modLoaders: releaseMetadata.modLoaders
+                    )
+                    currentBuild.description = "jenkins-release-notifier-source:v1:${env.GIT_COMMIT}"
+                }
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                def notification = [workerJob: '/mezz/release-notifier-worker']
+                if (env.RELEASE_TAG?.trim()) {
+                    notification.version = getReleaseVersion()
+                }
+                discordNotifier(notification)
             }
         }
     }
