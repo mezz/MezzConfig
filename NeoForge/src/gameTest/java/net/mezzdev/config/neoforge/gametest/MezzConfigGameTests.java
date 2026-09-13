@@ -39,8 +39,10 @@ public final class MezzConfigGameTests {
 	@EmptyTemplate
 	@TestHolder(description = "Starting a dedicated-server world activates its authoritative config file.")
 	public static void dedicatedServerActivatesAuthoritativeConfig(GameTestHelper helper) {
+		// Setup: the NeoForge test server has registered its server-owned schema during startup.
 		IConfigSchema schema = getServerSchema();
 
+		// Operation and assertions: inspect the schema state and its resolved world path.
 		if (!schema.isActive()) {
 			throw failure("The authoritative server schema is not active.");
 		}
@@ -58,14 +60,25 @@ public final class MezzConfigGameTests {
 
 	@GameTest
 	@EmptyTemplate
-	@TestHolder(description = "A dedicated server keeps common client config declarations inert.")
-	public static void dedicatedServerKeepsClientConfigsInert(GameTestHelper helper) {
+	@TestHolder(description = "A dedicated server starts without publishing client-owned schemas.")
+	public static void dedicatedServerStartsWithoutClientSchemas(GameTestHelper helper) {
+		// Operation: inspect schemas registered during dedicated-server startup.
 		boolean hasClientSchema = Configs.getSchemas()
 			.stream()
 			.anyMatch(candidate -> candidate.getType() != ConfigSchemaType.SERVER);
+
+		// Assertions: dedicated-server startup publishes no client-owned schemas.
 		if (hasClientSchema) {
 			throw failure("The dedicated server registered a client-owned config schema.");
 		}
+		helper.succeed();
+	}
+
+	@GameTest
+	@EmptyTemplate
+	@TestHolder(description = "A dedicated server keeps common client schema declarations inert.")
+	public static void dedicatedServerKeepsClientSchemaDeclarationsInert(GameTestHelper helper) {
+		// Setup: create installation-wide and per-world client schema builders on a dedicated server.
 		IConfigRegistration registration = Configs.forMod(TEST_MOD_ID);
 		List<IConfigSchemaBuilder> clientBuilders = List.of(
 			registration.createClientSchemaBuilder(
@@ -77,6 +90,8 @@ public final class MezzConfigGameTests {
 				"mezz_config_test.neoforge.client_world"
 			)
 		);
+
+		// Operation and assertions: declare the client schemas and verify that each remains inert.
 		for (IConfigSchemaBuilder builder : clientBuilders) {
 			builder.addCategory("general")
 				.addBoolean("enabled", true)
@@ -89,6 +104,17 @@ public final class MezzConfigGameTests {
 				throw failure("The dedicated server activated an inert client config schema.");
 			}
 		}
+		helper.succeed();
+	}
+
+	@GameTest
+	@EmptyTemplate
+	@TestHolder(description = "A dedicated server keeps client sorting configs independent and in memory.")
+	public static void dedicatedServerKeepsClientSortingConfigsInMemory(GameTestHelper helper) {
+		// Setup: a client config registration is available on the dedicated server.
+		IConfigRegistration registration = Configs.forMod(TEST_MOD_ID);
+
+		// Operation: create two same-name client sorting configs with different ordering rules.
 		var firstSortingConfig = registration.createSortingConfig(
 			"dedicated-server-client.ini",
 			Comparator.naturalOrder(),
@@ -99,6 +125,8 @@ public final class MezzConfigGameTests {
 			Comparator.reverseOrder(),
 			false
 		);
+
+		// Assertions: client declarations stay unpublished and sorting remains independent and in memory.
 		if (!firstSortingConfig.getSortedValues(List.of("b", "a")).equals(List.of("a", "b")) ||
 			!secondSortingConfig.getSortedValues(List.of("b", "a")).equals(List.of("b", "a"))
 		) {
@@ -112,6 +140,7 @@ public final class MezzConfigGameTests {
 	@EmptyTemplate
 	@TestHolder(description = "Editing an authoritative config file schedules its reload without server-tick polling.")
 	public static void authoritativeFileChangeSchedulesReload(GameTestHelper helper) {
+		// Setup: a watched authoritative config starts with a known value and valid file contents.
 		WatchedServerConfig config = createFastWatchedServerConfig();
 		Path path = config.path();
 		IConfigValue<Boolean> enabled = config.enabled();
@@ -128,6 +157,7 @@ public final class MezzConfigGameTests {
 			throw failure("The authoritative server config file does not contain the expected value: " + originalLine);
 		}
 
+		// Operation: listen for the opposite value and edit it directly into the watched file.
 		AtomicBoolean observedChange = new AtomicBoolean();
 		Runnable removeListener = enabled.addListener(change -> {
 			if (change.newValue() == updatedValue) {
@@ -141,6 +171,7 @@ public final class MezzConfigGameTests {
 			throw failure("Failed to edit the authoritative server config file: " + e.getMessage());
 		}
 
+		// Assertions: the watcher reloads asynchronously, then the test restores the shared file before succeeding.
 		helper.startSequence()
 			.thenWaitUntil(() -> {
 				if (!observedChange.get()) {

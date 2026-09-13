@@ -32,6 +32,7 @@ public class ConfigSerializerLoadSaveTest {
 
 	@Test
 	public void loadUpdatesValuesFromKnownCategory(@TempDir Path tempDir) throws IOException {
+		// Setup: a known category file contains valid replacements for two default values.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[current]",
@@ -42,14 +43,17 @@ public class ConfigSerializerLoadSaveTest {
 		ConfigValue<Integer> count = createIntegerValue(1);
 		ConfigCategory category = createCategory(enabled, count);
 
+		// Operation: load the file with normal notification behavior.
 		ConfigSerializer.load(path, List.of(category));
 
+		// Assertions: both stored values replace their defaults.
 		assertFalse(enabled.get());
 		assertEquals(7, count.get());
 	}
 
 	@Test
 	public void loadStagesValuesWithRestartRequirements(@TempDir Path tempDir) throws IOException {
+		// Setup: a game-restart value has a stored selection different from its effective default.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[current]",
@@ -58,14 +62,17 @@ public class ConfigSerializerLoadSaveTest {
 		ConfigValue<Boolean> enabled = createBooleanValue(true, ConfigValueRestartRequirement.GAME_RESTART);
 		ConfigCategory category = createCategory(enabled);
 
+		// Operation: load the stored selection without restarting the game.
 		ConfigSerializer.load(path, List.of(category));
 
+		// Assertions: effective state stays unchanged while editor-visible pending state loads from disk.
 		assertTrue(enabled.get());
 		assertFalse(enabled.getEditorInfo().getPendingValue());
 	}
 
 	@Test
 	public void loadLeavesValueUnchangedWhenDeserializationFails(@TempDir Path tempDir) throws IOException {
+		// Setup: stored boolean and bounded integer values are both invalid.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[current]",
@@ -76,14 +83,17 @@ public class ConfigSerializerLoadSaveTest {
 		ConfigValue<Integer> count = createIntegerValue(1);
 		ConfigCategory category = createCategory(enabled, count);
 
+		// Operation: load the invalid values.
 		ConfigSerializer.load(path, List.of(category));
 
+		// Assertions: both config values retain their existing defaults.
 		assertTrue(enabled.get());
 		assertEquals(1, count.get());
 	}
 
 	@Test
 	public void loadLeavesListUnchangedWhenNoElementsCanBeDeserialized(@TempDir Path tempDir) throws IOException {
+		// Setup: a config value currently differs from its default and every stored list element is invalid.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[current]",
@@ -98,14 +108,17 @@ public class ConfigSerializerLoadSaveTest {
 		values.set(List.of(3, 4));
 		ConfigCategory category = createCategory(values);
 
+		// Operation: load the wholly unrecoverable list.
 		ConfigSerializer.load(path, List.of(category));
 
+		// Assertions: current and default list state remain distinct and unchanged.
 		assertEquals(List.of(3, 4), values.get());
 		assertEquals(List.of(1, 2), values.getEditorInfo().getDefaultValue());
 	}
 
 	@Test
 	public void loadRejectsStructuredListsThatViolateWholeListValidation(@TempDir Path tempDir) throws IOException {
+		// Setup: every stored element is valid alone, but duplicate elements violate whole-list validation.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[current]",
@@ -120,13 +133,16 @@ public class ConfigSerializerLoadSaveTest {
 		values.set(List.of("current"));
 		ConfigCategory category = createCategory(values);
 
+		// Operation: load the structurally valid but semantically invalid list.
 		ConfigSerializer.load(path, List.of(category));
 
+		// Assertions: the value keeps its prior valid state.
 		assertEquals(List.of("current"), values.get());
 	}
 
 	@Test
 	public void loadDoesNotNotifyWhenValueIsEqual(@TempDir Path tempDir) throws IOException {
+		// Setup: the stored value equals the current value and both listener types record notifications.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[current]",
@@ -139,8 +155,10 @@ public class ConfigSerializerLoadSaveTest {
 		count.addListener(change -> regularChanges.add("%s -> %s".formatted(change.oldValue(), change.newValue())));
 		count.addBatchListener(changes -> batchChanges.add(formatBatch(changes, true, count.get())));
 
+		// Operation: load the unchanged value.
 		List<? extends IAppliedConfigValueChange<?>> changes = ConfigSerializer.load(path, List.of(category));
 
+		// Assertions: loading produces no change record or listener callback.
 		assertEquals(List.of(), changes);
 		assertEquals(1, count.get());
 		assertEquals(List.of(), regularChanges);
@@ -149,6 +167,7 @@ public class ConfigSerializerLoadSaveTest {
 
 	@Test
 	public void loadNotifiesListenersAfterAllValuesUpdate(@TempDir Path tempDir) throws IOException {
+		// Setup: two values will change, and listeners capture the other value's state during notification.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[current]",
@@ -165,8 +184,10 @@ public class ConfigSerializerLoadSaveTest {
 		enabled.addBatchListener(changes -> enabledBatches.add(formatBatch(changes, enabled.get(), count.get())));
 		count.addBatchListener(changes -> countBatches.add(formatBatch(changes, enabled.get(), count.get())));
 
+		// Operation: load both changes from one category.
 		ConfigSerializer.load(path, List.of(category));
 
+		// Assertions: all state is updated before regular and batch listeners observe the complete batch.
 		assertFalse(enabled.get());
 		assertEquals(7, count.get());
 		assertEquals(List.of("true -> false, count = 7"), regularChanges);
@@ -176,6 +197,7 @@ public class ConfigSerializerLoadSaveTest {
 
 	@Test
 	public void saveCreatesParentDirectoriesAndSerializesValues(@TempDir Path tempDir) throws IOException {
+		// Setup: changed values target a config file inside missing parent directories.
 		Path path = tempDir.resolve("nested").resolve("test.ini");
 		ConfigValue<Boolean> enabled = createBooleanValue(true);
 		ConfigValue<Integer> count = createIntegerValue(1);
@@ -183,8 +205,10 @@ public class ConfigSerializerLoadSaveTest {
 		enabled.set(false);
 		count.set(7);
 
+		// Operation: save the category to its new location.
 		ConfigSerializer.save(path, List.of(category));
 
+		// Assertions: save creates the path and writes metadata, constraints, defaults, and current values.
 		List<String> lines = Files.readAllLines(path);
 		assertTrue(Files.exists(path));
 		assertEquals(List.of(
@@ -205,13 +229,16 @@ public class ConfigSerializerLoadSaveTest {
 
 	@Test
 	public void saveDefaultsUsesDeclaredValuesInsteadOfPlayerValues(@TempDir Path tempDir) throws IOException {
+		// Setup: a value's current player selection differs from its declared default.
 		Path path = tempDir.resolve("test.ini");
 		ConfigValue<Boolean> enabled = createBooleanValue(true);
 		ConfigCategory category = createCategory(enabled);
 		enabled.set(false);
 
+		// Operation: save a distributable defaults file.
 		ConfigSerializer.saveDefaults(path, List.of(category));
 
+		// Assertions: the file contains the declaration and excludes the player's current selection.
 		List<String> lines = Files.readAllLines(path);
 		assertTrue(lines.contains("\tenabled = true"));
 		assertFalse(lines.contains("\tenabled = false"));
@@ -219,24 +246,30 @@ public class ConfigSerializerLoadSaveTest {
 
 	@Test
 	public void saveNotesWhenValueRequiresGameRestart(@TempDir Path tempDir) throws IOException {
+		// Setup: a value declares that changes require a full game restart.
 		Path path = tempDir.resolve("test.ini");
 		ConfigValue<Boolean> enabled = createBooleanValue(true, ConfigValueRestartRequirement.GAME_RESTART);
 		ConfigCategory category = createCategory(enabled);
 
+		// Operation: save the category.
 		ConfigSerializer.save(path, List.of(category));
 
+		// Assertions: the generated file documents the game-restart requirement.
 		List<String> lines = Files.readAllLines(path);
 		assertTrue(lines.contains("\t# Requires a game restart to take effect."));
 	}
 
 	@Test
 	public void saveNotesWhenValueRequiresWorldRestart(@TempDir Path tempDir) throws IOException {
+		// Setup: a value declares that changes require a world restart.
 		Path path = tempDir.resolve("test.ini");
 		ConfigValue<Boolean> enabled = createBooleanValue(true, ConfigValueRestartRequirement.WORLD_RESTART);
 		ConfigCategory category = createCategory(enabled);
 
+		// Operation: save the category.
 		ConfigSerializer.save(path, List.of(category));
 
+		// Assertions: the generated file documents the world-restart requirement.
 		List<String> lines = Files.readAllLines(path);
 		assertTrue(lines.contains("\t# Requires a world restart to take effect."));
 	}

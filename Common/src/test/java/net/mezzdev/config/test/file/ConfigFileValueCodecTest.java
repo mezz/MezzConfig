@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ConfigFileValueCodecTest {
 	@Test
 	public void scalarRoundTripsPlainAndDelimiterSensitiveText() {
+		// Setup: scalar values cover empty, padded, delimiter-sensitive, escaped, Unicode, and multiline text.
 		List<String> values = List.of(
 			"plain-value",
 			"",
@@ -25,6 +26,7 @@ public class ConfigFileValueCodecTest {
 			"line one\nline two\r\n"
 		);
 
+		// Operation and assertions: every value survives scalar encoding and decoding unchanged.
 		for (String expected : values) {
 			String encoded = ConfigFileValueCodec.serializeScalar(expected);
 			String decoded = deserializeScalar(encoded);
@@ -35,6 +37,7 @@ public class ConfigFileValueCodecTest {
 
 	@Test
 	public void arraysPreserveOrderEmptyValuesAndNestedBoundaries() {
+		// Setup: an array combines empty, delimiter-sensitive, padded, and nested values.
 		JsonArray nested = new JsonArray();
 		nested.add("nested");
 		JsonArray value = new JsonArray();
@@ -43,28 +46,39 @@ public class ConfigFileValueCodecTest {
 		value.add(" surrounding ");
 		value.add(nested);
 
+		// Operation: serialize the complete array.
 		String encoded = ConfigFileValueCodec.serialize(value);
 
+		// Assertions: encoding is canonical and decoding preserves the original array structure.
 		assertEquals("[\"\",\"a,b\",\" surrounding \",[\"nested\"]]", encoded);
 		assertEquals(value, deserialize(encoded));
 	}
 
 	@Test
 	public void reportsMalformedQuotedValuesAndArraysAsDeserializeFailures() {
-		assertFailure("\"unterminated");
-		assertFailure("\"bad\\q\"");
-		assertFailure("[first,,second]");
-		assertFailure("[first,]");
-		assertFailure("[] trailing");
+		// Setup: quoted and array encodings are malformed in several distinct ways.
+		List<String> malformedValues = List.of(
+			"\"unterminated",
+			"\"bad\\q\"",
+			"[first,,second]",
+			"[first,]",
+			"[] trailing"
+		);
+
+		// Operation and assertions: every malformed encoding returns one useful failure diagnostic.
+		malformedValues.forEach(ConfigFileValueCodecTest::assertFailure);
 	}
 
 	@Test
 	public void supportsJsonSurrogatePairsAndRejectsUnpairedSurrogates() {
-		assertEquals("🌍", deserializeScalar("\"\\uD83C\\uDF0D\""));
-		assertFailure("\"\\uD800\"");
-		assertFailure("\uD800");
+		// Setup: JSON escapes can contain either a valid surrogate pair or malformed unpaired values.
+		String validPair = "\"\\uD83C\\uDF0D\"";
+		List<String> malformedValues = List.of("\"\\uD800\"", "\uD800", "\"\\U00110000\"");
+
+		// Operation and assertions: the valid pair decodes while malformed input and output are rejected.
+		assertEquals("🌍", deserializeScalar(validPair));
+		malformedValues.forEach(ConfigFileValueCodecTest::assertFailure);
 		assertThrows(IllegalArgumentException.class, () -> ConfigFileValueCodec.serializeScalar("\uD800"));
-		assertFailure("\"\\U00110000\"");
 	}
 
 	private static JsonElement deserialize(String encoded) {

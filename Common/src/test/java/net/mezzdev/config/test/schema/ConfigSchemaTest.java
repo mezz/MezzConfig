@@ -63,19 +63,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigSchemaTest {
 	@Test
-	public void schemasAndStorageCategoriesMustNotBeEmpty() {
+	public void schemasMustHaveStorageCategories() {
+		// Operation and assertions: schemas require at least one storage category.
 		assertThrows(IllegalStateException.class, () -> createSchema(List.of(), List.of()));
+	}
 
+	@Test
+	public void storageCategoriesMustHaveValues() {
+		// Setup: one declared storage category has no built values.
 		ConfigCategoryBuilder emptyCategory = new ConfigCategoryBuilder("mezz_config.config.test", "empty");
+
+		// Operation and assertions: empty storage categories are rejected too.
 		assertThrows(IllegalStateException.class, () -> createSchema(emptyCategory));
 	}
 
 	@Test
 	public void oversizedDefaultFileIsRejectedWhenTheSchemaIsBuilt() {
+		// Setup: one default string would make the generated schema file exceed its readable limit.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		builder.addString("text", "x".repeat(ConfigFileReader.MAX_FILE_BYTES))
 			.build();
 
+		// Operation and assertions: building validates prospective default-file size before publication.
 		assertThrows(IllegalArgumentException.class, () -> createSchema(builder));
 	}
 
@@ -116,7 +125,7 @@ public class ConfigSchemaTest {
 			)
 			.build();
 
-		// Assertions: the list serializer can still parse the whole list from storage text.
+		// Assertions: the serializer parses whole lists and exposes its element serializer to integrations.
 		assertEquals(
 			List.of(false, true),
 			flags.getSerializer()
@@ -124,8 +133,6 @@ public class ConfigSchemaTest {
 				.getResult()
 				.orElseThrow()
 		);
-
-		// Assertions: integrations can discover the original element serializer for per-element list editing.
 		IConfigListValueSerializer<?> listSerializer = assertListSerializer(flags.getSerializer());
 		assertSame(BooleanSerializer.INSTANCE, listSerializer.getElementSerializer());
 	}
@@ -158,6 +165,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void builtInListsAreUnmodifiableAfterLoading(@TempDir Path tempDir) throws IOException {
+		// Setup: a built-in string list loads two values from disk.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[category]",
@@ -168,8 +176,10 @@ public class ConfigSchemaTest {
 			.build();
 		createSchema(path, builder);
 
+		// Operation: retain the loaded list exposed by the config value.
 		List<String> loadedNames = names.get();
 
+		// Assertions: loaded content is correct and cannot be mutated through its public view.
 		assertEquals(List.of("first", "second"), loadedNames);
 		assertThrows(UnsupportedOperationException.class, () -> loadedNames.add("mutation"));
 	}
@@ -209,8 +219,10 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void addBuiltInValueHelpersCreateSerializers() {
-		// Setup: create one value for each built-in helper that the public category builder offers.
+		// Setup: a public category builder is ready to accept every built-in config value type.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+
+		// Operation: create one value for each built-in helper that the category builder offers.
 		ConfigValue<String> name = builder.addString("name", "default")
 			.build();
 		ConfigValue<List<String>> names = builder.addStringList("names", List.of("default"))
@@ -244,7 +256,7 @@ public class ConfigSchemaTest {
 		ConfigValue<List<TestMode>> restrictedEnums = builder.addEnumList("restrictedEnums", List.of(), List.of(TestMode.STANDARD))
 			.build();
 
-		// Assertions: each helper wires a serializer that understands its public storage format.
+		// Assertions: each helper handles its storage format, exposes list elements, and enforces declared bounds.
 		assertEquals("configured", name.getSerializer().deserialize("configured").getResult().orElseThrow());
 		assertEquals(List.of("one", "two"), names.getSerializer().deserialize("[\"one\",\"two\"]").getResult().orElseThrow());
 		assertEquals(List.of(false, true), flags.getSerializer().deserialize("[\"false\",\"true\"]").getResult().orElseThrow());
@@ -267,8 +279,6 @@ public class ConfigSchemaTest {
 		assertEquals(List.of(1.5, 2.5), boundedDoubles.getSerializer().deserialize("[\"1.5\",\"2.5\"]").getResult().orElseThrow());
 		assertEquals(TestMode.STANDARD, restrictedEnum.getSerializer().deserialize("STANDARD").getResult().orElseThrow());
 		assertEquals(List.of(TestMode.STANDARD), restrictedEnums.getSerializer().deserialize("[\"STANDARD\"]").getResult().orElseThrow());
-
-		// Assertions: built-in list helpers expose element serializers for GUI integrations.
 		assertListElementSerializer(names, "configured", "configured");
 		assertListElementSerializer(flags, "false", false);
 		assertListElementSerializer(unboundedIntegers, "2", 2);
@@ -279,8 +289,6 @@ public class ConfigSchemaTest {
 		assertListElementSerializer(unboundedDoubles, "2.5", 2.5);
 		assertListElementSerializer(boundedDoubles, "2.5", 2.5);
 		assertListElementSerializer(restrictedEnums, "STANDARD", TestMode.STANDARD);
-
-		// Assertions: bounded and restricted helpers reject values outside their declared valid range.
 		assertTrue(boundedIntegers.getSerializer().deserialize("[\"11\"]").getDiagnostics().getFirst().contains("Invalid integer"));
 		assertTrue(color.getSerializer().deserialize("112233").getDiagnostics().getFirst().contains("Invalid color"));
 		assertTrue(boundedLongs.getSerializer().deserialize("[\"11\"]").getDiagnostics().getFirst().contains("Invalid long"));
@@ -291,24 +299,29 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void addCategoryRejectsInvalidNames() {
+		// Operation and assertions: storage category names reject characters outside their file-safe grammar.
 		assertThrows(IllegalArgumentException.class, () -> new ConfigCategoryBuilder("mezz_config.config.test", "bad-name"));
 	}
 
 	@Test
 	public void addValueRejectsDuplicateNames() {
+		// Setup: a category already contains a built value with the requested current name.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		builder.addBoolean("enabled", false)
 			.build();
 
+		// Operation and assertions: adding another value with that name is rejected before it can be built.
 		assertThrows(IllegalArgumentException.class, () -> builder.addBoolean("enabled", true));
 	}
 
 	@Test
 	public void addValueRejectsDuplicateLegacyNames() {
+		// Setup: a value builder already owns one current and one legacy name in its storage category.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		var valueBuilder = builder.addBoolean("enabled", false)
 			.addLegacyName("oldEnabled");
 
+		// Operation and assertions: current, duplicate, and equivalent explicit references cannot be added as aliases.
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyName("enabled"));
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyName("oldEnabled"));
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("category", "oldEnabled"));
@@ -316,10 +329,12 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void addValueRejectsCurrentOrDuplicateLegacyValueReferences() {
+		// Setup: a value builder already owns its current reference and one cross-category legacy reference.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		var valueBuilder = builder.addBoolean("enabled", false)
 			.addLegacyValue("legacy", "enabled");
 
+		// Operation and assertions: direct and converted migrations cannot reuse current or registered references.
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("category", "enabled"));
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration(
 			"category",
@@ -338,10 +353,12 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void addValueRejectsDuplicateLegacyValueMigrations() {
+		// Setup: a value builder already converts one explicit legacy reference.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		var valueBuilder = builder.addBoolean("enabled", false)
 			.addLegacyValueMigration("legacy", "enabled", BooleanSerializer.INSTANCE, legacyValue -> legacyValue);
 
+		// Operation and assertions: neither a direct alias nor another converter can reuse that legacy reference.
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValue("legacy", "enabled"));
 		assertThrows(IllegalArgumentException.class, () -> valueBuilder.addLegacyValueMigration(
 			"legacy",
@@ -501,6 +518,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void sharedValueBatchListenersRunOncePerBatch() {
+		// Setup: the same effective and pending batch listeners are registered on two values in one schema.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> first = builder.addBoolean("first", true)
 			.build();
@@ -516,17 +534,21 @@ public class ConfigSchemaTest {
 		first.addPendingBatchListener(pendingListener);
 		second.addPendingBatchListener(pendingListener);
 
+		// Operation: change both values in one schema batch.
 		schema.batchUpdate(updater -> {
 			updater.set(first, false);
 			updater.set(second, false);
 		});
 
+		// Assertions: each shared listener runs once with the complete batch.
 		List<String> expected = List.of("first: true -> false, second: true -> false");
 		assertEquals(expected, effectiveBatches);
 		assertEquals(expected, pendingBatches);
 
+		// Operation: change one value in a later batch.
 		schema.batchUpdate(updater -> updater.set(second, true));
 
+		// Assertions: each listener runs exactly once again with only the later change.
 		List<String> expectedAfterNextBatch = List.of(
 			"first: true -> false, second: true -> false",
 			"second: false -> true"
@@ -579,17 +601,20 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void batchUpdaterSnapshotsListValuesWhenQueued() {
+		// Setup: a mutable list will be changed after it is queued in a schema batch.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<List<String>> names = builder.addStringList("names", List.of("default"))
 			.build();
 		ConfigSchema schema = createSchema(builder);
 		List<String> updatedNames = new ArrayList<>(List.of("queued"));
 
+		// Operation: queue the list and mutate the caller-owned alias before the batch callback returns.
 		schema.batchUpdate(updater -> {
 			updater.set(names, updatedNames);
 			updatedNames.add("mutated before apply");
 		});
 
+		// Assertions: queued state uses the immutable snapshot captured at set time.
 		assertEquals(List.of("queued"), names.get());
 	}
 
@@ -658,6 +683,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void schemaUnsubscribeIsIdempotentForDuplicateListenerRegistrations() {
+		// Setup: the same schema listener is registered twice, with the first callback retained.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
@@ -667,15 +693,18 @@ public class ConfigSchemaTest {
 		Runnable unsubscribeFirst = schema.addBatchListener(listener);
 		schema.addBatchListener(listener);
 
+		// Operation: invoke the first callback repeatedly and then change a schema value.
 		unsubscribeFirst.run();
 		unsubscribeFirst.run();
 		assertTrue(enabled.set(false));
 
+		// Assertions: one registration remains and duplicate unsubscription has no extra effect.
 		assertEquals(1, notifications.get());
 	}
 
 	@Test
 	public void listenerChangesDuringAValueCallbackDoNotChangeTheCurrentBatchSnapshot() {
+		// Setup: an early value listener replaces later value and schema listeners while a batch is dispatching.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> first = builder.addBoolean("first", true)
 			.build();
@@ -702,20 +731,26 @@ public class ConfigSchemaTest {
 		removeSecond.set(second.addListener(change -> notifications.add("second single old")));
 		removeSchema.set(schema.addBatchListener(changes -> notifications.add("schema old")));
 
+		// Operation: change both values in the first batch.
 		schema.batchUpdate(updater -> {
 			updater.set(first, false);
 			updater.set(second, false);
 		});
+
+		// Assertions: the original dispatch snapshot finishes with the old listeners.
 		assertEquals(
 			List.of("first single", "second single old", "first batch old", "schema old"),
 			notifications
 		);
 
+		// Operation: change both values back in a second batch.
 		notifications.clear();
 		schema.batchUpdate(updater -> {
 			updater.set(first, true);
 			updater.set(second, true);
 		});
+
+		// Assertions: later dispatch uses the replacement listeners.
 		assertEquals(
 			List.of("first single", "second single new", "first batch new", "schema new"),
 			notifications
@@ -724,6 +759,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void pendingAndEffectiveListenersUseOneSnapshotAndRunInPhases() {
+		// Setup: a pending listener replaces effective listeners while a two-value batch is dispatching.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> first = builder.addBoolean("first", false).build();
 		ConfigValue<Boolean> second = builder.addBoolean("second", false).build();
@@ -748,20 +784,26 @@ public class ConfigSchemaTest {
 		schema.addPendingBatchListener(changes -> notifications.add("pending schema"));
 		first.addListener(change -> notifications.add("first effective single"));
 
+		// Operation: change both immediate values in the first batch.
 		schema.batchUpdate(updater -> {
 			updater.set(first, true);
 			updater.set(second, true);
 		});
+
+		// Assertions: pending callbacks run first and the effective phase keeps its original listener snapshot.
 		assertEquals(List.of(
 			"first pending single", "second pending single", "pending batch", "pending schema",
 			"first effective single", "old effective single", "old effective batch", "old effective schema"
 		), notifications);
 
+		// Operation: change both values back in a second batch.
 		notifications.clear();
 		schema.batchUpdate(updater -> {
 			updater.set(first, false);
 			updater.set(second, false);
 		});
+
+		// Assertions: the next effective phase uses the replacement listeners after all pending callbacks.
 		assertEquals(List.of(
 			"first pending single", "second pending single", "pending batch", "pending schema",
 			"first effective single", "new effective single", "new effective batch", "new effective schema"
@@ -770,6 +812,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void reentrantPendingUpdateUsesNewListenersWithoutChangingOuterSnapshot() {
+		// Setup: a pending listener replaces an effective listener and performs a nested update.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", false).build();
 		createSchema(builder);
@@ -783,14 +826,17 @@ public class ConfigSchemaTest {
 			}
 		});
 
+		// Operation: set true, causing the pending listener to synchronously set false again.
 		enabled.set(true);
 
+		// Assertions: the nested update uses new listeners while the outer effective phase keeps its old snapshot.
 		assertFalse(enabled.get());
 		assertEquals(List.of("new: false", "old: true"), notifications);
 	}
 
 	@Test
 	public void oversizedProspectiveFileIsRejectedBeforeMutation(@TempDir Path tempDir) {
+		// Setup: a file-backed schema contains one small string and has not saved its file yet.
 		Path path = tempDir.resolve("test.ini");
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<String> text = builder.addString("text", "small")
@@ -798,8 +844,10 @@ public class ConfigSchemaTest {
 		createSchema(path, builder);
 		String oversized = "x".repeat(ConfigFileReader.MAX_FILE_BYTES);
 
+		// Operation: try to set text that would make the prospective config file exceed its limit.
 		assertThrows(IllegalArgumentException.class, () -> text.set(oversized));
 
+		// Assertions: effective and pending state remain unchanged and no file is written.
 		assertEquals("small", text.get());
 		assertEquals("small", text.getEditorInfo().getPendingValue());
 		assertFalse(Files.exists(path));
@@ -807,6 +855,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void reentrantSchemaListenerUpdateDispatchesANestedBatchSynchronously() {
+		// Setup: the first schema listener changes a second value while handling a change to the first.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> first = builder.addBoolean("first", true)
 			.build();
@@ -822,8 +871,10 @@ public class ConfigSchemaTest {
 		});
 		schema.addBatchListener(changes -> notifications.add("second listener: " + formatChanges(changes)));
 
+		// Operation: change the first value and trigger nested schema dispatch.
 		assertTrue(first.set(false));
 
+		// Assertions: the nested batch completes synchronously before outer dispatch reaches its second listener.
 		assertEquals(List.of(
 			"first listener: first: true -> false",
 			"first listener: second: true -> false",
@@ -856,6 +907,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void schemaListenerCanBeRemovedFromAnotherThread() throws Exception {
+		// Setup: a schema listener is registered on the current thread.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
@@ -863,17 +915,20 @@ public class ConfigSchemaTest {
 		AtomicInteger notifications = new AtomicInteger();
 		Runnable unsubscribe = schema.addBatchListener(ignored -> notifications.incrementAndGet());
 
+		// Operation: remove the listener from another thread, then change a schema value.
 		try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
 			executor.submit(unsubscribe)
 				.get(5, TimeUnit.SECONDS);
 		}
 		assertTrue(enabled.set(false));
 
+		// Assertions: cross-thread removal completes before notification dispatch.
 		assertEquals(0, notifications.get());
 	}
 
 	@Test
 	public void concurrentSchemaBatchesRemainAtomic() throws Exception {
+		// Setup: two threads will replace the same pair of values with distinct complete batches.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Integer> first = builder.addInteger("first", 0, 0, 2)
 			.build();
@@ -886,6 +941,7 @@ public class ConfigSchemaTest {
 			.toList()));
 		CountDownLatch start = new CountDownLatch(1);
 
+		// Operation: release both batches together and wait for them to finish.
 		try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
 			Future<?> firstBatch = executor.submit(() -> {
 				awaitLatch(start);
@@ -906,6 +962,7 @@ public class ConfigSchemaTest {
 			secondBatch.get(5, TimeUnit.SECONDS);
 		}
 
+		// Assertions: listeners see two complete batches and final values come from one whole submitted batch.
 		assertEquals(2, notifiedBatches.size());
 		assertTrue(notifiedBatches.stream().allMatch(names -> names.equals(List.of("first", "second"))));
 		assertEquals(first.get(), second.get());
@@ -914,6 +971,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void schemaListenerFailuresAreIsolatedAfterPersistenceIsScheduled(@TempDir Path tempDir) {
+		// Setup: persistence and two schema listeners are observable, with the first listener throwing.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
@@ -933,8 +991,10 @@ public class ConfigSchemaTest {
 		});
 		schema.addBatchListener(ignored -> laterNotifications.incrementAndGet());
 
+		// Operation: change a value and dispatch persistence plus both listeners.
 		assertDoesNotThrow(() -> assertTrue(enabled.set(false)));
 
+		// Assertions: persistence is scheduled first and the later listener survives the earlier failure.
 		assertEquals(1, scheduledSaves.get());
 		assertEquals(1, laterNotifications.get());
 	}
@@ -968,6 +1028,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void gameRestartValuePersistsPendingSelectionUntilNextSchemaLoad(@TempDir Path tempDir) throws IOException {
+		// Setup: a game-restart value loads false and uses a manually controlled delayed-save queue.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[category]",
@@ -990,26 +1051,32 @@ public class ConfigSchemaTest {
 		assertFalse(enabled.getEditorInfo().getPendingValue());
 		AtomicInteger notifications = new AtomicInteger();
 		enabled.addListener(ignored -> notifications.incrementAndGet());
+
+		// Operation: select true without restarting the game.
 		assertTrue(enabled.set(true));
 
+		// Assertions: only pending state changes, and running the save queue persists that selection.
 		assertFalse(enabled.get());
 		assertTrue(enabled.getEditorInfo().getPendingValue());
 		assertEquals(0, notifications.get());
 		runScheduledTasks(scheduledTasks);
 		assertTrue(Files.readString(path).contains("enabled = true"));
 
+		// Operation: construct a fresh schema instance, simulating the next game launch.
 		ConfigCategoryBuilder nextBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> nextEnabled = nextBuilder.addBoolean("enabled", true)
 			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 		createSchema(path, nextBuilder);
 
+		// Assertions: the saved pending selection becomes effective on the new schema.
 		assertTrue(nextEnabled.get());
 		assertTrue(nextEnabled.getEditorInfo().getPendingValue());
 	}
 
 	@Test
 	public void worldRestartPromotesOnlyWorldRestartValues() {
+		// Setup: one world-restart and one game-restart value are observed through schema batch notifications.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> worldValue = builder.addBoolean("worldValue", true)
 			.setRestartRequirement(ConfigValueRestartRequirement.WORLD_RESTART)
@@ -1021,11 +1088,13 @@ public class ConfigSchemaTest {
 		List<String> changes = new ArrayList<>();
 		schema.addBatchListener(applied -> changes.add(formatChanges(applied)));
 
+		// Operation: select false for both values and simulate a world restart.
 		assertTrue(worldValue.get());
 		assertTrue(worldValue.set(false));
 		assertTrue(gameValue.set(false));
 		schema.promotePendingValuesAfterWorldRestart();
 
+		// Assertions: only the world-restart value becomes effective, while both pending selections remain false.
 		assertFalse(worldValue.get());
 		assertFalse(worldValue.getEditorInfo().getPendingValue());
 		assertTrue(gameValue.get());
@@ -1035,6 +1104,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void mixedBatchNotifiesOnlyValuesThatBecomeEffective() {
+		// Setup: one immediate and one game-restart value have effective and pending listeners.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> immediate = builder.addBoolean("immediate", true)
 			.build();
@@ -1053,11 +1123,13 @@ public class ConfigSchemaTest {
 		afterRestart.addPendingBatchListener(changes -> pendingValueBatches.add(formatChanges(changes)));
 		schema.addPendingBatchListener(changes -> pendingSchemaBatches.add(formatChanges(changes)));
 
+		// Operation: update both values in one saved batch.
 		List<? extends IAppliedConfigValueChange<?>> savedChanges = schema.batchUpdate(updater -> {
 			updater.set(immediate, false);
 			updater.set(afterRestart, true);
 		});
 
+		// Assertions: saved changes include both values, while effective listeners receive only the immediate change.
 		assertEquals(2, savedChanges.size());
 		assertFalse(immediate.get());
 		assertFalse(afterRestart.get());
@@ -1073,6 +1145,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void contextReloadNotifiesPendingListenersWithoutPromotingRestartValue(@TempDir Path tempDir) throws IOException {
+		// Setup: a game-restart value has different selections in two world-specific files.
 		Path firstPath = tempDir.resolve("world").resolve("first.ini");
 		Path secondPath = tempDir.resolve("world").resolve("second.ini");
 		Files.createDirectories(firstPath.getParent());
@@ -1090,9 +1163,11 @@ public class ConfigSchemaTest {
 		schema.addPendingBatchListener(changes -> pendingChanges.add(formatChanges(changes)));
 		schema.addBatchListener(ignored -> effectiveNotifications.incrementAndGet());
 
+		// Operation: switch the active world path and reload its file.
 		resolvedPath.set(Optional.of(secondPath));
 		schema.loadIfNeeded();
 
+		// Assertions: pending state and listeners update without changing effective state or notifying effective listeners.
 		assertFalse(enabled.get());
 		assertTrue(enabled.getEditorInfo().getPendingValue());
 		assertEquals(List.of("enabled: false -> true"), pendingChanges);
@@ -1105,6 +1180,7 @@ public class ConfigSchemaTest {
 		ConfigSchemaType type,
 		@TempDir Path tempDir
 	) throws IOException {
+		// Setup: a world-scoped schema loads three restart modes from the first of two world files.
 		Path firstPath = tempDir.resolve("first.ini");
 		Path secondPath = tempDir.resolve("second.ini");
 		Files.write(firstPath, List.of("[category]", "immediate = true", "world = true", "game = true"));
@@ -1136,7 +1212,10 @@ public class ConfigSchemaTest {
 			gameChanges.add(change.newValue());
 		});
 
+		// Operation: leave the first local world.
 		activePath.set(Optional.empty());
+
+		// Assertions: every visible value resets to defaults through one effective and pending batch.
 		assertFalse(game.get());
 		assertFalse(world.get());
 		assertFalse(immediate.get());
@@ -1144,7 +1223,10 @@ public class ConfigSchemaTest {
 		assertEquals(effectiveChanges, pendingChanges);
 		assertEquals(List.of(false), gameChanges);
 
+		// Operation: reactivate the first world.
 		activePath.set(Optional.of(firstPath));
+
+		// Assertions: all stored values return and listener history records the complete transition.
 		assertTrue(game.get());
 		assertTrue(world.get());
 		assertTrue(immediate.get());
@@ -1155,10 +1237,13 @@ public class ConfigSchemaTest {
 		assertEquals(effectiveChanges, pendingChanges);
 		assertEquals(List.of(false, true), gameChanges);
 
+		// Operation: leave again, load the second world, and promote values eligible after a world restart.
 		activePath.set(Optional.empty());
 		schema.loadIfNeeded();
 		activePath.set(Optional.of(secondPath));
 		schema.promotePendingValuesAfterWorldRestart();
+
+		// Assertions: immediate and world values use the second file while the game-restart value retains effective state.
 		assertFalse(immediate.get());
 		assertFalse(world.get());
 		assertTrue(game.get());
@@ -1168,6 +1253,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void remoteActivationNotifiesAgainstDefaultsAfterLeavingLocalWorld(@TempDir Path tempDir) throws IOException {
+		// Setup: a server schema leaves a local world and resets a game-restart value to its default.
 		Path localPath = tempDir.resolve("server.ini");
 		Files.write(localPath, List.of("[category]", "enabled = true"));
 		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.of(localPath));
@@ -1185,14 +1271,17 @@ public class ConfigSchemaTest {
 		List<String> changes = new ArrayList<>();
 		schema.addBatchListener(batch -> changes.add(formatChanges(batch)));
 
+		// Operation: activate the schema from a remote authoritative snapshot.
 		schema.applyRemoteSnapshot(List.of(new ServerConfigValueData("category", "enabled", "true")));
 
+		// Assertions: remote activation changes effective state from the reset default and reports that transition.
 		assertTrue(enabled.get());
 		assertEquals(List.of("enabled: false -> true"), changes);
 	}
 
 	@Test
 	public void layeredSchemaLoadsPlayerValuesOverPackDefaults(@TempDir Path tempDir) throws IOException {
+		// Setup: a pack default defines two values and a player layer overrides only one.
 		Path defaultPath = tempDir.resolve("test.ini");
 		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("test.ini");
 		Files.write(defaultPath, List.of(
@@ -1210,6 +1299,8 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
 			.build();
+
+		// Operation: build and load the layered schema.
 		ConfigSchema schema = createSchema(
 			new LayeredConfigSchemaPathResolver(
 				defaultPath,
@@ -1218,6 +1309,7 @@ public class ConfigSchemaTest {
 			builder
 		);
 
+		// Assertions: missing player data falls through to the pack while the active path remains player-owned.
 		assertFalse(enabled.get());
 		assertEquals(3, count.get());
 		assertEquals(Optional.of(playerPath), schema.getPath());
@@ -1225,6 +1317,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void layeredSchemaCreatesDefaultAndWritesChangesOnlyForPlayer(@TempDir Path tempDir) throws IOException {
+		// Setup: a new layered schema queues saves for explicit execution.
 		Path defaultPath = tempDir.resolve("test.ini");
 		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("test.ini");
 		Deque<Runnable> scheduledTasks = new ArrayDeque<>();
@@ -1244,15 +1337,19 @@ public class ConfigSchemaTest {
 			}
 		);
 
+		// Operation: register the schema and run its initial save task.
 		schema.register(null, false);
 		runScheduledTasks(scheduledTasks);
 
+		// Assertions: registration creates only the distributable pack default.
 		assertTrue(Files.readString(defaultPath).contains("enabled = true"));
 		assertFalse(Files.exists(playerPath));
 
+		// Operation: change the value and run its delayed save.
 		assertTrue(enabled.set(false));
 		runScheduledTasks(scheduledTasks);
 
+		// Assertions: user changes write to the player layer without altering the pack default.
 		assertTrue(Files.readString(defaultPath).contains("enabled = true"));
 		assertTrue(Files.readString(playerPath).contains("enabled = false"));
 	}
@@ -1284,7 +1381,7 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
-	public void serverSnapshotIsAuthoritativeEffectiveStateAndDirectUpdatesAreRejected() {
+	public void serverSnapshotIsAuthoritativeEffectiveStateAndRejectsDirectUpdates() {
 		// Setup: a client has registered the shape of a server schema, but has no server values before synchronization.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
@@ -1300,9 +1397,6 @@ public class ConfigSchemaTest {
 			"%s -> %s".formatted(change.oldValue(), change.newValue())
 		));
 
-		assertEquals(ConfigSchemaType.SERVER, schema.getType());
-		assertFalse(schema.isActive());
-
 		// Operation: the server supplies the complete effective state.
 		List<ServerConfigValueData> snapshot = List.of(
 			new ServerConfigValueData("category", "enabled", "false"),
@@ -1313,6 +1407,7 @@ public class ConfigSchemaTest {
 		schema.applyRemoteSnapshot(snapshot);
 
 		// Assertions: synchronized values are active, pathless, and expose no separate editor-only pending state.
+		assertEquals(ConfigSchemaType.SERVER, schema.getType());
 		assertTrue(schema.isActive());
 		assertEquals(Optional.empty(), schema.getPath());
 		assertFalse(enabled.get());
@@ -1322,6 +1417,21 @@ public class ConfigSchemaTest {
 		assertEquals(List.of("true -> false"), pendingRestartChanges);
 		assertThrows(IllegalStateException.class, () -> enabled.set(true));
 		assertFalse(enabled.get());
+	}
+
+	@Test
+	public void malformedServerSnapshotDoesNotApplyAnyValues() {
+		// Setup: a remote schema has already applied a valid authoritative snapshot.
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
+			.build();
+		ConfigSchema schema = createRemoteServerSchema(builder);
+		schema.applyRemoteSnapshot(List.of(
+			new ServerConfigValueData("category", "enabled", "false"),
+			new ServerConfigValueData("category", "count", "3")
+		));
 
 		// Operation: a malformed later snapshot is rejected as one batch.
 		assertThrows(IllegalArgumentException.class, () -> schema.applyRemoteSnapshot(List.of(
@@ -1332,6 +1442,29 @@ public class ConfigSchemaTest {
 		// Assertions: no value from the malformed snapshot was applied.
 		assertFalse(enabled.get());
 		assertEquals(3, count.get());
+	}
+
+	@Test
+	public void missingServerSnapshotValuesUseDeclaredDefaults() {
+		// Setup: a remote schema has non-default authoritative values from an earlier complete snapshot.
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
+			.build();
+		ConfigValue<Boolean> afterRestart = builder.addBoolean("afterRestart", true)
+			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
+			.build();
+		ConfigSchema schema = createRemoteServerSchema(builder);
+		schema.applyRemoteSnapshot(List.of(
+			new ServerConfigValueData("category", "enabled", "false"),
+			new ServerConfigValueData("category", "count", "3"),
+			new ServerConfigValueData("category", "afterRestart", "false")
+		));
+		List<String> pendingRestartChanges = new ArrayList<>();
+		afterRestart.addPendingListener(change -> pendingRestartChanges.add(
+			"%s -> %s".formatted(change.oldValue(), change.newValue())
+		));
 
 		// Operation: an older server sends no value for a setting only this client knows.
 		schema.applyRemoteSnapshot(List.of(
@@ -1341,11 +1474,14 @@ public class ConfigSchemaTest {
 		// Assertions: known synchronized values apply and missing values safely use their declared defaults.
 		assertTrue(enabled.get());
 		assertEquals(1, count.get());
-		assertEquals(List.of("true -> false", "false -> true"), pendingRestartChanges);
+		assertTrue(afterRestart.get());
+		assertTrue(afterRestart.getEditorInfo().getPendingValue());
+		assertEquals(List.of("false -> true"), pendingRestartChanges);
 	}
 
 	@Test
 	public void remoteSnapshotListenersRunOnTheApplyingThread() throws Exception {
+		// Setup: a remote server schema records the thread used by its value listener.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
@@ -1353,6 +1489,7 @@ public class ConfigSchemaTest {
 		AtomicReference<Thread> listenerThread = new AtomicReference<>();
 		enabled.addListener(ignored -> listenerThread.set(Thread.currentThread()));
 
+		// Operation: apply the remote snapshot from a dedicated executor thread.
 		try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
 			Future<Thread> update = executor.submit(() -> {
 				Thread applyingThread = Thread.currentThread();
@@ -1362,12 +1499,14 @@ public class ConfigSchemaTest {
 				return applyingThread;
 			});
 
+			// Assertions: listener dispatch stays synchronous on the applying thread.
 			assertSame(update.get(5, TimeUnit.SECONDS), listenerThread.get());
 		}
 	}
 
 	@Test
 	public void malformedRemoteSerializerValueRejectsTheWholeSnapshot() {
+		// Setup: one remote value makes its serializer throw while a neighboring value is valid.
 		IConfigValueSerializer<String> throwingSerializer = new IConfigValueSerializer<>() {
 			@Override
 			public String serialize(String value) {
@@ -1399,11 +1538,13 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createRemoteServerSchema(builder);
 
+		// Operation: apply a snapshot containing both values.
 		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> schema.applyRemoteSnapshot(List.of(
 			new ServerConfigValueData("category", "text", "boom"),
 			new ServerConfigValueData("category", "enabled", "false")
 		)));
 
+		// Assertions: the error is bounded at the snapshot boundary and no value or activation state changes.
 		assertTrue(exception.getMessage().contains("failed to deserialize"));
 		assertEquals("default", text.get());
 		assertTrue(enabled.get());
@@ -1412,6 +1553,7 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void serverSynchronizationPreservesStructuredListValues(@TempDir Path tempDir) {
+		// Setup: source and remote schemas share nested list types with delimiter-sensitive effective and pending data.
 		List<String> effectiveStrings = List.of("a,b", "", " surrounding ", "[brackets]", "\"quoted\"");
 		List<String> pendingStrings = List.of("next,value", "", " pending whitespace ");
 		List<List<String>> effectiveNested = List.of(List.of("first,entry", ""), List.of(" nested "));
@@ -1444,8 +1586,10 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema targetSchema = createRemoteServerSchema(targetBuilder);
 
+		// Operation: serialize the source's effective server state and apply it to the remote schema.
 		targetSchema.applyRemoteSnapshot(sourceSchema.serializeValues());
 
+		// Assertions: nested boundaries and strings survive synchronization as authoritative effective and pending state.
 		assertEquals(effectiveStrings, targetStrings.get());
 		assertEquals(effectiveStrings, targetStrings.getEditorInfo().getPendingValue());
 		assertEquals(effectiveNested, targetNested.get());
@@ -1576,14 +1720,17 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void buildCategoryRequiresValuesToBeBuilt() {
+		// Setup: a category has a declared value builder that was never finalized.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		builder.addBoolean("enabled", true);
 
+		// Operation and assertions: schema creation rejects unfinished value declarations.
 		assertThrows(IllegalStateException.class, () -> createSchema(builder));
 	}
 
 	@Test
 	public void categoryValuesAreAnImmutableBuilderOrderedList() {
+		// Setup: three different value types are built in a known category order.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> first = builder.addBoolean("first", true)
 			.build();
@@ -1594,32 +1741,40 @@ public class ConfigSchemaTest {
 		IConfigCategory category = createSchema(builder).getCategories()
 			.getFirst();
 
+		// Operation: obtain the category's public value collection.
 		List<? extends IConfigValue<?>> values = category.getConfigValues();
 
+		// Assertions: declaration order is stable and callers cannot mutate the collection.
 		assertEquals(List.of(first, second, third), values);
 		assertThrows(UnsupportedOperationException.class, values::clear);
 	}
 
 	@Test
 	public void addIntegerRejectsInvalidDefaultsAndRanges() {
+		// Setup: a category builder is ready to declare bounded integers.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 
+		// Operation and assertions: values above the bound and reversed ranges are rejected at declaration time.
 		assertThrows(IllegalArgumentException.class, () -> builder.addInteger("tooHigh", 11, 0, 10));
 		assertThrows(IllegalArgumentException.class, () -> builder.addInteger("invalidRange", 1, 10, 0));
 	}
 
 	@Test
 	public void addLongRejectsInvalidDefaultsAndRanges() {
+		// Setup: a category builder is ready to declare bounded longs.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 
+		// Operation and assertions: values above the bound and reversed ranges are rejected at declaration time.
 		assertThrows(IllegalArgumentException.class, () -> builder.addLong("tooHigh", 11L, 0L, 10L));
 		assertThrows(IllegalArgumentException.class, () -> builder.addLong("invalidRange", 1L, 10L, 0L));
 	}
 
 	@Test
 	public void addDoubleRejectsInvalidDefaultsAndRanges() {
+		// Setup: a category builder is ready to declare bounded and unbounded doubles.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 
+		// Operation and assertions: out-of-range, reversed-range, and non-finite declarations are rejected.
 		assertThrows(IllegalArgumentException.class, () -> builder.addDouble("tooHigh", 11.0, 0.0, 10.0));
 		assertThrows(IllegalArgumentException.class, () -> builder.addDouble("invalidRange", 1.0, 10.0, 0.0));
 		assertThrows(IllegalArgumentException.class, () -> builder.addDouble("infiniteDefault", Double.POSITIVE_INFINITY));
@@ -1627,8 +1782,10 @@ public class ConfigSchemaTest {
 
 	@Test
 	public void addRestrictedEnumRejectsInvalidDefaultsAndValidValueLists() {
+		// Setup: a category builder is ready to declare restricted scalar and list enums.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 
+		// Operation and assertions: exclusions of the default and empty valid-value domains are rejected.
 		assertThrows(IllegalArgumentException.class, () -> builder.addEnum("invalidDefault", TestMode.ADVANCED, List.of(TestMode.STANDARD)));
 		assertThrows(IllegalArgumentException.class, () -> builder.addEnum("emptyValidValues", TestMode.STANDARD, List.of()));
 		assertThrows(IllegalArgumentException.class, () -> builder.addEnumList("emptyListValidValues", List.<TestMode>of(), List.of()));

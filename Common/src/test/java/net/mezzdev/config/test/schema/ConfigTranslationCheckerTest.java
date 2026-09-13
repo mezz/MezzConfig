@@ -49,14 +49,17 @@ class ConfigTranslationCheckerTest {
 
 	@Test
 	void formatsMissingTranslationsAsLangFileJson() {
+		// Setup: missing localization keys are already in declaration order.
 		List<String> localizationKeys = List.of(
 			"missing.config.general",
 			"missing.config.general.description",
 			"missing.config.general.enabled"
 		);
 
+		// Operation: format the missing keys as a language-file template.
 		String langFileTemplate = ConfigTranslationChecker.createLangFileTemplate(localizationKeys);
 
+		// Assertions: each key becomes an empty JSON entry with stable indentation and comma placement.
 		assertEquals(String.join(
 			"\n",
 			"{",

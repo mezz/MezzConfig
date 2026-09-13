@@ -46,6 +46,7 @@ public class ConfigMigrationTest {
 	@ParameterizedTest
 	@EnumSource(value = ConfigSchemaType.class, names = {"CLIENT_PER_WORLD", "SERVER"})
 	public void migrationWaitsForFirstLocalWorldAndCompletesOnce(ConfigSchemaType type, @TempDir Path configRoot) throws IOException {
+		// Setup: a world-scoped schema declares a legacy migration before any local world path is active.
 		Path legacyPath = configRoot.resolve("legacy.cfg");
 		Files.writeString(legacyPath, "42");
 		Path firstPath = configRoot.resolve("worlds/first.ini");
@@ -60,28 +61,38 @@ public class ConfigMigrationTest {
 		builder.setLegacyMigration(List.of(legacyPath), migrator);
 		ConfigSchema schema = builder.build();
 
+		// Assertions: inactive local state leaves defaults and legacy data untouched.
 		assertEquals(1, count.get());
 		assertEquals(0, migrator.completionCount);
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(legacyPath, 1)));
 		if (type == ConfigSchemaType.SERVER) {
+			// Operation: temporarily activate a server schema from a remote snapshot.
 			schema.applyRemoteSnapshot(List.of(new ServerConfigValueData("general", "count", "7")));
+
+			// Assertions: remote activity does not consume the pending local migration.
 			assertEquals(7, count.get());
 			schema.clearRemoteSnapshot();
 			assertEquals(0, migrator.completionCount);
 		}
 
+		// Operation: activate and load the first local world path.
 		activePath.set(Optional.of(firstPath));
 		schema.loadIfNeeded();
+
+		// Assertions: migration applies once, records its destination, and backs up the selected legacy file.
 		assertEquals(42, count.get());
 		assertEquals(ConfigMigrationStatus.MIGRATED, migrator.getResult().getStatus());
 		assertEquals(firstPath, migrator.getResult().getDestinationPath().orElseThrow());
 		assertTrue(Files.isRegularFile(firstPath));
 		assertEquals("42", Files.readString(ConfigFileUtil.getBackupPath(legacyPath, 1)));
 
+		// Operation: leave the world and activate a second local world path.
 		activePath.set(Optional.empty());
 		schema.loadIfNeeded();
 		activePath.set(Optional.of(configRoot.resolve("worlds/second.ini")));
 		schema.loadIfNeeded();
+
+		// Assertions: later worlds use defaults because migration already completed exactly once.
 		assertEquals(1, count.get());
 		assertEquals(1, migrations.get());
 		assertEquals(1, migrator.completionCount);
@@ -90,6 +101,7 @@ public class ConfigMigrationTest {
 	@ParameterizedTest
 	@EnumSource(value = ConfigSchemaType.class, names = {"CLIENT_PER_WORLD", "SERVER"})
 	public void alternateSourcesWaitForWorldActivation(ConfigSchemaType type, @TempDir Path configRoot) throws IOException {
+		// Setup: a world-scoped schema declares an alternate config source while no world path is active.
 		Path legacyPath = configRoot.resolve("legacy.ini");
 		Files.writeString(legacyPath, "[general]\noldCount = 42\n");
 		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.empty());
@@ -98,13 +110,17 @@ public class ConfigMigrationTest {
 			.addLegacyName("oldCount").build();
 		builder.setLegacySources(List.of(legacyPath));
 		ConfigSchema schema = builder.build();
+
+		// Assertions: declaration alone keeps defaults and does not back up the alternate source.
 		assertEquals(1, count.get());
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(legacyPath, 1)));
 
+		// Operation: activate the first local world and load the schema.
 		Path destinationPath = configRoot.resolve("worlds/first.ini");
 		activePath.set(Optional.of(destinationPath));
 		schema.loadIfNeeded();
 
+		// Assertions: the declared legacy name migrates into the new file and the source is backed up.
 		assertEquals(42, count.get());
 		assertTrue(Files.readString(destinationPath).contains("count = 42"));
 		assertTrue(Files.isRegularFile(ConfigFileUtil.getBackupPath(legacyPath, 1)));
@@ -112,6 +128,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void permanentlyInactiveDeclarationCompletesWithoutReadingLegacyFile(@TempDir Path configRoot) throws IOException {
+		// Setup: a permanently inactive client schema declares a migration from an existing legacy file.
 		Path legacyPath = configRoot.resolve("legacy.cfg");
 		Files.writeString(legacyPath, "42");
 		ConfigFileWatcherSettings disabled = ConfigFileWatcherSettings.clientDefaults().withEnabled(false);
@@ -124,8 +141,11 @@ public class ConfigMigrationTest {
 		RecordingMigrator migrator = new RecordingMigrator((path, context) -> migrated.set(true));
 		builder.setLegacyMigration(List.of(legacyPath), migrator);
 		ConfigSchema schema = builder.build();
+
+		// Operation: ask the inactive schema to load.
 		schema.loadIfNeeded();
 
+		// Assertions: migration completes as skipped without invoking the callback or touching legacy data.
 		assertEquals(1, count.get());
 		assertFalse(migrated.get());
 		assertEquals(ConfigMigrationStatus.SKIPPED_INACTIVE, migrator.getResult().getStatus());
@@ -152,6 +172,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void migratesFirstExistingLegacyFileAsOneTypedTransaction(@TempDir Path configRoot) throws IOException {
+		// Setup: several candidate legacy files feed both a typed config value and a saved sorting order.
 		Path missingLegacyPath = configRoot.resolve("old/missing.cfg");
 		Path selectedLegacyPath = configRoot.resolve("old/selected.cfg");
 		Path laterLegacyPath = configRoot.resolve("old/later.cfg");
@@ -181,8 +202,10 @@ public class ConfigMigrationTest {
 		);
 		builder.setLegacyMigration(List.of(missingLegacyPath, selectedLegacyPath, laterLegacyPath), migrator);
 
+		// Operation: build the schema, which runs migration before loading its new destination.
 		builder.build();
 
+		// Assertions: the first existing source updates both targets atomically and is backed up before the callback.
 		assertFalse(enabled.get());
 		assertTrue(backupExistedDuringCallback.get());
 		assertEquals(
@@ -204,6 +227,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void alternateSourcesUseDeclaredValueMappings(@TempDir Path configRoot) throws IOException {
+		// Setup: an alternate config source contains direct, renamed, and custom-converted legacy values.
 		Path missingLegacyPath = configRoot.resolve("old/missing.ini");
 		Path selectedLegacyPath = configRoot.resolve("old/selected.ini");
 		Path laterLegacyPath = configRoot.resolve("old/later.ini");
@@ -231,8 +255,10 @@ public class ConfigMigrationTest {
 			.build();
 		builder.setLegacySources(List.of(missingLegacyPath, selectedLegacyPath, laterLegacyPath));
 
+		// Operation: build the new schema and import from the first existing alternate source.
 		builder.build();
 
+		// Assertions: declared mappings migrate into current names while legacy structure stays out of the destination.
 		assertFalse(enabled.get());
 		assertEquals("imported", name.get());
 		assertEquals(7, count.get());
@@ -249,6 +275,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void malformedAlternateSourcePreservesDefaultsAndDoesNotCreateDestination(@TempDir Path configRoot) throws IOException {
+		// Setup: the only alternate source contains malformed UTF-8.
 		Path legacyPath = configRoot.resolve("old/client.ini");
 		Files.createDirectories(legacyPath.getParent());
 		byte[] malformedContents = {(byte) 0xC3, (byte) 0x28};
@@ -261,8 +288,10 @@ public class ConfigMigrationTest {
 			.build();
 		builder.setLegacySources(List.of(legacyPath));
 
+		// Operation: build the schema and attempt automatic alternate-source migration.
 		builder.build();
 
+		// Assertions: defaults remain, no destination is published, and the malformed source is backed up byte-for-byte.
 		assertTrue(enabled.get());
 		assertFalse(Files.exists(getClientPath(configRoot, "client.ini")));
 		assertEquals(-1L, Files.mismatch(legacyPath, ConfigFileUtil.getBackupPath(legacyPath, 1)));
@@ -270,10 +299,12 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void schemaAllowsOnlyOneLegacySourceOrMigrationRegistration(@TempDir Path configRoot) {
+		// Setup: a schema builder already declares automatic alternate sources.
 		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
 		IConfigSchemaBuilder builder = registration.createClientSchemaBuilder("client.ini", "migration_test.client");
 		builder.setLegacySources(List.of(configRoot.resolve("old/client.ini")));
 
+		// Operation and assertions: adding a custom migration is rejected as a conflicting declaration.
 		assertThrows(
 			IllegalStateException.class,
 			() -> builder.setLegacyMigration(List.of(configRoot.resolve("older/client.ini")), (path, context) -> {})
@@ -282,6 +313,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void standaloneSortingMigrationRunsBeforeTheSavedOrderIsLoaded(@TempDir Path configRoot) throws IOException {
+		// Setup: a lazy sorting config declares several legacy candidates before its destination exists.
 		Path missingLegacyPath = configRoot.resolve("old/missing-order.txt");
 		Path selectedLegacyPath = configRoot.resolve("old/selected-order.txt");
 		Path laterLegacyPath = configRoot.resolve("old/later-order.txt");
@@ -308,8 +340,10 @@ public class ConfigMigrationTest {
 		Path destinationPath = getClientPath(configRoot, "sorting.ini");
 		assertFalse(Files.exists(destinationPath));
 
+		// Operation: request sorted values for the first time, triggering migration before normal loading.
 		List<String> sortedValues = sortingConfig.getSortedValues(List.of("first", "second", "third", "fourth"));
 
+		// Assertions: migrated order is active and persisted from the first existing backed-up source.
 		assertEquals(List.of("third", "first", "second", "fourth"), sortedValues);
 		assertTrue(backupExistedDuringCallback.get());
 		assertTrue(Files.isRegularFile(destinationPath));
@@ -325,6 +359,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void existingSortingDestinationSkipsStandaloneMigration(@TempDir Path configRoot) throws IOException {
+		// Setup: both a current sorting destination and an eligible legacy source already exist.
 		Path destinationPath = getClientPath(configRoot, "sorting.ini");
 		Path legacyPath = configRoot.resolve("old/sorting.txt");
 		writeFile(destinationPath, "[visible]\n\\=second\n\\=first\n[hidden]\n");
@@ -340,8 +375,10 @@ public class ConfigMigrationTest {
 		RecordingSortingMigrator<String> migrator = new RecordingSortingMigrator<>((path, context) -> called.set(true));
 		sortingConfig.setLegacyMigration(List.of(legacyPath), migrator);
 
+		// Operation: load the sorting order for the first time.
 		assertEquals(List.of("second", "first"), sortingConfig.getSortedValues(List.of("first", "second")));
 
+		// Assertions: the destination wins without calling migration or inspecting and backing up the legacy file.
 		assertFalse(called.get());
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(legacyPath, 1)));
 		IConfigMigrationResult result = migrator.getResult();
@@ -352,6 +389,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void failedStandaloneSortingMigrationDoesNotCreateAPartialDestination(@TempDir Path configRoot) throws IOException {
+		// Setup: a standalone sorting migration queues an order and then fails while parsing its source.
 		Path legacyPath = configRoot.resolve("old/sorting.txt");
 		String legacyContents = "second\nfirst\n";
 		writeFile(legacyPath, legacyContents);
@@ -368,8 +406,10 @@ public class ConfigMigrationTest {
 		});
 		sortingConfig.setLegacyMigration(List.of(legacyPath), migrator);
 
+		// Operation: request sorted values and trigger the failing migration.
 		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("second", "first")));
 
+		// Assertions: defaults remain, no partial destination exists, and the failure and backup are recorded.
 		assertFalse(Files.exists(getClientPath(configRoot, "sorting.ini")));
 		assertEquals(legacyContents, Files.readString(legacyPath));
 		assertEquals(legacyContents, Files.readString(ConfigFileUtil.getBackupPath(legacyPath, 1)));
@@ -380,6 +420,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void sortingMigrationMustBeRegisteredBeforeTheSavedOrderLoads(@TempDir Path configRoot) {
+		// Setup: a sorting config has already performed its first lazy load.
 		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
 		ISortingConfig<String> sortingConfig = registration.createSortingConfig(
 			"sorting.ini",
@@ -388,6 +429,7 @@ public class ConfigMigrationTest {
 		);
 		sortingConfig.getSortedValues(List.of("first"));
 
+		// Operation and assertions: migration registration is rejected after loading has begun.
 		assertThrows(
 			IllegalStateException.class,
 			() -> sortingConfig.setLegacyMigration(
@@ -399,6 +441,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void callbackFailurePreservesAllExistingAndQueuedState(@TempDir Path configRoot) throws IOException {
+		// Setup: a migration queues schema and sorting changes, then throws over existing sorting state.
 		Path legacyPath = configRoot.resolve("old/client.cfg");
 		String legacyContents = "legacy input";
 		writeFile(legacyPath, legacyContents);
@@ -428,8 +471,10 @@ public class ConfigMigrationTest {
 		});
 		builder.setLegacyMigration(List.of(legacyPath), migrator);
 
+		// Operation: build the schema and run the failing transactional callback.
 		builder.build();
 
+		// Assertions: no queued change or partial destination survives, while failure details and backup are retained.
 		assertTrue(enabled.get());
 		assertFalse(Files.exists(getClientPath(configRoot, "client.ini")));
 		assertEquals(sortingContents, Files.readString(sortingPath));
@@ -448,6 +493,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void invalidTypedUpdateFailsBeforeCreatingTheDestination(@TempDir Path configRoot) throws IOException {
+		// Setup: a migration tries to set a bounded integer outside its valid range.
 		Path legacyPath = configRoot.resolve("old/client.cfg");
 		writeFile(legacyPath, "invalid migrated value");
 
@@ -459,8 +505,10 @@ public class ConfigMigrationTest {
 		RecordingMigrator migrator = new RecordingMigrator((path, context) -> context.set(bounded, 11));
 		builder.setLegacyMigration(List.of(legacyPath), migrator);
 
+		// Operation: build the schema and run the invalid typed migration.
 		builder.build();
 
+		// Assertions: defaults remain, no destination is created, and the typed failure is recorded after backup.
 		assertEquals(5, bounded.get());
 		assertFalse(Files.exists(getClientPath(configRoot, "client.ini")));
 		IConfigMigrationResult result = migrator.getResult();
@@ -471,6 +519,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void existingDestinationSkipsMigrationWithoutInspectingLegacyFiles(@TempDir Path configRoot) throws IOException {
+		// Setup: a current destination and a custom migration's legacy source both exist.
 		Path destination = getClientPath(configRoot, "client.ini");
 		Path legacyPath = configRoot.resolve("old/client.cfg");
 		writeEnabled(destination, false);
@@ -485,8 +534,10 @@ public class ConfigMigrationTest {
 		RecordingMigrator migrator = new RecordingMigrator((path, context) -> called.set(true));
 		builder.setLegacyMigration(List.of(legacyPath), migrator);
 
+		// Operation: build and load the schema.
 		builder.build();
 
+		// Assertions: current data loads and migration reports a skip without reading or backing up legacy data.
 		assertFalse(called.get());
 		assertFalse(enabled.get());
 		IConfigMigrationResult result = migrator.getResult();
@@ -498,6 +549,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void existingDestinationDoesNotRunAlternateSourceValueMigration(@TempDir Path configRoot) throws IOException {
+		// Setup: a current destination exists alongside an alternate source with a custom value conversion.
 		Path destination = getClientPath(configRoot, "client.ini");
 		Path legacyPath = configRoot.resolve("old/client.ini");
 		writeEnabled(destination, false);
@@ -520,8 +572,10 @@ public class ConfigMigrationTest {
 			.build();
 		builder.setLegacySources(List.of(legacyPath));
 
+		// Operation: build and load the schema.
 		builder.build();
 
+		// Assertions: the destination wins without invoking conversions or backing up the alternate source.
 		assertFalse(called.get());
 		assertFalse(enabled.get());
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(legacyPath, 1)));
@@ -529,6 +583,7 @@ public class ConfigMigrationTest {
 
 	@Test
 	public void missingLegacyFilesReturnSkippedResultAndCreateDefaults(@TempDir Path configRoot) {
+		// Setup: a new schema declares a migration whose only legacy candidate is missing.
 		Path missingLegacyPath = configRoot.resolve("old/missing.cfg");
 		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
 		IConfigSchemaBuilder builder = registration.createClientSchemaBuilder("client.ini", "migration_test.client");
@@ -538,8 +593,10 @@ public class ConfigMigrationTest {
 		RecordingMigrator migrator = new RecordingMigrator((path, context) -> {});
 		builder.setLegacyMigration(List.of(missingLegacyPath), migrator);
 
+		// Operation: build the schema and attempt migration.
 		builder.build();
 
+		// Assertions: migration reports the missing source and creates only the normal pack default.
 		IConfigMigrationResult result = migrator.getResult();
 		assertEquals(ConfigMigrationStatus.SKIPPED_NO_LEGACY_FILE, result.getStatus());
 		assertTrue(result.getLegacyPath().isEmpty());

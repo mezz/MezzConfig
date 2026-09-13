@@ -25,6 +25,7 @@ public class ConfigFileValueAdapterTest {
 
 	@Test
 	public void throwingDeserializerBecomesABoundedFailure() {
+		// Setup: a custom serializer throws an excessively long exception for external input.
 		IConfigValueSerializer<String> serializer = serializer(
 			value -> value,
 			value -> {
@@ -33,8 +34,10 @@ public class ConfigFileValueAdapterTest {
 			value -> true
 		);
 
+		// Operation: deserialize the external value through the file adapter.
 		IDeserializeResult<String> result = ConfigFileValueAdapter.deserializeScalar(serializer, "external input");
 
+		// Assertions: the exception becomes one bounded diagnostic instead of escaping.
 		assertTrue(result.getResult().isEmpty());
 		assertEquals(1, result.getDiagnostics().size());
 		assertTrue(result.getDiagnostics().getFirst().startsWith("Config serializer failed to deserialize"));
@@ -43,6 +46,7 @@ public class ConfigFileValueAdapterTest {
 
 	@Test
 	public void successfulInvalidDeserializerResultIsRejected() {
+		// Setup: two serializers return invalid values as complete and partial successes.
 		IConfigValueSerializer<String> successfulSerializer = serializer(
 			value -> value,
 			value -> IDeserializeResult.success("invalid"),
@@ -54,9 +58,11 @@ public class ConfigFileValueAdapterTest {
 			"valid"::equals
 		);
 
+		// Operation: deserialize the same external input through both serializers.
 		IDeserializeResult<String> successfulResult = ConfigFileValueAdapter.deserializeScalar(successfulSerializer, "external input");
 		IDeserializeResult<String> partialResult = ConfigFileValueAdapter.deserializeScalar(partialSerializer, "external input");
 
+		// Assertions: invalid results are rejected while existing partial-success diagnostics are retained.
 		assertTrue(successfulResult.getResult().isEmpty());
 		assertTrue(successfulResult.getDiagnostics().getFirst().contains("reports as invalid"));
 		assertTrue(partialResult.getResult().isEmpty());
@@ -67,6 +73,7 @@ public class ConfigFileValueAdapterTest {
 
 	@Test
 	public void serializerContractIsCheckedBeforeAValueIsBuilt() {
+		// Setup: serializers violate determinism, round-trip, and exception-safety requirements.
 		AtomicInteger serializations = new AtomicInteger();
 		IConfigValueSerializer<String> nonDeterministic = serializer(
 			value -> value + serializations.incrementAndGet(),
@@ -86,6 +93,7 @@ public class ConfigFileValueAdapterTest {
 			value -> true
 		);
 
+		// Operation: try to build config values with each invalid serializer.
 		IllegalArgumentException nonDeterministicFailure = assertThrows(
 			IllegalArgumentException.class,
 			() -> new ConfigValue<>(LOCALIZATION_PATH, "nonDeterministic", "default", nonDeterministic)
@@ -99,6 +107,7 @@ public class ConfigFileValueAdapterTest {
 			() -> new ConfigValue<>(LOCALIZATION_PATH, "throwing", "default", throwing)
 		);
 
+		// Assertions: every contract violation is rejected as a round-trip failure.
 		assertTrue(nonDeterministicFailure.getMessage().contains("cannot round-trip"));
 		assertTrue(lossyFailure.getMessage().contains("cannot round-trip"));
 		assertTrue(throwingFailure.getMessage().contains("cannot round-trip"));
@@ -106,6 +115,7 @@ public class ConfigFileValueAdapterTest {
 
 	@Test
 	public void laterSerializationFailureRejectsUpdateBeforeMutation() {
+		// Setup: a serializer passes construction validation but becomes unavailable later.
 		AtomicBoolean serializationFails = new AtomicBoolean();
 		IConfigValueSerializer<String> serializer = serializer(
 			value -> {
@@ -120,14 +130,17 @@ public class ConfigFileValueAdapterTest {
 		ConfigValue<String> value = new ConfigValue<>(LOCALIZATION_PATH, "value", "original", serializer);
 		serializationFails.set(true);
 
+		// Operation: attempt to update the value after serialization starts failing.
 		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> value.set("updated"));
 
+		// Assertions: the invalid update is rejected before the original value changes.
 		assertTrue(exception.getMessage().contains("cannot round-trip"));
 		assertEquals("original", value.get());
 	}
 
 	@Test
 	public void fileLoadPreservesValidNeighborsWhenOneDeserializerThrows(@TempDir Path tempDir) throws IOException {
+		// Setup: one stored value makes its serializer throw while a neighboring value is valid.
 		Path path = tempDir.resolve("test.ini");
 		Files.writeString(path, "[general]\nbad = boom\ngood = false\n");
 		IConfigValueSerializer<String> serializer = serializer(
@@ -144,8 +157,10 @@ public class ConfigFileValueAdapterTest {
 		ConfigValue<Boolean> good = new ConfigValue<>(LOCALIZATION_PATH, "good", true, BooleanSerializer.INSTANCE);
 		ConfigCategory category = new ConfigCategory(LOCALIZATION_PATH, "general", List.of(bad, good));
 
+		// Operation: load both values from the same config category.
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
+		// Assertions: the bad value falls back, the good value loads, and the damaged file is backed up.
 		assertEquals("default", bad.get());
 		assertFalse(good.get());
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));

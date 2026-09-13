@@ -118,16 +118,21 @@ public class SortingConfigTest {
 
 	@Test
 	public void inMemoryConfigRetainsChangesWithoutPersistence() {
+		// Setup: a removable sorting config has no backing file.
 		SortingConfig<String> sortingConfig = createInMemorySortingConfig(Comparator.naturalOrder(), true);
 
+		// Operation: read defaults, then save a custom order that hides one value.
 		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("second", "first")));
 		assertTrue(sortingConfig.setSortedValues(List.of("first", "second"), List.of("second")));
+
+		// Assertions: the custom order and visibility remain available from memory.
 		assertEquals(List.of("second"), sortingConfig.getSortedValues(List.of("first", "second")));
 		assertFalse(sortingConfig.isVisible(List.of("first", "second"), "first"));
 	}
 
 	@Test
 	public void concurrentUpdatesLeaveACompleteSortOrder() throws Exception {
+		// Setup: two threads will replace the same initialized in-memory order at the same time.
 		SortingConfig<String> sortingConfig = createInMemorySortingConfig(Comparator.naturalOrder(), false);
 		List<String> allValues = List.of("first", "second", "third");
 		List<String> firstOrder = List.of("second", "first", "third");
@@ -137,6 +142,7 @@ public class SortingConfigTest {
 		sortingConfig.addChangeListener(notifications::incrementAndGet);
 		CountDownLatch start = new CountDownLatch(1);
 
+		// Operation: release both updates together and wait for each to complete.
 		try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
 			Future<Boolean> firstUpdate = executor.submit(() -> {
 				start.await();
@@ -152,6 +158,7 @@ public class SortingConfigTest {
 			assertTrue(secondUpdate.get(5, TimeUnit.SECONDS));
 		}
 
+		// Assertions: both committed updates notify, and final state is one complete submitted order.
 		assertEquals(2, notifications.get());
 		List<String> savedOrder = sortingConfig.getSortedValues(allValues);
 		assertTrue(savedOrder.equals(firstOrder) || savedOrder.equals(secondOrder));
@@ -159,12 +166,15 @@ public class SortingConfigTest {
 
 	@Test
 	public void missingValuesAreAppendedUsingDefaultOrder(@TempDir Path tempDir) throws IOException {
+		// Setup: persisted state names only one of three current runtime values.
 		Path path = tempDir.resolve("sort-order.txt");
 		Files.write(path, List.of("[visible]", "\\=second", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 
+		// Operation: reconcile the saved preference with the complete runtime collection.
 		List<String> sortedValues = sortingConfig.getSortedValues(List.of("third", "first", "second"));
 
+		// Assertions: missing values append in default order and the reconciled order persists for reload.
 		assertEquals(List.of("second", "first", "third"), sortedValues);
 		assertEquals("[visible]", Files.readAllLines(path).getFirst());
 		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), false);
@@ -173,26 +183,32 @@ public class SortingConfigTest {
 
 	@Test
 	public void removableConfigShowsNewRuntimeValues(@TempDir Path tempDir) {
+		// Setup: a removable config has no explicit hidden values.
 		Path path = tempDir.resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
 
+		// Operation: query once, then query again after a new runtime value appears.
 		List<String> firstResult = sortingConfig.getSortedValues(List.of("a"));
 		List<String> secondResult = sortingConfig.getSortedValues(List.of("a", "b"));
 
+		// Assertions: previously unseen runtime values remain visible by default.
 		assertEquals(List.of("a"), firstResult);
 		assertEquals(List.of("a", "b"), secondResult);
 	}
 
 	@Test
 	public void removableConfigPersistsHiddenValuesSeparatelyFromNewValues(@TempDir Path tempDir) {
+		// Setup: a removable config starts with two visible values.
 		Path path = tempDir.resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
 		assertEquals(List.of("a", "b"), sortingConfig.getSortedValues(List.of("a", "b")));
 
+		// Operation: hide one known value and later introduce another runtime value.
 		assertTrue(sortingConfig.setSortedValues(List.of("a", "b"), List.of("a")));
 		assertEquals(List.of("a", "c"), sortingConfig.getSortedValues(List.of("a", "b", "c")));
 		assertFalse(sortingConfig.isVisible(List.of("a", "b", "c"), "b"));
 
+		// Assertions: reload preserves explicit hiding while appending newly discovered values as visible.
 		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), true);
 		assertEquals(List.of("a", "c", "d"), reloaded.getSortedValues(List.of("a", "b", "c", "d")));
 		assertFalse(reloaded.isVisible(List.of("a", "b", "c", "d"), "b"));
@@ -200,13 +216,16 @@ public class SortingConfigTest {
 
 	@Test
 	public void savedPreferenceIsReconciledAgainstEveryRuntimeCollection(@TempDir Path tempDir) throws IOException {
+		// Setup: persisted state prefers one value that appears in two different runtime collections.
 		Path path = tempDir.resolve("sort-order.txt");
 		Files.write(path, List.of("[visible]", "\\=second", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 
+		// Operation: reconcile the saved preference against two successive complete collections.
 		List<String> firstResult = sortingConfig.getSortedValues(List.of("third", "first", "second"));
 		List<String> secondResult = sortingConfig.getSortedValues(List.of("fourth", "second"));
 
+		// Assertions: each result is complete, persisted for reload, and exposed as an immutable snapshot.
 		assertEquals(List.of("second", "first", "third"), firstResult);
 		assertEquals(List.of("second", "fourth"), secondResult);
 		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), false);
@@ -216,27 +235,33 @@ public class SortingConfigTest {
 
 	@Test
 	public void duplicatePersistedValuesAreReconciledAndRewritten(@TempDir Path tempDir) throws IOException {
+		// Setup: persisted visible order repeats one serialized value.
 		Path path = tempDir.resolve("sort-order.txt");
 		Files.write(path, List.of("[visible]", "\\=second", "\\=second", "\\=first", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 
+		// Operation: reconcile the malformed saved order with current runtime values.
 		List<String> sortedValues = sortingConfig.getSortedValues(List.of("third", "first", "second"));
 
+		// Assertions: duplicates collapse while missing values append, and corrected state is rewritten once.
 		assertEquals(List.of("second", "first", "third"), sortedValues);
 		assertEquals(1, Files.readAllLines(path).stream().filter("\\=second"::equals).count());
 	}
 
 	@Test
 	public void setSortedValuesWritesFileAndNotifiesListeners(@TempDir Path tempDir) throws IOException {
+		// Setup: a file-backed config has one listener and targets a missing parent directory.
 		Path path = tempDir.resolve("nested").resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 		List<String> notifications = new ArrayList<>();
 		sortingConfig.addChangeListener(() -> notifications.add("changed"));
 
+		// Operation: save a changed order and then submit the same order again.
 		List<String> allValues = List.of("first", "third");
 		boolean changed = sortingConfig.setSortedValues(allValues, List.of("third", "first"));
 		boolean unchanged = sortingConfig.setSortedValues(allValues, List.of("third", "first"));
 
+		// Assertions: only the real change writes durable state and notifies once.
 		assertTrue(changed);
 		assertFalse(unchanged);
 		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), false);
@@ -246,6 +271,7 @@ public class SortingConfigTest {
 
 	@Test
 	public void changeListenerRemovalIsIdempotentForDuplicateRegistrations(@TempDir Path tempDir) {
+		// Setup: the same change listener is registered twice, with the first unsubscribe callback retained.
 		Path path = tempDir.resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 		AtomicInteger notifications = new AtomicInteger();
@@ -253,63 +279,80 @@ public class SortingConfigTest {
 		Runnable unsubscribeFirst = sortingConfig.addChangeListener(listener);
 		sortingConfig.addChangeListener(listener);
 
+		// Operation: invoke the first callback repeatedly and then save a changed order.
 		unsubscribeFirst.run();
 		unsubscribeFirst.run();
 		assertTrue(sortingConfig.setSortedValues(List.of("first", "second"), List.of("second", "first")));
 
+		// Assertions: one registration remains and duplicate unsubscription has no extra effect.
 		assertEquals(1, notifications.get());
 	}
 
 	@Test
 	public void oversizedSortOrderIsRejectedBeforeStateOrFileChanges(@TempDir Path tempDir) {
+		// Setup: one serialized sorting value would make the file exceed its readable byte limit.
 		Path path = tempDir.resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
 		String oversized = "x".repeat(ConfigFileReader.MAX_FILE_BYTES);
 
+		// Operation: try to persist an order containing the oversized value.
 		assertThrows(
 			IllegalArgumentException.class,
 			() -> sortingConfig.setSortedValues(List.of("small", oversized), List.of(oversized, "small"))
 		);
 
+		// Assertions: validation prevents file creation and leaves subsequent in-memory state clean.
 		assertFalse(Files.exists(path));
 		assertEquals(List.of("small"), sortingConfig.getSortedValues(List.of("small")));
 	}
 
 	@Test
 	public void setSortedValuesRejectsDuplicates(@TempDir Path tempDir) {
+		// Setup: a file-backed config receives a proposed order with a duplicate value.
 		Path path = tempDir.resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 
+		// Operation: attempt to save the duplicate order.
 		assertThrows(
 			IllegalArgumentException.class,
 			() -> sortingConfig.setSortedValues(List.of("first"), List.of("first", "first"))
 		);
+
+		// Assertions: invalid order does not create a persistence file.
 		assertFalse(Files.exists(path));
 	}
 
 	@Test
 	public void setSortedValuesRejectsValuesOutsideTheCompleteValueSet(@TempDir Path tempDir) {
+		// Setup: a proposed visible order names a value outside its declared complete runtime set.
 		Path path = tempDir.resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
 
+		// Operation: attempt to save the inconsistent order.
 		assertThrows(
 			IllegalArgumentException.class,
 			() -> sortingConfig.setSortedValues(List.of("first"), List.of("second"))
 		);
+
+		// Assertions: invalid order does not create a persistence file.
 		assertFalse(Files.exists(path));
 	}
 
 	@Test
 	public void setSortedValuesUsesTheSuppliedCompleteValueSetWithoutAPriorRead() {
+		// Setup: a fresh removable in-memory config has never loaded a runtime collection.
 		SortingConfig<String> sortingConfig = createInMemorySortingConfig(Comparator.naturalOrder(), true);
 
+		// Operation: save an order that hides one value from the supplied complete set.
 		assertTrue(sortingConfig.setSortedValues(List.of("first", "second"), List.of("first")));
 
+		// Assertions: the hidden value remains excluded on the first read.
 		assertEquals(List.of("first"), sortingConfig.getSortedValues(List.of("first", "second")));
 	}
 
 	@Test
 	public void throwingListenerDoesNotPreventLaterListeners(@TempDir Path tempDir) throws IOException {
+		// Setup: a failing change listener is registered before a recording listener.
 		Path path = tempDir.resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 		List<String> notifications = new ArrayList<>();
@@ -318,8 +361,10 @@ public class SortingConfigTest {
 		});
 		sortingConfig.addChangeListener(() -> notifications.add("changed"));
 
+		// Operation: save a changed order and dispatch both listeners.
 		boolean changed = sortingConfig.setSortedValues(List.of("first", "second"), List.of("second", "first"));
 
+		// Assertions: persistence succeeds and the later listener still runs after the failure.
 		assertTrue(changed);
 		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), false);
 		assertEquals(List.of("second", "first"), reloaded.getSortedValues(List.of("first", "second")));
@@ -328,13 +373,16 @@ public class SortingConfigTest {
 
 	@Test
 	public void persistedStateEscapesReservedAndBlankValues(@TempDir Path tempDir) {
+		// Setup: runtime values include blank text, a reserved section header, and a leading escape character.
 		Path path = tempDir.resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
 		List<String> allValues = List.of("", "[hidden]", "\\value");
 		assertEquals(allValues, sortingConfig.getSortedValues(allValues));
 
+		// Operation: persist an order that hides the reserved-header value.
 		assertTrue(sortingConfig.setSortedValues(allValues, List.of("", "\\value")));
 
+		// Assertions: reload distinguishes escaped data from syntax and preserves hidden state.
 		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), true);
 		assertEquals(List.of("", "\\value", "new"), reloaded.getSortedValues(List.of("", "[hidden]", "\\value", "new")));
 		assertFalse(reloaded.isVisible(allValues, "[hidden]"));
@@ -342,6 +390,7 @@ public class SortingConfigTest {
 
 	@Test
 	public void persistedStateRoundTripsDelimiterSensitiveStrings(@TempDir Path tempDir) {
+		// Setup: sorting values cover empty, padded, punctuated, quoted, Unicode, and multiline strings.
 		Path path = tempDir.resolve("sort-order.txt");
 		List<String> values = List.of(
 			"",
@@ -355,27 +404,34 @@ public class SortingConfigTest {
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), true);
 		sortingConfig.getSortedValues(values);
 
+		// Operation: persist the sensitive values in their supplied order.
 		assertTrue(sortingConfig.setSortedValues(values, values));
 
+		// Assertions: a fresh config loads every value without changing text or order.
 		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), true);
 		assertEquals(values, reloaded.getSortedValues(values));
 	}
 
 	@Test
 	public void comparatorUsesSavedOrderAndDefaultOrderForUnknownValues(@TempDir Path tempDir) throws IOException {
+		// Setup: persisted state prioritizes one value and natural order applies to values absent from it.
 		Path path = tempDir.resolve("sort-order.txt");
 		Files.write(path, List.of("[visible]", "\\=second", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 		Comparator<String> comparator = sortingConfig.getComparator(List.of("third", "first", "second"));
 
 		List<String> values = new ArrayList<>(List.of("third", "second", "first"));
+
+		// Operation: sort through the config-provided comparator.
 		values.sort(comparator);
 
+		// Assertions: saved indexes win first, followed by unknown values in default order.
 		assertEquals(List.of("second", "first", "third"), values);
 	}
 
 	@Test
 	public void comparatorLooksUpSavedIndexesWithoutLinearScans() {
+		// Setup: separate but equal collections contain one thousand values that count equality checks.
 		AtomicInteger equalityChecks = new AtomicInteger();
 		IConfigValueSerializer<CountingValue> serializer = new IConfigValueSerializer<>() {
 			@Override
@@ -417,8 +473,10 @@ public class SortingConfigTest {
 		Collections.shuffle(valuesToSort, new Random(1));
 		equalityChecks.set(0);
 
+		// Operation: sort the shuffled values with the config comparator.
 		valuesToSort.sort(comparator);
 
+		// Assertions: indexed lookup stays well below quadratic comparisons and produces complete natural order.
 		assertTrue(equalityChecks.get() < 50_000, "Comparator performed linear saved-order scans.");
 		assertEquals(0, valuesToSort.getFirst().id);
 		assertEquals(999, valuesToSort.getLast().id);
@@ -426,18 +484,22 @@ public class SortingConfigTest {
 
 	@Test
 	public void layeredConfigGeneratesPackDefaultWithoutCreatingPlayerFile(@TempDir Path tempDir) throws IOException {
+		// Setup: neither pack-default nor player sorting state exists for a layered config.
 		Path defaultPath = tempDir.resolve("sort-order.txt");
 		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
 		SortingConfig<String> sortingConfig = createSortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
 
+		// Operation: request the initial sorted runtime values.
 		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("second", "first")));
 
+		// Assertions: natural order is written as a pack default without creating a player override.
 		assertEquals(List.of("[visible]", "\\=first", "\\=second", "[hidden]"), Files.readAllLines(defaultPath));
 		assertFalse(Files.exists(playerPath));
 	}
 
 	@Test
 	public void layeredConfigLoadsPlayerOrderWithoutChangingPackDefault(@TempDir Path tempDir) throws IOException {
+		// Setup: pack and player layers contain different saved orders.
 		Path defaultPath = tempDir.resolve("sort-order.txt");
 		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
 		Files.write(defaultPath, List.of("[visible]", "\\=second", "\\=first", "[hidden]"));
@@ -445,15 +507,18 @@ public class SortingConfigTest {
 		Files.write(playerPath, List.of("[visible]", "\\=first", "\\=second", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
 
+		// Operation: load the player order and then reverse it through the public setter.
 		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("first", "second")));
 		assertTrue(sortingConfig.setSortedValues(List.of("first", "second"), List.of("second", "first")));
 
+		// Assertions: updates write only the player layer and leave the pack default intact.
 		assertEquals(List.of("[visible]", "\\=second", "\\=first", "[hidden]"), Files.readAllLines(defaultPath));
 		assertEquals(List.of("[visible]", "\\=second", "\\=first", "[hidden]"), Files.readAllLines(playerPath));
 	}
 
 	@Test
 	public void malformedPlayerFileIsBackedUpAndCorrectedWithoutChangingPackDefault(@TempDir Path tempDir) throws IOException {
+		// Setup: a valid pack default is overlaid by a malformed player order.
 		Path defaultPath = tempDir.resolve("sort-order.txt");
 		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
 		List<String> defaultContents = List.of("[visible]", "\\=second", "\\=first", "[hidden]");
@@ -462,8 +527,10 @@ public class SortingConfigTest {
 		Files.write(playerPath, List.of("[visible]", "\\=first", "\\=\"unterminated", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
 
+		// Operation: load and reconcile the layered sorting config.
 		assertEquals(List.of("first", "second"), sortingConfig.getSortedValues(List.of("first", "second")));
 
+		// Assertions: recovery backs up and corrects only the player layer.
 		assertEquals(defaultContents, Files.readAllLines(defaultPath));
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(defaultPath, 1)));
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(playerPath, 1)));
@@ -472,13 +539,16 @@ public class SortingConfigTest {
 
 	@Test
 	public void malformedPackDefaultIsCorrectedWithoutCreatingPlayerFile(@TempDir Path tempDir) throws IOException {
+		// Setup: the pack default repeats a visible value and no player file exists.
 		Path defaultPath = tempDir.resolve("sort-order.txt");
 		Path playerPath = tempDir.resolve("players").resolve("player-id").resolve("sort-order.txt");
 		Files.write(defaultPath, List.of("[visible]", "\\=second", "\\=second", "\\=first", "[hidden]"));
 		SortingConfig<String> sortingConfig = createSortingConfig(defaultPath, playerPath, Comparator.naturalOrder(), false);
 
+		// Operation: load and reconcile the layered sorting config.
 		assertEquals(List.of("second", "first"), sortingConfig.getSortedValues(List.of("first", "second")));
 
+		// Assertions: recovery backs up and corrects the default without creating a player override.
 		assertFalse(Files.exists(playerPath));
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(defaultPath, 1)));
 		assertEquals(List.of("[visible]", "\\=second", "\\=first", "[hidden]"), Files.readAllLines(defaultPath));
@@ -486,18 +556,22 @@ public class SortingConfigTest {
 
 	@Test
 	public void transientReadFailureDoesNotReplaceOrBackUpPath(@TempDir Path tempDir) throws IOException {
+		// Setup: the sorting path is temporarily a directory instead of a readable file.
 		Path path = tempDir.resolve("sort-order.txt");
 		Files.createDirectory(path);
 		SortingConfig<String> sortingConfig = createSortingConfig(path, Comparator.naturalOrder(), false);
 
+		// Operation: request sorted values while loading the path fails.
 		assertEquals(List.of("first"), sortingConfig.getSortedValues(List.of("first")));
 
+		// Assertions: transient I/O failure leaves the directory intact and creates no recovery backup.
 		assertTrue(Files.isDirectory(path));
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
 	}
 
 	@Test
 	public void genericValuesPersistAndReconcileHiddenValues(@TempDir Path tempDir) {
+		// Setup: a removable integer config starts in natural order.
 		Path path = tempDir.resolve("integer-sort-order.txt");
 		SortingConfig<Integer> sortingConfig = new SortingConfig<>(
 			path,
@@ -507,8 +581,10 @@ public class SortingConfigTest {
 		);
 		assertEquals(List.of(1, 2, 3), sortingConfig.getSortedValues(List.of(3, 1, 2)));
 
+		// Operation: persist a custom order that hides one integer.
 		assertTrue(sortingConfig.setSortedValues(List.of(1, 2, 3), List.of(3, 1)));
 
+		// Assertions: reload keeps the custom order and hiding while appending a new runtime value.
 		SortingConfig<Integer> reloaded = new SortingConfig<>(
 			path,
 			INTEGER_SERIALIZER,
@@ -521,6 +597,7 @@ public class SortingConfigTest {
 
 	@Test
 	public void malformedGenericValuesAreSkippedAndCorrected(@TempDir Path tempDir) throws IOException {
+		// Setup: persisted integer order mixes valid, invalid, unencoded, and hidden entries.
 		Path path = tempDir.resolve("integer-sort-order.txt");
 		Files.write(path, List.of(
 			"[visible]",
@@ -537,6 +614,7 @@ public class SortingConfigTest {
 			true
 		);
 
+		// Operation and assertions: loading keeps valid state, skips malformed values, and rewrites from a backup.
 		assertEquals(List.of(2, 3), sortingConfig.getSortedValues(List.of(1, 2, 3)));
 		assertFalse(sortingConfig.isVisible(List.of(1, 2, 3), 1));
 		assertTrue(Files.isRegularFile(ConfigFileUtil.getBackupPath(path, 1)));
@@ -545,6 +623,7 @@ public class SortingConfigTest {
 
 	@Test
 	public void nonRoundTrippingSortingSerializerIsRejectedBeforeWriting(@TempDir Path tempDir) {
+		// Setup: a serializer maps distinct integers to the same serialized identity.
 		Path path = tempDir.resolve("ambiguous-sort-order.txt");
 		IConfigValueSerializer<Integer> ambiguousSerializer = new IConfigValueSerializer<>() {
 			@Override
@@ -574,12 +653,16 @@ public class SortingConfigTest {
 			false
 		);
 
+		// Operation: try to initialize sorting with colliding serialized values.
 		assertThrows(IllegalArgumentException.class, () -> sortingConfig.getSortedValues(List.of(1, 3)));
+
+		// Assertions: round-trip validation fails before a file is written.
 		assertFalse(Files.exists(path));
 	}
 
 	@Test
 	public void equalSortingValuesMustHaveOneSerializedIdentity(@TempDir Path tempDir) {
+		// Setup: two values compare equal by ID but serialize with different variants.
 		Path path = tempDir.resolve("inconsistent-sort-order.txt");
 		SortingConfig<EquivalentValue> sortingConfig = new SortingConfig<>(
 			path,
@@ -590,7 +673,10 @@ public class SortingConfigTest {
 		EquivalentValue first = new EquivalentValue(1, "1:first");
 		EquivalentValue second = new EquivalentValue(1, "1:second");
 
+		// Operation: try to initialize sorting with inconsistent identities for equal values.
 		assertThrows(IllegalArgumentException.class, () -> sortingConfig.getSortedValues(List.of(first, second)));
+
+		// Assertions: identity validation fails before a file is written.
 		assertFalse(Files.exists(path));
 	}
 

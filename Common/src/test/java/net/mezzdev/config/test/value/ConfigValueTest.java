@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ConfigValueTest {
 	@Test
 	public void setThrowsForInvalidValuesWithoutChangingOrNotifying() {
+		// Setup: a bounded value has one listener and currently holds a valid value.
 		ConfigValue<Integer> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"count",
@@ -31,14 +32,17 @@ public class ConfigValueTest {
 		AtomicInteger notifications = new AtomicInteger();
 		value.addListener(ignored -> notifications.incrementAndGet());
 
+		// Operation: try to set a value above the configured range.
 		assertThrows(IllegalArgumentException.class, () -> value.set(11));
 
+		// Assertions: invalid input leaves state unchanged and emits no notification.
 		assertEquals(5, value.get());
 		assertEquals(0, notifications.get());
 	}
 
 	@Test
 	public void setReturnsFalseForValidUnchangedValues() {
+		// Setup: a bounded value and listener already observe the requested value.
 		ConfigValue<Integer> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"count",
@@ -48,14 +52,17 @@ public class ConfigValueTest {
 		AtomicInteger notifications = new AtomicInteger();
 		value.addListener(ignored -> notifications.incrementAndGet());
 
+		// Operation: set the same valid value again.
 		assertFalse(value.set(5));
 
+		// Assertions: a no-op retains state and emits no notification.
 		assertEquals(5, value.get());
 		assertEquals(0, notifications.get());
 	}
 
 	@Test
 	public void setNotifiesListenerWithAppliedChange() {
+		// Setup: a listener records the old and new values of each applied change.
 		ConfigValue<Integer> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"count",
@@ -65,13 +72,16 @@ public class ConfigValueTest {
 		List<String> changes = new ArrayList<>();
 		value.addListener(change -> changes.add("%s -> %s".formatted(change.oldValue(), change.newValue())));
 
+		// Operation: set a different valid value.
 		assertTrue(value.set(7));
 
+		// Assertions: the listener receives the applied transition once.
 		assertEquals(List.of("5 -> 7"), changes);
 	}
 
 	@Test
 	public void restartRequiredSetNotifiesOnlyPendingListeners() {
+		// Setup: a game-restart value has pending and effective listeners registered separately.
 		ConfigValue<Boolean> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"enabled",
@@ -88,8 +98,10 @@ public class ConfigValueTest {
 		value.addPendingBatchListener(changes -> pendingBatches.add("batch: " + changes.size()));
 		value.addListener(ignored -> effectiveNotifications.incrementAndGet());
 
+		// Operation: select a new value before the required restart.
 		assertTrue(value.set(true));
 
+		// Assertions: pending state and listeners update while effective state and listeners remain unchanged.
 		assertFalse(value.get());
 		assertTrue(value.getEditorInfo().getPendingValue());
 		assertEquals(List.of("false -> true"), pendingChanges);
@@ -144,6 +156,7 @@ public class ConfigValueTest {
 
 	@Test
 	public void setNotifiesBatchListenersWithOneChange() {
+		// Setup: a value-scoped batch listener records its single applied change.
 		ConfigValue<Integer> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"count",
@@ -161,8 +174,10 @@ public class ConfigValueTest {
 			));
 		});
 
+		// Operation: set a different valid value directly.
 		assertTrue(value.set(7));
 
+		// Assertions: direct set is represented as one value-scoped batch.
 		assertEquals(List.of("count: 5 -> 7"), changes);
 	}
 
@@ -189,6 +204,7 @@ public class ConfigValueTest {
 
 	@Test
 	public void unsubscribeOnlyRemovesTheOwningListener() {
+		// Setup: two different listeners are registered and only the first one's callback is retained.
 		ConfigValue<Boolean> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"enabled",
@@ -200,15 +216,18 @@ public class ConfigValueTest {
 		Runnable unsubscribe = value.addListener(ignored -> removedNotifications.incrementAndGet());
 		value.addListener(ignored -> retainedNotifications.incrementAndGet());
 
+		// Operation: unsubscribe the first listener and change the value.
 		unsubscribe.run();
 		assertTrue(value.set(true));
 
+		// Assertions: the owning listener is removed while the unrelated listener remains active.
 		assertEquals(0, removedNotifications.get());
 		assertEquals(1, retainedNotifications.get());
 	}
 
 	@Test
 	public void unsubscribeIsIdempotentForDuplicateListenerRegistrations() {
+		// Setup: the same listener object is registered twice, with the first callback retained.
 		ConfigValue<Boolean> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"enabled",
@@ -220,15 +239,18 @@ public class ConfigValueTest {
 		Runnable unsubscribeFirst = value.addListener(listener);
 		value.addListener(listener);
 
+		// Operation: invoke the first callback repeatedly and then change the value.
 		unsubscribeFirst.run();
 		unsubscribeFirst.run();
 		assertTrue(value.set(true));
 
+		// Assertions: one registration remains and duplicate unsubscription has no extra effect.
 		assertEquals(1, notifications.get());
 	}
 
 	@Test
 	public void listenerFailuresDoNotPreventLaterListeners() {
+		// Setup: failing and successful listeners are interleaved across single and batch notifications.
 		ConfigValue<Boolean> value = new ConfigValue<>(
 			"mezz_config.config.test.category",
 			"enabled",
@@ -245,8 +267,10 @@ public class ConfigValueTest {
 		});
 		value.addBatchListener(ignored -> notifications.incrementAndGet());
 
+		// Operation: change the value and dispatch all listeners.
 		assertTrue(value.set(true));
 
+		// Assertions: both successful listeners still run after earlier failures.
 		assertEquals(2, notifications.get());
 	}
 }

@@ -33,6 +33,7 @@ public class ConfigSerializerRecoveryTest {
 
 	@Test
 	public void malformedFileKeepsValidValuesAndAtomicallyRewritesFromFallbacks(@TempDir Path tempDir) throws IOException {
+		// Setup: a config file mixes valid, malformed, out-of-range, and unknown entries.
 		Path path = tempDir.resolve("test.ini");
 		List<String> malformed = List.of(
 			"[general]",
@@ -46,8 +47,10 @@ public class ConfigSerializerRecoveryTest {
 		ConfigValue<Integer> count = createIntegerValue();
 		ConfigCategory category = createCategory(enabled, count);
 
+		// Operation: load the damaged file and run automatic recovery.
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
+		// Assertions: valid data survives, invalid data falls back, and recovery backs up then corrects the file.
 		assertFalse(enabled.get());
 		assertEquals(1, count.get());
 		assertEquals(malformed, Files.readAllLines(ConfigFileUtil.getBackupPath(path, 1)));
@@ -60,6 +63,7 @@ public class ConfigSerializerRecoveryTest {
 
 	@Test
 	public void partialDeserializationKeepsUsableElementsBeforeCorrection(@TempDir Path tempDir) throws IOException {
+		// Setup: a stored boolean list contains valid elements around one malformed element.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -73,8 +77,10 @@ public class ConfigSerializerRecoveryTest {
 		);
 		ConfigCategory category = createCategory(flags);
 
+		// Operation: load and correct the partially recoverable list.
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
+		// Assertions: usable elements remain, the corrected file omits the bad element, and the backup retains it.
 		assertEquals(List.of(true, false), flags.get());
 		assertTrue(Files.readString(path).contains("flags = [\"true\",\"false\"]"));
 		assertTrue(Files.readString(ConfigFileUtil.getBackupPath(path, 1)).contains("invalid"));
@@ -82,14 +88,17 @@ public class ConfigSerializerRecoveryTest {
 
 	@Test
 	public void recoveryKeepsOnlyFiveMostRecentBackups(@TempDir Path tempDir) throws IOException {
+		// Setup: the same config path will fail recovery more times than the backup retention limit.
 		Path path = tempDir.resolve("test.ini");
 		ConfigCategory category = createCategory(createBooleanValue());
 
+		// Operation: load a newly damaged version on each recovery attempt.
 		for (int attempt = 1; attempt <= ConfigFileUtil.MAX_BACKUPS + 2; attempt++) {
 			Files.write(path, List.of("[general]", "invalid line " + attempt));
 			ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 		}
 
+		// Assertions: only the newest bounded set remains, with the latest failure at backup index one.
 		for (int index = 1; index <= ConfigFileUtil.MAX_BACKUPS; index++) {
 			assertTrue(Files.exists(ConfigFileUtil.getBackupPath(path, index)));
 		}
@@ -99,6 +108,7 @@ public class ConfigSerializerRecoveryTest {
 
 	@Test
 	public void unchangedFailedCorrectionIsNotBackedUpOrRewrittenAgain(@TempDir Path tempDir) throws IOException {
+		// Setup: malformed input needs correction, but its serializer starts failing before the rewrite.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of("[general]", "value = malformed"));
 		AtomicBoolean serializationFails = new AtomicBoolean();
@@ -133,9 +143,11 @@ public class ConfigSerializerRecoveryTest {
 		ConfigCategory category = createCategory(value);
 		serializationFails.set(true);
 
+		// Operation: load the same unchanged malformed file twice while correction cannot be serialized.
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
+		// Assertions: the source remains untouched and an identical failed correction creates only one backup.
 		assertTrue(Files.readString(path).contains("value = malformed"));
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(path, 2)));
@@ -143,6 +155,7 @@ public class ConfigSerializerRecoveryTest {
 
 	@Test
 	public void malformedPlayerOverlayRecoversWithoutChangingPackDefault(@TempDir Path tempDir) throws IOException {
+		// Setup: a valid pack default is overlaid by player data with one valid and one malformed value.
 		Path defaultPath = tempDir.resolve("pack.ini");
 		Path playerPath = tempDir.resolve("players").resolve("player.ini");
 		List<String> packContents = List.of(
@@ -166,8 +179,10 @@ public class ConfigSerializerRecoveryTest {
 			(command, delay) -> CompletableFuture.completedFuture(null)
 		);
 
+		// Operation: load the layered schema and recover the player overlay.
 		schema.loadIfNeeded();
 
+		// Assertions: player data takes precedence where valid, fallback comes from the pack, and only the overlay changes.
 		assertTrue(enabled.get());
 		assertEquals(2, count.get());
 		assertEquals(packContents, Files.readAllLines(defaultPath));
@@ -178,53 +193,65 @@ public class ConfigSerializerRecoveryTest {
 
 	@Test
 	public void oversizedFileIsRecoveredWithoutUnboundedReading(@TempDir Path tempDir) throws IOException {
+		// Setup: a config file is one byte larger than the safe read limit.
 		Path path = tempDir.resolve("oversized.ini");
 		Files.write(path, new byte[ConfigSerializer.MAX_CONFIG_FILE_BYTES + 1]);
 		ConfigCategory category = createCategory(createBooleanValue());
 
+		// Operation: load the oversized file through normal recovery.
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
+		// Assertions: the complete source is backed up and replaced by a bounded default file.
 		assertEquals(ConfigSerializer.MAX_CONFIG_FILE_BYTES + 1, Files.size(ConfigFileUtil.getBackupPath(path, 1)));
 		assertTrue(Files.size(path) < ConfigSerializer.MAX_CONFIG_FILE_BYTES);
 	}
 
 	@Test
 	public void excessiveLineCountIsRecoveredWithoutUnboundedParsing(@TempDir Path tempDir) throws IOException {
+		// Setup: a config file exceeds the safe line-count limit.
 		Path path = tempDir.resolve("too-many-lines.ini");
 		List<String> lines = new ArrayList<>(Collections.nCopies(ConfigSerializer.MAX_CONFIG_FILE_LINES + 1, "# bounded"));
 		Files.write(path, lines);
 		ConfigCategory category = createCategory(createBooleanValue());
 
+		// Operation: load the excessive file through normal recovery.
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
+		// Assertions: recovery preserves a backup and writes a bounded replacement.
 		assertTrue(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
 		assertTrue(Files.readAllLines(path).size() < ConfigSerializer.MAX_CONFIG_FILE_LINES);
 	}
 
 	@Test
 	public void invalidUtf8IsBackedUpAndCorrected(@TempDir Path tempDir) throws IOException {
+		// Setup: a config file contains an invalid UTF-8 byte sequence.
 		Path path = tempDir.resolve("invalid-utf8.ini");
 		byte[] invalidUtf8 = {(byte) 0xC3, 0x28};
 		Files.write(path, invalidUtf8);
 		ConfigCategory category = createCategory(createBooleanValue());
 
+		// Operation: load the undecodable file through normal recovery.
 		ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category));
 
+		// Assertions: defaults replace the invalid source after its original bytes are backed up.
 		assertTrue(Files.readString(path).contains("enabled = true"));
 		assertEquals(invalidUtf8.length, Files.size(ConfigFileUtil.getBackupPath(path, 1)));
 	}
 
 	@Test
 	public void transientReadFailureDoesNotReplaceOrBackUpPath(@TempDir Path tempDir) throws IOException {
+		// Setup: the configured path is temporarily a directory instead of a readable file.
 		Path path = tempDir.resolve("config-directory");
 		Files.createDirectory(path);
 		ConfigCategory category = createCategory(createBooleanValue());
 
+		// Operation: attempt to load the unreadable path.
 		assertThrows(
 			IOException.class,
 			() -> ConfigSerializer.loadWithoutNotifyingUnconditionally(path, List.of(category))
 		);
 
+		// Assertions: transient I/O failure leaves the path intact and creates no recovery backup.
 		assertTrue(Files.isDirectory(path));
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(path, 1)));
 	}

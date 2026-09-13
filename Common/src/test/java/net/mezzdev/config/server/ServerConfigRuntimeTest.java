@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ServerConfigRuntimeTest {
 	@Test
 	public void remoteClientConnectionAppliesChunkedSnapshotAndClearsItOnDisconnect(@TempDir Path tempDir) {
+		// Setup: a server has a large authoritative value while a remote client starts with its local default.
 		ServerConfigKey key = new ServerConfigKey("remote_flow_test", "server.ini");
 		String authoritativeValue = "server-value-" + "x".repeat(ServerConfigPayloadChunker.MAX_CHUNK_DATA_LENGTH);
 		TestStringSchema source = createStringServerSchema(
@@ -47,9 +48,11 @@ public class ServerConfigRuntimeTest {
 		ServerConfigClientConnection connection = new ServerConfigClientConnection(() -> clientManager);
 		UUID serverId = UUID.randomUUID();
 
+		// Operation: establish server identity and transmit the authoritative snapshot in chunks.
 		connection.handleServerIdentity(new ServerIdentityPayload(serverId));
 		int chunkCount = transmit(connection, new ServerConfigSyncPayload(key, source.schema().serializeValues()));
 
+		// Assertions: the remote schema becomes active, pathless, authoritative, and read-only.
 		assertEquals(Optional.of(serverId), connection.getRemoteServerId());
 		assertTrue(chunkCount > 1);
 		assertTrue(target.schema().isActive());
@@ -57,8 +60,10 @@ public class ServerConfigRuntimeTest {
 		assertEquals(authoritativeValue, target.values().getFirst().get());
 		assertThrows(IllegalStateException.class, () -> target.values().getFirst().set("client-edit"));
 
+		// Operation: disconnect the remote client.
 		connection.onDisconnect();
 
+		// Assertions: remote identity and synchronized state are cleared back to local defaults.
 		assertEquals(Optional.empty(), connection.getRemoteServerId());
 		assertFalse(target.schema().isActive());
 		assertEquals("client-default", target.values().getFirst().get());
@@ -66,6 +71,7 @@ public class ServerConfigRuntimeTest {
 
 	@Test
 	public void integratedServerConnectionKeepsTheLocalAuthoritativeSnapshot(@TempDir Path tempDir) {
+		// Setup: an integrated client shares a manager with its local authoritative server schema.
 		ServerConfigKey key = new ServerConfigKey("integrated_flow_test", "server.ini");
 		ConfigManager integratedManager = createConfigManager();
 		TestStringSchema authoritative = createStringServerSchema(
@@ -77,24 +83,29 @@ public class ServerConfigRuntimeTest {
 		integratedManager.registerSchema(authoritative.schema());
 		ServerConfigClientConnection connection = new ServerConfigClientConnection(() -> integratedManager);
 
+		// Operation: receive identity and a loopback snapshot containing a conflicting remote value.
 		connection.handleServerIdentity(new ServerIdentityPayload(UUID.randomUUID()));
 		transmit(connection, new ServerConfigSyncPayload(
 			key,
 			List.of(new ServerConfigValueData("general", "value_0", "\"remote-loopback\""))
 		));
 
+		// Assertions: the active file-backed schema keeps its local authoritative state.
 		assertTrue(authoritative.schema().isActive());
 		assertEquals(Optional.of(tempDir.resolve("server.ini")), authoritative.schema().getPath());
 		assertEquals("local-authoritative", authoritative.values().getFirst().get());
 
+		// Operation: disconnect the integrated client connection.
 		connection.onDisconnect();
 
+		// Assertions: disconnect does not deactivate or reset the shared local server schema.
 		assertTrue(authoritative.schema().isActive());
 		assertEquals("local-authoritative", authoritative.values().getFirst().get());
 	}
 
 	@Test
 	public void registrationEnforcesServerSnapshotValueCount() {
+		// Setup: one server schema reaches the synchronization value limit and another exceeds it by one.
 		ConfigManager manager = createConfigManager();
 		ConfigSchema maximum = createStringServerSchema(
 				new ServerConfigKey("maximum_values", "server.ini"),
@@ -111,19 +122,22 @@ public class ServerConfigRuntimeTest {
 			)
 			.schema();
 
+		// Operation: register the boundary schema, then attempt the excessive schema.
 		manager.registerSchema(maximum);
 		IllegalArgumentException exception = assertThrows(
 			IllegalArgumentException.class,
 			() -> manager.registerSchema(excessive)
 		);
 
+		// Assertions: the excessive schema is rejected with context and never published.
 		assertTrue(exception.getMessage().contains("cannot be synchronized"));
 		assertTrue(exception.getMessage().contains("Too many server config values"));
 		assertEquals(List.of(maximum), List.copyOf(manager.getSchemas()));
 	}
 
 	@Test
-	public void registrationEnforcesSerializedValueAndTotalSnapshotLengths() {
+	public void registrationEnforcesSerializedValueLength() {
+		// Setup: one schema reaches the per-value synchronization limit and another exceeds it.
 		ConfigManager manager = createConfigManager();
 		ConfigSchema maximumValue = createStringServerSchema(
 				new ServerConfigKey("maximum_value", "server.ini"),
@@ -139,6 +153,23 @@ public class ServerConfigRuntimeTest {
 				"x".repeat(ServerConfigPayloadCodec.MAX_SERIALIZED_VALUE_BYTES + 1)
 			)
 			.schema();
+
+		// Operation: register the boundary schema, then attempt the excessive value.
+		manager.registerSchema(maximumValue);
+		IllegalArgumentException exception = assertThrows(
+			IllegalArgumentException.class,
+			() -> manager.registerSchema(excessiveValue)
+		);
+
+		// Assertions: the per-value limit reports its cause and leaves only the valid schema registered.
+		assertTrue(exception.getMessage().contains("serialized value"));
+		assertEquals(List.of(maximumValue), List.copyOf(manager.getSchemas()));
+	}
+
+	@Test
+	public void registrationEnforcesTotalSnapshotLength() {
+		// Setup: one schema stays within the aggregate synchronization limit and another exceeds it.
+		ConfigManager manager = createConfigManager();
 		ConfigSchema largeSnapshot = createStringServerSchema(
 				new ServerConfigKey("large_snapshot", "server.ini"),
 				() -> Optional.empty(),
@@ -154,24 +185,21 @@ public class ServerConfigRuntimeTest {
 			)
 			.schema();
 
-		manager.registerSchema(maximumValue);
+		// Operation: register the valid schema, then attempt the excessive snapshot.
 		manager.registerSchema(largeSnapshot);
-		IllegalArgumentException valueException = assertThrows(
-			IllegalArgumentException.class,
-			() -> manager.registerSchema(excessiveValue)
-		);
-		IllegalArgumentException totalException = assertThrows(
+		IllegalArgumentException exception = assertThrows(
 			IllegalArgumentException.class,
 			() -> manager.registerSchema(excessiveSnapshot)
 		);
 
-		assertTrue(valueException.getMessage().contains("serialized value"));
-		assertTrue(totalException.getMessage().contains("maximum length"));
-		assertEquals(List.of(maximumValue, largeSnapshot), List.copyOf(manager.getSchemas()));
+		// Assertions: the aggregate limit reports its cause and leaves only the valid schema registered.
+		assertTrue(exception.getMessage().contains("maximum length"));
+		assertEquals(List.of(largeSnapshot), List.copyOf(manager.getSchemas()));
 	}
 
 	@Test
 	public void oversizedAuthoritativeUpdateIsRejectedBeforeMutation(@TempDir Path tempDir) {
+		// Setup: an active server schema has one small authoritative and pending value.
 		TestStringSchema testSchema = createStringServerSchema(
 			new ServerConfigKey("update_test", "server.ini"),
 			() -> Optional.of(tempDir.resolve("server.ini")),
@@ -180,6 +208,7 @@ public class ServerConfigRuntimeTest {
 		);
 		testSchema.schema().register(null, false);
 
+		// Operation: try to replace it with a value beyond the synchronization limit.
 		IllegalArgumentException exception = assertThrows(
 			IllegalArgumentException.class,
 			() -> testSchema.schema().batchUpdate(updater -> updater.set(
@@ -188,6 +217,7 @@ public class ServerConfigRuntimeTest {
 			))
 		);
 
+		// Assertions: validation reports synchronization failure before either view mutates.
 		assertTrue(exception.getMessage().contains("cannot be synchronized"));
 		assertEquals("original", testSchema.values().getFirst().get());
 		assertEquals("original", testSchema.values().getFirst().getEditorInfo().getPendingValue());
@@ -195,6 +225,7 @@ public class ServerConfigRuntimeTest {
 
 	@Test
 	public void updateRejectsSnapshotThatWouldBeOversizedAfterRestart(@TempDir Path tempDir) {
+		// Setup: restart-gated server values currently form a valid snapshot but their queued replacements would not.
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		List<ConfigValue<String>> values = new ArrayList<>();
 		for (int i = 0; i < 5; i++) {
@@ -213,11 +244,14 @@ public class ServerConfigRuntimeTest {
 		);
 		schema.register(null, false);
 		String prospectiveValue = "x".repeat(220 * 1024);
+
+		// Operation: queue oversized replacements for every restart-gated value in one batch.
 		IllegalArgumentException exception = assertThrows(
 			IllegalArgumentException.class,
 			() -> schema.batchUpdate(updater -> values.forEach(value -> updater.set(value, prospectiveValue)))
 		);
 
+		// Assertions: prospective snapshot validation leaves both effective and pending values unchanged.
 		assertTrue(exception.getMessage().contains("maximum length"));
 		assertTrue(values.stream().allMatch(value -> value.get().length() == 80 * 1024));
 		assertTrue(values.stream().allMatch(value -> value.getEditorInfo().getPendingValue().length() == 80 * 1024));
@@ -225,6 +259,7 @@ public class ServerConfigRuntimeTest {
 
 	@Test
 	public void oversizedServerFileReloadKeepsPreviousSnapshot(@TempDir Path tempDir) throws IOException {
+		// Setup: an active server schema later resolves to a file with an oversized serialized value.
 		Path originalPath = tempDir.resolve("original.ini");
 		Path oversizedPath = tempDir.resolve("oversized.ini");
 		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.of(originalPath));
@@ -242,8 +277,10 @@ public class ServerConfigRuntimeTest {
 			"[general]\nvalue_0 = " + "x".repeat(ServerConfigPayloadCodec.MAX_SERIALIZED_VALUE_BYTES + 1) + "\n"
 		);
 
+		// Operation: switch the active resolver to the oversized file.
 		activePath.set(Optional.of(oversizedPath));
 
+		// Assertions: the path changes, but the prior snapshot remains and listeners are not notified.
 		assertEquals(Optional.of(oversizedPath), testSchema.schema().getPath());
 		assertEquals("original", testSchema.values().getFirst().get());
 		assertEquals(0, notifications.get());
@@ -251,6 +288,7 @@ public class ServerConfigRuntimeTest {
 
 	@Test
 	public void registrationRejectsOversizedInitialFileWithoutPublishing(@TempDir Path tempDir) throws IOException {
+		// Setup: an unregistered server schema points to an initial file with an oversized value.
 		Path path = tempDir.resolve("server.ini");
 		String oversizedValue = "x".repeat(ServerConfigPayloadCodec.MAX_SERIALIZED_VALUE_BYTES + 1);
 		Files.writeString(path, "[general]\nvalue_0 = " + oversizedValue + "\n");
@@ -262,11 +300,13 @@ public class ServerConfigRuntimeTest {
 		);
 		ConfigManager manager = createConfigManager();
 
+		// Operation: try to register and initialize the schema from that file.
 		IllegalArgumentException exception = assertThrows(
 			IllegalArgumentException.class,
 			() -> manager.registerSchema(testSchema.schema())
 		);
 
+		// Assertions: registration publishes nothing, retains defaults, and leaves the source file untouched.
 		assertTrue(exception.getMessage().contains("cannot be synchronized"));
 		assertEquals(List.of(), List.copyOf(manager.getSchemas()));
 		assertEquals("original", testSchema.values().getFirst().getEffectiveValueWithoutLoading());

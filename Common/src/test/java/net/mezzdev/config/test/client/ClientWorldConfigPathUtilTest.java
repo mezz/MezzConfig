@@ -93,19 +93,23 @@ public class ClientWorldConfigPathUtilTest {
 
 	@Test
 	public void getServerPathUsesStableServerIdentity() {
+		// Setup: a remote server has supplied its persistent world identity.
 		UUID serverId = UUID.fromString("dc2a86e0-fc9f-4ae4-aa7a-718c46817a3e");
 
+		// Operation: build the client-world path from that identity.
 		Path path = ClientWorldConfigPathUtil.getServerPath(serverId);
 
+		// Assertions: the UUID is used directly as the stable path segment.
 		assertEquals(getServerPath(serverId.toString()), path);
 	}
 
 	@Test
 	public void defaultWorldPathIsSeparateFromPlayerWorlds() {
-		assertEquals(
-			tempDir.resolve("world").resolve("default"),
-			ClientWorldConfigPathUtil.getDefaultWorldPath(tempDir)
-		);
+		// Setup: a client config root contains both defaults and world-specific data.
+		Path expected = tempDir.resolve("world").resolve("default");
+
+		// Operation and assertions: the default world path uses its reserved directory.
+		assertEquals(expected, ClientWorldConfigPathUtil.getDefaultWorldPath(tempDir));
 	}
 
 	private static Path getServerPath(String pathName) {

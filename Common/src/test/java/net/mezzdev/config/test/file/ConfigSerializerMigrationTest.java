@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ConfigSerializerMigrationTest {
 	@Test
 	public void parseMigrationUpdatesMigratesLegacyValueFromOldCategory(@TempDir Path tempDir) throws IOException {
+		// Setup: a value declares its former category while keeping the same storage name.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[legacy]",
@@ -45,13 +46,16 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
+		// Operation: parse and apply migration updates from the legacy category.
 		migrate(path, List.of(category));
 
+		// Assertions: the old category value becomes the current effective value.
 		assertFalse(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
 	public void parseMigrationUpdatesMigratesLegacyValueName(@TempDir Path tempDir) throws IOException {
+		// Setup: a value declares a former storage name in its current category.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -63,13 +67,16 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
+		// Operation: parse and apply migration updates from the legacy name.
 		migrate(path, List.of(category));
 
+		// Assertions: the renamed value becomes the current effective value.
 		assertFalse(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
 	public void parseMigrationUpdatesCurrentValueTakesPrecedenceOverEarlierLegacyName(@TempDir Path tempDir) throws IOException {
+		// Setup: a legacy declaration appears before a valid current declaration for the same value.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -82,13 +89,16 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
+		// Operation: parse and apply the migration-aware file.
 		migrate(path, List.of(category));
 
+		// Assertions: the explicit current name wins regardless of its later position.
 		assertTrue(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
 	public void parseMigrationUpdatesCurrentValueTakesPrecedenceOverLaterLegacyName(@TempDir Path tempDir) throws IOException {
+		// Setup: a valid current declaration appears before a conflicting legacy declaration.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -101,13 +111,16 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
+		// Operation: parse and apply the migration-aware file.
 		migrate(path, List.of(category));
 
+		// Assertions: the explicit current name wins regardless of its earlier position.
 		assertTrue(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
 	public void loadDoesNotRunLegacyConverterForCurrentConfig(@TempDir Path tempDir) throws IOException {
+		// Setup: a normal current-file load sees only a legacy name with an observable converter.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -128,14 +141,17 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
+		// Operation: load through the current config path rather than the migration path.
 		ConfigSerializer.load(path, List.of(category));
 
+		// Assertions: legacy-only data is ignored and its converter never runs.
 		assertFalse(enabled.getEffectiveValueWithoutLoading());
 		assertEquals(0, migrationCount.get());
 	}
 
 	@Test
 	public void parseMigrationUpdatesMigratesLosslessArrayThroughPublicListSerializer(@TempDir Path tempDir) throws IOException {
+		// Setup: a renamed string-list value contains comma-sensitive and empty elements.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -147,8 +163,10 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
+		// Operation: migrate through the public structured list serializer.
 		migrate(path, List.of(category));
 
+		// Assertions: all element boundaries and values survive migration.
 		assertEquals(List.of("first", "a,b", ""), names.getEffectiveValueWithoutLoading());
 	}
 
@@ -175,6 +193,7 @@ public class ConfigSerializerMigrationTest {
 
 	@Test
 	public void parseMigrationUpdatesMigratesLegacyCategoryAndValueNamesWithLegacyValueMigration(@TempDir Path tempDir) throws IOException {
+		// Setup: the old value used a former category, former name, and inverted boolean meaning.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[legacy]",
@@ -186,13 +205,16 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
+		// Operation: migrate and convert the legacy boolean.
 		migrate(path, List.of(category));
 
+		// Assertions: category/name lookup and typed conversion produce the current value.
 		assertFalse(enabled.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
 	public void parseMigrationUpdatesMigratesStructuredLegacyListAsTypedValues(@TempDir Path tempDir) throws IOException {
+		// Setup: a legacy structured integer list maps into a current scalar string.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[general]",
@@ -209,8 +231,10 @@ public class ConfigSerializerMigrationTest {
 			.build();
 		ConfigCategory category = buildCategory(path, categoryBuilder);
 
+		// Operation: deserialize the legacy list by type and convert it into the current representation.
 		migrate(path, List.of(category));
 
+		// Assertions: typed elements reach the converter without losing their list structure.
 		assertEquals("1:2:3", numbers.getEffectiveValueWithoutLoading());
 	}
 
@@ -241,6 +265,7 @@ public class ConfigSerializerMigrationTest {
 
 	@Test
 	public void parseMigrationUpdatesMigratesLegacyValueFromUnknownCategory(@TempDir Path tempDir) throws IOException {
+		// Setup: a manually assembled migration references a category absent from the current schema.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[legacy]",
@@ -265,13 +290,16 @@ public class ConfigSerializerMigrationTest {
 			Map.of(legacyValue, List.of(migration))
 		);
 
+		// Operation: parse and apply the manually mapped legacy value.
 		migrate(path, List.of(category));
 
+		// Assertions: migration lookup can read explicitly referenced unknown categories.
 		assertFalse(value.getEffectiveValueWithoutLoading());
 	}
 
 	@Test
 	public void parseMigrationUpdatesMigratesLegacyValueToMultipleCurrentValues(@TempDir Path tempDir) throws IOException {
+		// Setup: one legacy boolean maps to two current values with different converters and listeners.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
 			"[legacy]",
@@ -313,8 +341,10 @@ public class ConfigSerializerMigrationTest {
 		first.addBatchListener(changes -> firstBatches.add(formatBatch(changes, first.get(), second.get())));
 		second.addBatchListener(changes -> secondBatches.add(formatBatch(changes, first.get(), second.get())));
 
+		// Operation: apply all updates derived from the shared legacy value.
 		migrate(path, List.of(category));
 
+		// Assertions: both conversions finish before listeners receive one complete applied batch.
 		assertTrue(first.get());
 		assertFalse(second.get());
 		assertEquals(List.of("false -> true, second = false"), regularChanges);
