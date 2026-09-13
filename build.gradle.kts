@@ -166,27 +166,22 @@ abstract class ValidateDocumentationLinks : DefaultTask() {
     }
 }
 
-abstract class ValidateFabricEmbedding : DefaultTask() {
+abstract class ValidateFabricPublication : DefaultTask() {
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val fabricJar: RegularFileProperty
 
-    @get:InputFile
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val commonJar: RegularFileProperty
-
     @TaskAction
     fun validate() {
         val fabricJar = fabricJar.get().asFile
-        val commonJar = commonJar.get().asFile
-        val requiredEntries = mapOf(
-            fabricJar to "net/mezzdev/config/fabric/ConfigFabric.class",
-            commonJar to "net/mezzdev/config/registration/ConfigProvider.class"
+        val requiredEntries = setOf(
+            "net/mezzdev/config/fabric/ConfigFabric.class",
+            "net/mezzdev/config/registration/ConfigProvider.class"
         )
-        for ((artifact, requiredEntry) in requiredEntries) {
-            ZipFile(artifact).use { archive ->
+        ZipFile(fabricJar).use { archive ->
+            for (requiredEntry in requiredEntries) {
                 if (archive.getEntry(requiredEntry) == null) {
-                    throw GradleException("Fabric embedding artifact '${artifact.name}' is missing '$requiredEntry'.")
+                    throw GradleException("Fabric Maven artifact '${fabricJar.name}' is missing '$requiredEntry'.")
                 }
             }
         }
@@ -239,18 +234,14 @@ tasks.register<ValidateDocumentationLinks>("validateDocumentationLinks") {
     rootDirectory.set(layout.projectDirectory)
 }
 
-tasks.register<ValidateFabricEmbedding>("validateFabricEmbedding") {
+tasks.register<ValidateFabricPublication>("validateFabricEmbedding") {
     group = "verification"
-    description = "Checks the complete non-transitive Fabric Jar-in-Jar dependency set."
+    description = "Checks that the published Fabric artifact contains the complete runtime."
     dependsOn(validatePublishing)
     val publicationGroupPath = modGroup.replace('.', '/')
     val fabricModule = "${configModId}-${minecraftVersion}-fabric"
-    val commonModule = "${configModId}-${minecraftVersion}-config"
     fabricJar.set(layout.buildDirectory.file(
         "publication-validation/$publicationGroupPath/$fabricModule/$projectVersion/$fabricModule-$projectVersion.jar"
-    ))
-    commonJar.set(layout.buildDirectory.file(
-        "publication-validation/$publicationGroupPath/$commonModule/$projectVersion/$commonModule-$projectVersion.jar"
     ))
 }
 

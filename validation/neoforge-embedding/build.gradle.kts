@@ -19,7 +19,6 @@ repositories {
 // Keep this dependency block aligned with docs/neoforge.md.
 dependencies {
     jarJar("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }
-    jarJar("net.mezzdev.config:mezz_config-1.21.1-config:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }
 }
 
 val consumerJar = tasks.named<Jar>("jar")
@@ -30,9 +29,7 @@ val validateEmbeddedRuntime = tasks.register("validateEmbeddedRuntime") {
         val requiredEntries = mapOf(
             "mezz_config-1.21.1-neoforge" to setOf(
                 "net/mezzdev/config/neoforge/ConfigNeoForge.class",
-                "META-INF/neoforge.mods.toml"
-            ),
-            "mezz_config-1.21.1-config" to setOf(
+                "META-INF/neoforge.mods.toml",
                 "net/mezzdev/config/api/Configs.class",
                 "net/mezzdev/config/registration/ConfigProvider.class",
                 "net/mezzdev/config/modshade/net/mezzdev/filewatcher/FileWatcher.class",
@@ -59,12 +56,6 @@ val validateEmbeddedRuntime = tasks.register("validateEmbeddedRuntime") {
                     ?: error("Missing nested jar for $module")
                 val missingEntries = required.toMutableSet()
                 JarInputStream(archive.getInputStream(nestedJar)).use { nested ->
-                    if (module == "mezz_config-1.21.1-config") {
-                        val fmlModType = nested.manifest?.mainAttributes?.getValue("FMLModType")
-                        check(fmlModType == "GAMELIBRARY") {
-                            "$module has FMLModType '$fmlModType', expected 'GAMELIBRARY'"
-                        }
-                    }
                     while (true) {
                         val nestedEntry = nested.nextEntry ?: break
                         missingEntries.remove(nestedEntry.name)

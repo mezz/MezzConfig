@@ -173,34 +173,6 @@ tasks.named<Jar>("sourcesJar") {
     archiveClassifier.set("sources")
 }
 
-val mavenJarTask = tasks.register<Jar>("mavenJar") {
-    from(sourceSets.main.get().output)
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    destinationDirectory.set(layout.buildDirectory.dir("maven-intermediates"))
-}
-
-val remapMavenJarTask = tasks.register<RemapJarTask>("remapMavenJar") {
-    inputFile.set(mavenJarTask.flatMap { it.archiveFile })
-    addNestedDependencies.set(false)
-    archiveBaseName.set(baseArchivesName)
-    archiveClassifier.set("")
-    destinationDirectory.set(layout.buildDirectory.dir("maven-libs"))
-}
-
-val mavenSourcesJarTask = tasks.register<Jar>("mavenSourcesJar") {
-    from(sourceSets.main.get().allJava)
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    archiveClassifier.set("sources")
-    destinationDirectory.set(layout.buildDirectory.dir("maven-intermediates"))
-}
-
-val remapMavenSourcesJarTask = tasks.register<RemapSourcesJarTask>("remapMavenSourcesJar") {
-    inputFile.set(mavenSourcesJarTask.flatMap { it.archiveFile })
-    archiveBaseName.set(baseArchivesName)
-    archiveClassifier.set("sources")
-    destinationDirectory.set(layout.buildDirectory.dir("maven-libs"))
-}
-
 tasks.assemble {
     dependsOn(tasks.remapJar, tasks.remapSourcesJar)
 }
@@ -243,26 +215,8 @@ publishing {
             @Suppress("UnstableApiUsage")
             loom.disableDeprecatedPomGeneration(this)
             artifactId = baseArchivesName
-            artifact(remapMavenJarTask)
-            artifact(remapMavenSourcesJarTask)
-
-            val dependencyInfos = dependencyProjects.map {
-                mapOf(
-                    "groupId" to it.group,
-                    "artifactId" to it.base.archivesName.get(),
-                    "version" to it.version
-                )
-            }
-
-            pom.withXml {
-                val dependenciesNode = asNode().appendNode("dependencies")
-                dependencyInfos.forEach {
-                    val dependencyNode = dependenciesNode.appendNode("dependency")
-                    it.forEach { (key, value) ->
-                        dependencyNode.appendNode(key, value)
-                    }
-                }
-            }
+            artifact(tasks.named<RemapJarTask>("remapJar"))
+            artifact(tasks.named<RemapSourcesJarTask>("remapSourcesJar"))
         }
     }
     repositories {

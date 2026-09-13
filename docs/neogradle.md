@@ -26,9 +26,9 @@ dependencies {
 }
 ```
 
-The NeoForge artifact declares the Common runtime as a transitive dependency,
-so no additional runtime coordinate is needed. Run `./gradlew build` and
-distribute your normal release jar from `build/libs`.
+The NeoForge artifact contains the Common runtime, so no additional runtime
+coordinate is needed. Run `./gradlew build` and distribute your normal release
+jar from `build/libs`.
 
 ## Tell NeoForge about MezzConfig
 
@@ -53,7 +53,7 @@ You can include MezzConfig when your mod must work as a single download. This
 makes installation simpler, but increases your jar size and packages another
 copy in every mod that uses this option.
 
-Add the supported range and wrap both runtime dependencies with `jarJar`:
+Add the supported range and wrap the complete NeoForge artifact with `jarJar`:
 
 ```kotlin
 val mezzConfigVersionRange = "[0.5.0,1.0.0)"
@@ -66,17 +66,8 @@ dependencies {
 			prefer(mezzConfigVersion)
 		}
 	}
-	jarJar(runtimeOnly("net.mezzdev.config:mezz_config-1.21.1-config:$mezzConfigVersion")) {
-		version {
-			strictly(mezzConfigVersionRange)
-			prefer(mezzConfigVersion)
-		}
-	}
 }
 ```
-
-The NeoForge Maven artifact contains the loader adapter. Explicitly include the
-`config` artifact as well to bundle the Common runtime and API.
 
 Keep the range the same as the one in `neoforge.mods.toml`. Run
 `./gradlew build` as usual. The release jar now contains MezzConfig and
