@@ -8,6 +8,7 @@ modId="${configModId}"
 version="${version}"
 displayName="MezzConfig"
 displayURL="${githubUrl}"
+logoFile="mezz_config-icon.png"
 authors="${modAuthor}"
 displayTest="IGNORE_SERVER_VERSION"
 description='''
