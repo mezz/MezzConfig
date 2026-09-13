@@ -1,6 +1,6 @@
 import groovy.json.JsonSlurper
+import java.util.jar.JarInputStream
 import java.util.zip.ZipFile
-import java.util.zip.ZipInputStream
 
 plugins {
     java
@@ -58,7 +58,13 @@ val validateEmbeddedRuntime = tasks.register("validateEmbeddedRuntime") {
                 val nestedJar = archive.getEntry(embedded["path"] as String)
                     ?: error("Missing nested jar for $module")
                 val missingEntries = required.toMutableSet()
-                ZipInputStream(archive.getInputStream(nestedJar)).use { nested ->
+                JarInputStream(archive.getInputStream(nestedJar)).use { nested ->
+                    if (module == "mezz_config-1.21.1-config") {
+                        val fmlModType = nested.manifest?.mainAttributes?.getValue("FMLModType")
+                        check(fmlModType == "GAMELIBRARY") {
+                            "$module has FMLModType '$fmlModType', expected 'GAMELIBRARY'"
+                        }
+                    }
                     while (true) {
                         val nestedEntry = nested.nextEntry ?: break
                         missingEntries.remove(nestedEntry.name)

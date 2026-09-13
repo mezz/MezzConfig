@@ -157,6 +157,9 @@ java {
 
 tasks.jar {
     from(apiSourceSet.output)
+    manifest {
+        attributes("FMLModType" to "GAMELIBRARY")
+    }
 }
 
 tasks.named<Jar>("sourcesJar") {
@@ -244,6 +247,9 @@ modShade {
     shadeJar().configure {
         with(shadedDependencyLicenses)
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        manifest {
+            attributes("FMLModType" to "GAMELIBRARY")
+        }
     }
     shadeSourcesJar().configure {
         with(shadedDependencyLicenses)
