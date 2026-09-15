@@ -9,6 +9,7 @@ import net.mezzdev.config.api.value.change.IAppliedConfigValueChange;
 import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 import net.mezzdev.config.api.value.editor.ConfigValueRestartRequirement;
 import net.mezzdev.config.api.value.change.IConfigValueBatchChangeListener;
+import net.mezzdev.config.file.ConfigFileReader;
 import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.file.ConfigFileValueCodec;
 import net.mezzdev.config.file.ConfigFileTransaction;
@@ -73,6 +74,7 @@ public class ConfigSchema implements IConfigSchema {
 	private @Nullable Path activeDefaultPath;
 	private @Nullable Path activePath;
 	private @Nullable Path pendingSavePath;
+	private final Set<Path> pendingFileChanges = new HashSet<>();
 	private @Nullable Runnable removeDefaultFileWatcherCallback;
 	private @Nullable Runnable removeFileWatcherCallback;
 	private final ListenerList<IConfigValueBatchChangeListener> batchListeners = new ListenerList<>();
@@ -322,6 +324,7 @@ public class ConfigSchema implements IConfigSchema {
 		updatePathReservations(defaultPath, path, previousDefaultPath, previousPath);
 		if (isSynchronizedServerSchema() && remotelyActive && path == null) {
 			transitionActivePaths(defaultPath, null, previousDefaultPath, previousPath);
+			pendingFileChanges.clear();
 			needsLoad.set(false);
 			return createLoadResult(previousState, List.of());
 		}
@@ -338,6 +341,7 @@ public class ConfigSchema implements IConfigSchema {
 
 		if (resolvedPath.isEmpty()) {
 			boolean shouldInitializeDefault = needsLoad.getAndSet(false);
+			pendingFileChanges.clear();
 			List<InitialSave> initialSaves = List.of();
 			if (shouldInitializeDefault) {
 				initialSaves = getInitialSaves(defaultPath, null, activePathChanged, false, true);
@@ -361,12 +365,30 @@ public class ConfigSchema implements IConfigSchema {
 		if (!needsLoad.compareAndSet(true, false)) {
 			return createLoadResult(previousState, List.of());
 		}
+		Map<Path, ConfigFileReader.Contents> preparedFileLoads = new LinkedHashMap<>();
+		if (!pendingFileChanges.isEmpty()) {
+			boolean allFilesUnchanged = true;
+			for (Path changedPath : pendingFileChanges) {
+				try {
+					ConfigFileReader.Contents contents = ConfigFileReader.read(changedPath);
+					preparedFileLoads.put(changedPath, contents);
+					allFilesUnchanged &= ConfigSerializer.isFileUnchangedSinceLastSave(changedPath, contents.fingerprint());
+				} catch (IOException | ConfigFileReader.MalformedFileException e) {
+					ConfigSerializer.clearLastSavedFileFingerprint(changedPath);
+					allFilesUnchanged = false;
+				}
+			}
+			pendingFileChanges.clear();
+			if (allFilesUnchanged) {
+				return createLoadResult(previousState, List.of());
+			}
+		}
 
 		resetValuesToDefaults();
-		load(defaultPath);
+		load(defaultPath, preparedFileLoads);
 		MigrationAttempt migrationAttempt = attemptMigration(path);
 		if (migrationAttempt != MigrationAttempt.MIGRATED) {
-			load(path);
+			load(path, preparedFileLoads);
 		}
 		if (!restartValuesInitialized) {
 			promotePendingValuesWithoutNotifying(ConfigValueRestartRequirement.GAME_RESTART);
@@ -587,12 +609,22 @@ public class ConfigSchema implements IConfigSchema {
 		);
 	}
 
-	private void load(@Nullable Path path) {
+	private void load(@Nullable Path path, Map<Path, ConfigFileReader.Contents> preparedFileLoads) {
 		if (path == null || !Files.exists(path)) {
 			return;
 		}
 		try {
-			ConfigSerializer.loadWithoutNotifyingUnconditionally(path, categories, mode.serializationSettings());
+			ConfigFileReader.Contents contents = preparedFileLoads.get(path);
+			if (contents == null) {
+				ConfigSerializer.loadWithoutNotifyingUnconditionally(path, categories, mode.serializationSettings());
+			} else {
+				ConfigSerializer.applyContentsWithoutNotifying(
+					path,
+					categories,
+					mode.serializationSettings(),
+					contents
+				);
+			}
 		} catch (IOException e) {
 			handleFileError("load", path, e);
 		}
@@ -755,13 +787,14 @@ public class ConfigSchema implements IConfigSchema {
 		}
 		flushPendingSaveIfNeeded();
 		removeFileWatcherCallbacks();
+		pendingFileChanges.clear();
 		activeDefaultPath = defaultPath;
 		activePath = path;
 		if (defaultPath != null && fileWatcher != null) {
-			removeDefaultFileWatcherCallback = fileWatcher.addCallback(defaultPath, this::onFileChanged);
+			removeDefaultFileWatcherCallback = fileWatcher.addCallback(defaultPath, () -> onFileChanged(defaultPath));
 		}
 		if (path != null && !path.equals(defaultPath) && fileWatcher != null) {
-			removeFileWatcherCallback = fileWatcher.addCallback(path, this::onFileChanged);
+			removeFileWatcherCallback = fileWatcher.addCallback(path, () -> onFileChanged(path));
 		}
 	}
 
@@ -815,7 +848,11 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
-	private void onFileChanged() {
+	private synchronized void onFileChanged(Path changedPath) {
+		if (!Objects.equals(changedPath, activeDefaultPath) && !Objects.equals(changedPath, activePath)) {
+			return;
+		}
+		pendingFileChanges.add(changedPath);
 		needsLoad.set(true);
 		if (isSynchronizedServerSchema()) {
 			ServerConfigRuntime.onServerSchemaChanged(this);
@@ -868,6 +905,7 @@ public class ConfigSchema implements IConfigSchema {
 		activeDefaultPath = null;
 		activePath = null;
 		pendingSavePath = null;
+		pendingFileChanges.clear();
 		needsLoad.set(true);
 		changeVersion.set(0);
 		restartValuesInitialized = false;

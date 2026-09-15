@@ -63,11 +63,21 @@ public final class ConfigFileReader {
 	}
 
 	private static String hash(byte[] bytes) {
+		MessageDigest digest = newFingerprintDigest();
+		digest.update(bytes);
+		return finishFingerprint(digest);
+	}
+
+	static MessageDigest newFingerprintDigest() {
 		try {
-			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+			return MessageDigest.getInstance("SHA-256");
 		} catch (NoSuchAlgorithmException e) {
 			throw new IllegalStateException("SHA-256 is not available.", e);
 		}
+	}
+
+	static String finishFingerprint(MessageDigest digest) {
+		return HexFormat.of().formatHex(digest.digest());
 	}
 
 	public record Contents(List<String> lines, String fingerprint) {

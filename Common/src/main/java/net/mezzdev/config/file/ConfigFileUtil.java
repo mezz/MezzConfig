@@ -1,11 +1,15 @@
 package net.mezzdev.config.file;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.DigestOutputStream;
+import java.security.MessageDigest;
 import java.util.List;
 
 public final class ConfigFileUtil {
@@ -16,12 +20,27 @@ public final class ConfigFileUtil {
 	}
 
 	public static void writeUsingTempFile(Path path, List<? extends CharSequence> lines) throws IOException {
+		writeUsingTempFileAndGetFingerprint(path, lines);
+	}
+
+	static String writeUsingTempFileAndGetFingerprint(Path path, List<? extends CharSequence> lines) throws IOException {
 		validateReadableContents(lines);
 		Path tempFileDirectory = createParentDirectories(path);
 		Path tempFile = Files.createTempFile(tempFileDirectory, null, null);
 		try {
-			Files.write(tempFile, lines);
+			MessageDigest digest = ConfigFileReader.newFingerprintDigest();
+			try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+				new DigestOutputStream(Files.newOutputStream(tempFile), digest),
+				StandardCharsets.UTF_8
+			))) {
+				for (CharSequence line : lines) {
+					writer.append(line);
+					writer.newLine();
+				}
+			}
+			String fingerprint = ConfigFileReader.finishFingerprint(digest);
 			moveAtomicReplace(tempFile, path);
+			return fingerprint;
 		} finally {
 			if (Files.exists(tempFile)) {
 				Files.delete(tempFile);

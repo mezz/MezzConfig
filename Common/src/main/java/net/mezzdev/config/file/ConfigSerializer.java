@@ -18,9 +18,7 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -51,7 +49,7 @@ public final class ConfigSerializer {
 	private static final int MAX_LOGGED_LINE_CHARACTERS = 512;
 	private static final int MAX_LOGGED_MESSAGE_CHARACTERS = 4 * 1024;
 	private static final int MAX_TRACKED_RECOVERY_ATTEMPTS = 256;
-	private static final Map<Path, FileTime> saveTimes = new ConcurrentHashMap<>();
+	private static final Map<Path, String> savedFileFingerprints = new ConcurrentHashMap<>();
 	private static final Map<Path, FailureFingerprint> recoveryAttempts = Collections.synchronizedMap(
 		new LinkedHashMap<>() {
 			@Override
@@ -97,7 +95,7 @@ public final class ConfigSerializer {
 		categories.stream()
 			.flatMap(category -> category.getConfigValues().stream())
 			.forEach(value -> previousEffectiveValues.put(value, value.getEffectiveValueWithoutLoading()));
-		List<AppliedConfigValueChange<?>> pendingChanges = loadWithoutNotifying(path, categories);
+		List<AppliedConfigValueChange<?>> pendingChanges = loadIfChangedWithoutNotifying(path, categories);
 		Runnable pendingNotifications = ConfigValue.snapshotChangedValueNotifications(pendingChanges, true);
 		Runnable effectiveNotifications = ConfigValue.snapshotChangedValueNotifications(
 			getEffectiveChanges(pendingChanges, previousEffectiveValues), false
@@ -131,11 +129,11 @@ public final class ConfigSerializer {
 		}
 	}
 
-	public static List<AppliedConfigValueChange<?>> loadWithoutNotifying(
+	public static List<AppliedConfigValueChange<?>> loadIfChangedWithoutNotifying(
 		Path path,
 		List<ConfigCategory> categories
 	) throws IOException {
-		return loadWithoutNotifying(path, categories, true, DEFAULT_SETTINGS);
+		return loadFileWithoutNotifying(path, categories, true, DEFAULT_SETTINGS);
 	}
 
 	public static List<AppliedConfigValueChange<?>> loadWithoutNotifyingUnconditionally(
@@ -150,33 +148,16 @@ public final class ConfigSerializer {
 		List<ConfigCategory> categories,
 		Settings settings
 	) throws IOException {
-		return loadWithoutNotifying(path, categories, false, settings);
+		return loadFileWithoutNotifying(path, categories, false, settings);
 	}
 
-	private static List<AppliedConfigValueChange<?>> loadWithoutNotifying(
+	public static List<AppliedConfigValueChange<?>> applyContentsWithoutNotifying(
 		Path path,
 		List<ConfigCategory> categories,
-		boolean skipFilesJustSaved,
-		Settings settings
-	) throws IOException {
-		if (skipFilesJustSaved) {
-			FileTime lastModifiedTime = Files.getLastModifiedTime(path);
-			FileTime savedTime = saveTimes.get(path);
-			if (savedTime != null && savedTime.compareTo(lastModifiedTime) >= 0) {
-				LOGGER.debug("Skipping loading config file, it was just saved by us: {}", path);
-				return List.of();
-			}
-		}
-
+		Settings settings,
+		ConfigFileReader.Contents contents
+	) {
 		LOGGER.debug("Loading config file: {}", path);
-		ConfigFileReader.Contents contents;
-		try {
-			contents = ConfigFileReader.read(path);
-		} catch (ConfigFileReader.MalformedFileException e) {
-			LOGGER.error("Malformed config file '{}': {}", path, e.getMessage());
-			recoverMalformedFile(path, categories, new FailureFingerprint(e.fingerprint()), 1, settings);
-			return List.of();
-		}
 		ParsedConfigFile parsedFile = parse(path, categories, contents.lines(), false);
 		List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
 		parsedFile.values().forEach(value -> value.apply(changes));
@@ -192,6 +173,27 @@ public final class ConfigSerializer {
 			recoveryAttempts.remove(path.toAbsolutePath().normalize());
 		}
 		return List.copyOf(changes);
+	}
+
+	private static List<AppliedConfigValueChange<?>> loadFileWithoutNotifying(
+		Path path,
+		List<ConfigCategory> categories,
+		boolean skipFilesJustSaved,
+		Settings settings
+	) throws IOException {
+		ConfigFileReader.Contents contents;
+		try {
+			contents = ConfigFileReader.read(path);
+		} catch (ConfigFileReader.MalformedFileException e) {
+			LOGGER.error("Malformed config file '{}': {}", path, e.getMessage());
+			recoverMalformedFile(path, categories, new FailureFingerprint(e.fingerprint()), 1, settings);
+			return List.of();
+		}
+		if (skipFilesJustSaved && isFileUnchangedSinceLastSave(path, contents.fingerprint())) {
+			LOGGER.debug("Skipping loading config file, it was just saved by us: {}", path);
+			return List.of();
+		}
+		return applyContentsWithoutNotifying(path, categories, settings, contents);
 	}
 
 	public static List<ConfigValueUpdate<?>> parseMigrationUpdates(
@@ -591,14 +593,38 @@ public final class ConfigSerializer {
 	) throws IOException {
 		List<String> serialized = serialize(categories, saveDefaults, settings, Map.of());
 		LOGGER.debug("Saving config file: {}", path);
-		ConfigFileUtil.writeUsingTempFile(path, serialized);
-		try {
-			FileTime lastModifiedTime = Files.getLastModifiedTime(path);
-			saveTimes.put(path, lastModifiedTime);
-		} catch (IOException e) {
-			saveTimes.remove(path);
-			LOGGER.warn("Saved config file '{}' but could not record its modified time.", path, e);
+		String fingerprint = ConfigFileUtil.writeUsingTempFileAndGetFingerprint(path, serialized);
+		savedFileFingerprints.put(normalize(path), fingerprint);
+	}
+
+	public static boolean isFileUnchangedSinceLastSave(Path path, String currentFingerprint) {
+		Path normalizedPath = normalize(path);
+		String savedFingerprint = savedFileFingerprints.get(normalizedPath);
+		if (savedFingerprint == null) {
+			return false;
 		}
+		return isFileUnchangedSinceLastSave(normalizedPath, savedFingerprint, currentFingerprint);
+	}
+
+	private static boolean isFileUnchangedSinceLastSave(
+		Path normalizedPath,
+		String savedFingerprint,
+		String currentFingerprint
+	) {
+		if (savedFingerprint.equals(currentFingerprint)) {
+			return true;
+		}
+		savedFileFingerprints.remove(normalizedPath, savedFingerprint);
+		return false;
+	}
+
+	private static Path normalize(Path path) {
+		return path.toAbsolutePath()
+			.normalize();
+	}
+
+	public static void clearLastSavedFileFingerprint(Path path) {
+		savedFileFingerprints.remove(normalize(path));
 	}
 
 	public static void validatePendingSave(

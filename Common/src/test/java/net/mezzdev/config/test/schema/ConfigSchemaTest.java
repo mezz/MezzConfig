@@ -29,6 +29,7 @@ import net.mezzdev.config.serializers.ListSerializer;
 import net.mezzdev.config.serializers.StringSerializer;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigValueData;
+import net.mezzdev.filewatcher.FileWatcher;
 import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,6 +45,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.time.Duration;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -1352,6 +1354,51 @@ public class ConfigSchemaTest {
 		// Assertions: user changes write to the player layer without altering the pack default.
 		assertTrue(Files.readString(defaultPath).contains("enabled = true"));
 		assertTrue(Files.readString(playerPath).contains("enabled = false"));
+	}
+
+	@Test
+	public void ownSaveWatcherEventDoesNotReloadBeforeNewerPendingSave(@TempDir Path tempDir) throws Exception {
+		// Setup: a file-backed value and its delayed saves use a real watcher with a short settling delay.
+		Path path = tempDir.resolve("test.ini");
+		Deque<Runnable> scheduledTasks = new ArrayDeque<>();
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
+			.build();
+		ConfigSchema schema = new ConfigSchema(
+			path,
+			List.of(builder),
+			List.of(builder),
+			(command, delay) -> {
+				scheduledTasks.add(command);
+				return CompletableFuture.completedFuture(null);
+			}
+		);
+		ConfigSerializer.save(path, schema.getCategories());
+
+		try (FileWatcher watcher = new FileWatcher(
+			"Config Schema Self-Save Test",
+			Duration.ofMillis(25),
+			Duration.ofSeconds(1)
+		)) {
+			schema.register(watcher, false);
+			CountDownLatch savedFileObserved = new CountDownLatch(1);
+			watcher.addCallback(path, savedFileObserved::countDown);
+			watcher.start();
+
+			// Operation: save false, select true before that save's watcher callback, then wait for the callback.
+			assertTrue(enabled.set(false));
+			scheduledTasks.removeFirst()
+				.run();
+			assertTrue(Files.readString(path).contains("enabled = false"));
+			assertTrue(enabled.set(true));
+			awaitLatch(savedFileObserved);
+
+			// Assertions: the older saved file does not replace the newer pending value when it is read.
+			assertTrue(enabled.get());
+			assertTrue(Files.readString(path).contains("enabled = false"));
+			runScheduledTasks(scheduledTasks);
+			assertTrue(Files.readString(path).contains("enabled = true"));
+		}
 	}
 
 	@Test
