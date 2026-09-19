@@ -52,6 +52,11 @@ Each runtime jar supports its exact Minecraft version.
 
 ## Contributing
 
+Contributors must sign the [Contributor License Agreement](CLA.md) before their
+pull requests can be merged. Sign through
+[CLA Assistant](https://cla-assistant.io/mezz/MezzConfig) using the GitHub account
+associated with your contributions.
+
 See [Building MezzConfig](docs/multiversion.md) for build commands, JDK requirements,
 and IDE setup.
 
