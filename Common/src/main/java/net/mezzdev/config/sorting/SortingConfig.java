@@ -22,9 +22,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +48,7 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 	private final ListenerList<Runnable> changeListeners = new ListenerList<>();
 	@Nullable
 	private SavedValues<T> savedValues;
+	private @Nullable SortingSnapshot<T> sortingSnapshot;
 	private boolean savedValuesNeedWrite;
 	private boolean writesBlockedByReadFailure;
 	private @Nullable Path correctionPath;
@@ -103,7 +106,18 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 
 	@Override
 	public synchronized List<T> getSortedValues(Collection<T> allValues) {
-		List<T> allValuesSnapshot = getDistinctValues(allValues, "allValues");
+		return getSortingSnapshot(allValues).sortedValues();
+	}
+
+	private SortingSnapshot<T> getSortingSnapshot(Collection<T> allValues) {
+		Objects.requireNonNull(allValues, "allValues");
+		SortingSnapshot<T> snapshot = this.sortingSnapshot;
+		if (snapshot != null && snapshot.savedValues() == savedValues && !savedValuesNeedWrite && snapshot.matches(allValues)) {
+			writeDefaultIfMissing(snapshot.distinctValues());
+			return snapshot;
+		}
+		List<T> inputValues = new ArrayList<>(allValues);
+		List<T> allValuesSnapshot = getDistinctValues(inputValues, "allValues");
 		writeDefaultIfMissing(allValuesSnapshot);
 		SavedValues<T> previousSavedValues = getSavedValues();
 		validateSerializedIdentities(previousSavedValues, allValuesSnapshot);
@@ -117,7 +131,22 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 				this.savedValuesNeedWrite = !save(reconciledSavedValues);
 			}
 		}
-		return getCurrentVisibleValues(reconciledSavedValues, allValuesSnapshot);
+		List<T> sortedValues = getCurrentVisibleValues(reconciledSavedValues, allValuesSnapshot);
+		Map<T, Integer> savedIndexes = new HashMap<>();
+		for (int index = 0; index < sortedValues.size(); index++) {
+			savedIndexes.put(sortedValues.get(index), index);
+		}
+		Map<T, Integer> indexes = Map.copyOf(savedIndexes);
+		Comparator<T> savedOrder = Comparator.comparingInt(value -> indexes.getOrDefault(value, Integer.MAX_VALUE));
+		Set<T> validatedValues = Collections.newSetFromMap(new IdentityHashMap<>());
+		validatedValues.addAll(inputValues);
+		validatedValues.addAll(reconciledSavedValues.visibleValues());
+		validatedValues.addAll(reconciledSavedValues.hiddenValues());
+		this.sortingSnapshot = new SortingSnapshot<>(
+			List.copyOf(inputValues), allValuesSnapshot, reconciledSavedValues, sortedValues,
+			indexes.keySet(), Collections.unmodifiableSet(validatedValues), savedOrder.thenComparing(defaultSortOrder)
+		);
+		return this.sortingSnapshot;
 	}
 
 	@Override
@@ -723,20 +752,17 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 
 	@Override
 	public synchronized Comparator<T> getComparator(Collection<T> allValues) {
-		List<T> sortedValues = getSortedValues(allValues);
-		Map<T, Integer> savedIndexes = new HashMap<>();
-		for (int index = 0; index < sortedValues.size(); index++) {
-			savedIndexes.put(sortedValues.get(index), index);
-		}
-		Comparator<T> savedOrder = Comparator.comparingInt(value -> savedIndexes.getOrDefault(value, Integer.MAX_VALUE));
-		return savedOrder.thenComparing(defaultSortOrder);
+		return getSortingSnapshot(allValues).comparator();
 	}
 
 	@Override
 	public synchronized boolean isVisible(Collection<T> allValues, T value) {
 		Objects.requireNonNull(value, "value");
-		validateSerializedIdentities(List.of(List.of(value)));
-		return getSortedValues(allValues).contains(value);
+		SortingSnapshot<T> snapshot = this.sortingSnapshot;
+		if (snapshot == null || !snapshot.validatedValues().contains(value)) {
+			validateSerializedIdentities(List.of(List.of(value)));
+		}
+		return getSortingSnapshot(allValues).visibleValues().contains(value);
 	}
 
 	@Override
@@ -834,6 +860,30 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 			if (!previousSavedValues.equals(updatedSavedValues)) {
 				owner.notifyListeners();
 			}
+		}
+	}
+
+	private record SortingSnapshot<T>(
+		List<T> inputValues,
+		List<T> distinctValues,
+		SavedValues<T> savedValues,
+		List<T> sortedValues,
+		Set<T> visibleValues,
+		Set<T> validatedValues,
+		Comparator<T> comparator
+	) {
+		private boolean matches(Collection<T> values) {
+			if (inputValues.size() != values.size()) {
+				return false;
+			}
+			int index = 0;
+			for (T value : values) {
+				// Equal but distinct objects still need their serialized identities validated.
+				if (index == inputValues.size() || value != inputValues.get(index++)) {
+					return false;
+				}
+			}
+			return index == inputValues.size();
 		}
 	}
 

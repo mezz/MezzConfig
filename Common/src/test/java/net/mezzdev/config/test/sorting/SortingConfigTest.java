@@ -680,6 +680,179 @@ public class SortingConfigTest {
 		assertFalse(Files.exists(path));
 	}
 
+	@Test
+	public void unchangedSortingReadsReuseValidationAndLookupResults() {
+		// Setup: warm a snapshot and count serializer and comparator work after it is built.
+		CountingStringSerializer serializer = new CountingStringSerializer();
+		AtomicInteger comparisons = new AtomicInteger();
+		SortingConfig<String> sorting = SortingConfig.inMemory(serializer, (left, right) -> {
+			comparisons.incrementAndGet();
+			return left.compareTo(right);
+		}, true);
+		List<String> values = new ArrayList<>();
+		for (int index = 0; index < 100; index++) {
+			values.add("value" + index);
+		}
+		List<String> expected = sorting.getSortedValues(values);
+		serializer.calls.set(0);
+		comparisons.set(0);
+
+		// Operation: rendering an unchanged list asks for order, a comparator, and each item's visibility.
+		assertEquals(expected, sorting.getSortedValues(new ArrayList<>(values)));
+		sorting.getComparator(values);
+		for (String value : values) {
+			assertTrue(sorting.isVisible(values, value));
+		}
+
+		// Assertions: validated values are neither serialized again nor re-sorted on those reads.
+		assertEquals(0, serializer.calls.get());
+		assertEquals(0, comparisons.get());
+	}
+
+	@Test
+	public void sortingSnapshotDetectsChangesToTheSameInputCollection() {
+		// Setup: callers may reuse a mutable collection between discoveries.
+		SortingConfig<String> sorting = createInMemorySortingConfig(Comparator.naturalOrder(), true);
+		List<String> values = new ArrayList<>(List.of("b", "a"));
+		List<String> previous = sorting.getSortedValues(values);
+
+		// Operation: replace a value without changing the collection's identity or size.
+		values.set(1, "c");
+		assertEquals(List.of("b", "c"), sorting.getSortedValues(values));
+		assertFalse(sorting.isVisible(values, "a"));
+		assertTrue(sorting.isVisible(values, "c"));
+		assertEquals(List.of("a", "b"), previous);
+
+		// Assertions: a cached snapshot cannot hide invalid new input either.
+		values.set(1, null);
+		assertThrows(IllegalArgumentException.class, () -> sorting.getSortedValues(values));
+	}
+
+	@Test
+	public void sortingEditsRefreshSnapshotsBeforeNotifyingListeners() {
+		// Setup: hold the previous list and comparator while warming visibility lookups.
+		SortingConfig<String> sorting = createInMemorySortingConfig(Comparator.naturalOrder(), true);
+		List<String> values = List.of("a", "b", "c");
+		List<String> previous = sorting.getSortedValues(values);
+		Comparator<String> previousComparator = sorting.getComparator(values);
+		assertTrue(sorting.isVisible(values, "b"));
+		AtomicInteger notifications = new AtomicInteger();
+		sorting.addChangeListener(() -> {
+			assertEquals(List.of("c", "a"), sorting.getSortedValues(values));
+			assertFalse(sorting.isVisible(values, "b"));
+			assertTrue(sorting.getComparator(values).compare("c", "a") < 0);
+			notifications.incrementAndGet();
+		});
+
+		// Operation: reorder values and hide one, then read the resulting snapshot again.
+		assertTrue(sorting.setSortedValues(values, List.of("c", "a")));
+		assertEquals(List.of("c", "a"), sorting.getSortedValues(values));
+
+		// Assertions: listeners see the new state while previously returned views keep their old order.
+		assertEquals(1, notifications.get());
+		assertEquals(List.of("a", "b", "c"), previous);
+		assertTrue(previousComparator.compare("a", "c") < 0);
+	}
+
+	@Test
+	public void sortingSnapshotsFollowMigrationApplyAndRollback(@TempDir Path tempDir) {
+		// Setup: a loaded order already has a cached snapshot when a migration prepares its update.
+		SortingConfig<String> sorting = createSortingConfig(tempDir.resolve("sorting.txt"), Comparator.naturalOrder(), true);
+		List<String> values = List.of("a", "b");
+		assertEquals(values, sorting.getSortedValues(values));
+		SortingConfig.MigrationUpdate<String> update = sorting.prepareMigrationUpdate(values, List.of("b"));
+
+		// Operation and assertions: both applying and rolling back invalidate order and visibility lookups.
+		update.apply();
+		assertEquals(List.of("b"), sorting.getSortedValues(values));
+		assertFalse(sorting.isVisible(values, "a"));
+		update.rollback();
+		assertEquals(values, sorting.getSortedValues(values));
+		assertTrue(sorting.isVisible(values, "a"));
+	}
+
+	@Test
+	public void cachedSortingInputsStillValidateEqualReplacementObjects(@TempDir Path tempDir) throws IOException {
+		// Setup: equal objects can violate the serializer contract by carrying different serialized identities.
+		Path path = tempDir.resolve("sorting.txt");
+		SortingConfig<EquivalentValue> sorting = new SortingConfig<>(
+			path, EQUIVALENT_VALUE_SERIALIZER, Comparator.comparingInt(value -> value.id), false
+		);
+		EquivalentValue first = new EquivalentValue(1, "1:first");
+		EquivalentValue replacement = new EquivalentValue(1, "1:replacement");
+		sorting.getSortedValues(List.of(first));
+		String previousFile = Files.readString(path);
+
+		// Operation and assertions: equality alone cannot bypass identity validation on a cached read.
+		assertThrows(IllegalArgumentException.class, () -> sorting.getSortedValues(List.of(replacement)));
+		assertEquals(previousFile, Files.readString(path));
+		assertEquals(List.of(first), sorting.getSortedValues(List.of(first)));
+	}
+
+	@Test
+	public void cachedSortingReadsRetryFailedWrites(@TempDir Path tempDir) throws IOException {
+		// Setup: a file occupying the parent directory makes the initial automatic save fail.
+		Path parent = tempDir.resolve("blocked");
+		Files.writeString(parent, "not a directory");
+		Path path = parent.resolve("sorting.txt");
+		SortingConfig<String> sorting = createSortingConfig(path, Comparator.naturalOrder(), false);
+		List<String> values = List.of("b", "a");
+		assertEquals(List.of("a", "b"), sorting.getSortedValues(values));
+		assertFalse(Files.exists(path));
+
+		// Operation: restore the directory and read the same values again.
+		Files.delete(parent);
+		Files.createDirectory(parent);
+		assertEquals(List.of("a", "b"), sorting.getSortedValues(values));
+
+		// Assertions: caching does not suppress the pending write retry.
+		assertTrue(Files.isRegularFile(path));
+		assertEquals(List.of("a", "b"), createSortingConfig(path, Comparator.naturalOrder(), false).getSortedValues(values));
+	}
+
+	@Test
+	public void cachedSortingReadsRecreateMissingDefaultFiles(@TempDir Path tempDir) throws IOException {
+		// Setup: a layered config has loaded its generated default without creating a player override.
+		Path defaults = tempDir.resolve("defaults.txt");
+		Path player = tempDir.resolve("player.txt");
+		SortingConfig<String> sorting = createSortingConfig(defaults, player, Comparator.naturalOrder(), false);
+		List<String> values = List.of("b", "a");
+		sorting.getSortedValues(values);
+		Files.delete(defaults);
+
+		// Operation and assertions: an unchanged cached read still repairs a missing default file.
+		assertEquals(List.of("a", "b"), sorting.getSortedValues(values));
+		assertTrue(Files.isRegularFile(defaults));
+		assertFalse(Files.exists(player));
+	}
+
+	private static final class CountingStringSerializer implements IConfigValueSerializer<String> {
+		private final AtomicInteger calls = new AtomicInteger();
+
+		@Override
+		public String serialize(String value) {
+			calls.incrementAndGet();
+			return StringSerializer.INSTANCE.serialize(value);
+		}
+
+		@Override
+		public IDeserializeResult<String> deserialize(String string) {
+			calls.incrementAndGet();
+			return StringSerializer.INSTANCE.deserialize(string);
+		}
+
+		@Override
+		public boolean isValid(String value) {
+			calls.incrementAndGet();
+			return StringSerializer.INSTANCE.isValid(value);
+		}
+
+		@Override
+		public String getValidValuesDescription() {
+			return StringSerializer.INSTANCE.getValidValuesDescription();
+		}
+	}
+
 	private static final class EquivalentValue {
 		private final int id;
 		private final String serializedIdentity;
