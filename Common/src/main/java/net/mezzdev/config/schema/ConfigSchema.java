@@ -309,9 +309,6 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private synchronized LoadResult loadIfNeededWithoutNotifying() {
-		LoadState previousState = new LoadState(
-			getEffectiveValues(), getPendingValues(), restartValuesInitialized, remotelyActive, usesDeclaredDefaults()
-		);
 		Path previousDefaultPath = activeDefaultPath;
 		Path previousPath = activePath;
 		updatePathReservations(previousDefaultPath, previousPath);
@@ -322,6 +319,17 @@ public class ConfigSchema implements IConfigSchema {
 			.map(Path::normalize);
 		Path path = resolvedPath.orElse(null);
 		updatePathReservations(defaultPath, path, previousDefaultPath, previousPath);
+		boolean defaultPathChanged = !Objects.equals(defaultPath, previousDefaultPath);
+		boolean activePathChanged = !Objects.equals(path, previousPath);
+		boolean pathsChanged = defaultPathChanged || activePathChanged;
+		boolean switchingFromRemoteValues = remotelyActive && path != null;
+		if (!pathsChanged && !needsLoad.get() && !switchingFromRemoteValues) {
+			return LoadResult.UNCHANGED;
+		}
+
+		LoadState previousState = new LoadState(
+			getEffectiveValues(), getPendingValues(), restartValuesInitialized, remotelyActive, usesDeclaredDefaults()
+		);
 		if (isSynchronizedServerSchema() && remotelyActive && path == null) {
 			transitionActivePaths(defaultPath, null, previousDefaultPath, previousPath);
 			pendingFileChanges.clear();
@@ -331,9 +339,6 @@ public class ConfigSchema implements IConfigSchema {
 		if (path != null) {
 			remotelyActive = false;
 		}
-		boolean defaultPathChanged = !Objects.equals(defaultPath, previousDefaultPath);
-		boolean activePathChanged = !Objects.equals(path, previousPath);
-		boolean pathsChanged = defaultPathChanged || activePathChanged;
 		if (pathsChanged) {
 			transitionActivePaths(defaultPath, path, previousDefaultPath, previousPath);
 			needsLoad.set(true);
@@ -1504,7 +1509,9 @@ public class ConfigSchema implements IConfigSchema {
 		List<AppliedConfigValueChange<?>> effectiveChanges,
 		List<AppliedConfigValueChange<?>> pendingChanges,
 		List<InitialSave> initialSaves
-	) {}
+	) {
+		private static final LoadResult UNCHANGED = new LoadResult(List.of(), List.of(), List.of());
+	}
 
 	private record ResolvedServerConfigValue(
 		ConfigValue<?> configValue,

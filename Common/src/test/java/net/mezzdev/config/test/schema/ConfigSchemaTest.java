@@ -18,6 +18,7 @@ import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.api.value.color.PackedColor;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.file.ConfigFileReader;
+import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
@@ -999,6 +1000,119 @@ public class ConfigSchemaTest {
 		// Assertions: persistence is scheduled first and the later listener survives the earlier failure.
 		assertEquals(1, scheduledSaves.get());
 		assertEquals(1, laterNotifications.get());
+	}
+
+	@ParameterizedTest
+	@EnumSource(ConfigSchemaType.class)
+	public void unchangedReadsDoNotEnumerateSchemaValues(ConfigSchemaType type, @TempDir Path tempDir) {
+		// Setup: count category visits to detect whole-schema work on the read path.
+		AtomicInteger categoryVisits = new AtomicInteger();
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category") {
+			@Override
+			public ConfigCategory build(ConfigSchema schema) {
+				ConfigCategory category = super.build(schema);
+				return new ConfigCategory(getLocalizationKey(), getName(), category.getConfigValues()) {
+					@Override
+					public List<ConfigValue<?>> getConfigValues() {
+						categoryVisits.incrementAndGet();
+						return super.getConfigValues();
+					}
+				};
+			}
+		};
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true).build();
+		builder.addInteger("other", 1, 0, 10).build();
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.of(tempDir.resolve("test.ini")));
+		ServerConfigKey serverKey = null;
+		if (type == ConfigSchemaType.SERVER) {
+			serverKey = new ServerConfigKey("test_mod", "server.ini");
+		}
+		ConfigSchema schema = new ConfigSchema(
+			"test_mod", activePath::get, List.of(builder), List.of(builder),
+			(command, delay) -> CompletableFuture.completedFuture(null), type,
+			serverKey
+		);
+
+		// Operation and assertions: neither active nor inactive reads scan unrelated values.
+		for (Optional<Path> context : List.of(activePath.get(), Optional.<Path>empty())) {
+			activePath.set(context);
+			schema.loadIfNeeded();
+			categoryVisits.set(0);
+			for (int read = 0; read < 10; read++) {
+				assertTrue(enabled.get());
+				assertTrue(enabled.getPendingValue());
+			}
+			assertEquals(0, categoryVisits.get());
+		}
+		if (type == ConfigSchemaType.SERVER) {
+			schema.applyRemoteSnapshot(List.of(
+				new ServerConfigValueData("category", "enabled", "false"),
+				new ServerConfigValueData("category", "other", "2")
+			));
+			categoryVisits.set(0);
+			assertFalse(enabled.get());
+			assertFalse(enabled.getPendingValue());
+			assertEquals(0, categoryVisits.get());
+		}
+	}
+
+	@Test
+	public void unchangedReadsStillNoticeDefaultPathChanges(@TempDir Path tempDir) throws IOException {
+		// Setup: the player path stays fixed while its inherited defaults change.
+		Path first = tempDir.resolve("first.ini");
+		Path second = tempDir.resolve("second.ini");
+		Files.write(first, List.of("[category]", "enabled = false"));
+		Files.write(second, List.of("[category]", "enabled = true"));
+		AtomicReference<Path> defaultPath = new AtomicReference<>(first);
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true).build();
+		createSchema(new ConfigSchemaPathResolver() {
+			@Override
+			public Optional<Path> resolvePath() {
+				return Optional.of(tempDir.resolve("player.ini"));
+			}
+			@Override
+			public Optional<Path> resolveDefaultPath() {
+				return Optional.of(defaultPath.get());
+			}
+		}, builder);
+		assertFalse(enabled.get());
+		assertFalse(enabled.get());
+		AtomicInteger changes = new AtomicInteger();
+		enabled.addListener(ignored -> changes.incrementAndGet());
+
+		// Operation and assertions: a read notices the new defaults and emits one change.
+		defaultPath.set(second);
+		assertTrue(enabled.get());
+		assertTrue(enabled.getPendingValue());
+		assertEquals(1, changes.get());
+	}
+
+	@Test
+	public void unchangedReadsStillReloadExternalFileChanges(@TempDir Path tempDir) throws Exception {
+		// Setup: warm the unchanged-read path while a watcher observes the active file.
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of("[category]", "enabled = true"));
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true).build();
+		ConfigSchema schema = createSchema(path, builder);
+		try (FileWatcher watcher = new FileWatcher("Config Read Test", Duration.ofMillis(25), Duration.ofSeconds(1))) {
+			schema.register(watcher, false);
+			CountDownLatch fileChanged = new CountDownLatch(1);
+			watcher.addCallback(path, fileChanged::countDown);
+			watcher.start();
+			assertTrue(enabled.get());
+			assertTrue(enabled.getPendingValue());
+			AtomicInteger changes = new AtomicInteger();
+			enabled.addListener(ignored -> changes.incrementAndGet());
+
+			// Operation and assertions: the watcher invalidates the fast path and the next read reloads.
+			Files.write(path, List.of("[category]", "enabled = false"));
+			awaitLatch(fileChanged);
+			assertFalse(enabled.get());
+			assertFalse(enabled.getPendingValue());
+			assertEquals(1, changes.get());
+		}
 	}
 
 	@Test
