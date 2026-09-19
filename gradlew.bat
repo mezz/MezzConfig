@@ -73,8 +73,13 @@ goto fail
 set CLASSPATH=
 
 
+@rem Keep task history and Loom launch files separate for each Minecraft target.
+set "MEZZCONFIG_TARGET=1.21.1"
+for /f "tokens=1,* delims==" %%a in ('findstr /b "minecraftVersion=" "%APP_HOME%\gradle.properties"') do set "MEZZCONFIG_TARGET=%%b"
+call :findMinecraftTarget %*
+
 @rem Execute Gradle
-"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -classpath "%CLASSPATH%" -jar "%APP_HOME%\gradle\wrapper\gradle-wrapper.jar" %*
+"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -classpath "%CLASSPATH%" -jar "%APP_HOME%\gradle\wrapper\gradle-wrapper.jar" --project-cache-dir "%APP_HOME%\.gradle\targets\%MEZZCONFIG_TARGET%" %*
 
 :end
 @rem End local scope for the variables with windows NT shell
@@ -92,3 +97,15 @@ exit /b %EXIT_CODE%
 if "%OS%"=="Windows_NT" endlocal
 
 :omega
+exit /b 0
+
+:findMinecraftTarget
+if "%~1"=="" exit /b 0
+if "%~1"=="-PminecraftVersion" (
+    set "MEZZCONFIG_TARGET=%~2"
+    shift
+)
+set "MEZZCONFIG_ARG=%~1"
+if "%MEZZCONFIG_ARG:~0,19%"=="-PminecraftVersion=" set "MEZZCONFIG_TARGET=%MEZZCONFIG_ARG:~19%"
+shift
+goto findMinecraftTarget

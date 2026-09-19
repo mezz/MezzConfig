@@ -5,7 +5,8 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import net.mezzdev.config.api.schema.category.IConfigCategory;
 import net.mezzdev.config.api.schema.category.IConfigEditorCategory;
-import net.minecraft.locale.Language;
+import net.mezzdev.config.registration.ConfigProvider;
+import net.mezzdev.config.registration.ConfigPhysicalSideProvider;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -36,9 +37,9 @@ public final class ConfigTranslationChecker {
 			.flatMap(category -> category.getConfigValues().stream())
 			.forEach(configValue -> addLocalizationKeys(localizationKeys, configValue.getEditorInfo().getLocalizationKey()));
 
-		Language language = Language.getInstance();
+		ConfigPhysicalSideProvider language = ConfigProvider.getEnvironment();
 		return localizationKeys.stream()
-			.filter(localizationKey -> !language.has(localizationKey))
+			.filter(localizationKey -> !language.hasTranslation(localizationKey))
 			.toList();
 	}
 

@@ -1,10 +1,10 @@
 package net.mezzdev.config.neoforge;
 
-import net.mezzdev.config.server.ServerConfigNetworking;
+import net.mezzdev.config.minecraft.network.MinecraftPayloads;
 import net.mezzdev.config.server.ServerConfigProtocol;
 import net.mezzdev.config.server.ServerConfigRuntime;
-import net.mezzdev.config.server.ServerConfigSyncChunkPayload;
-import net.mezzdev.config.server.ServerIdentityPayload;
+import net.mezzdev.config.minecraft.network.SyncPacket;
+import net.mezzdev.config.minecraft.network.IdentityPacket;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -17,7 +17,7 @@ public final class ConfigNeoForgeNetwork {
 
 	public static void register(IEventBus modEventBus) {
 		modEventBus.addListener(ConfigNeoForgeNetwork::registerPayloads);
-		ServerConfigNetworking.setServerSender((player, payload) -> {
+		MinecraftPayloads.registerSender((player, payload) -> {
 			if (player.connection.hasChannel(payload.type())) {
 				PacketDistributor.sendToPlayer(player, payload);
 				return true;
@@ -31,14 +31,14 @@ public final class ConfigNeoForgeNetwork {
 			.executesOn(HandlerThread.MAIN)
 			.optional()
 			.playToClient(
-				ServerIdentityPayload.TYPE,
-				ServerIdentityPayload.STREAM_CODEC,
-				(payload, context) -> ServerConfigRuntime.handleServerIdentity(payload)
+				IdentityPacket.TYPE,
+				IdentityPacket.STREAM_CODEC,
+				(payload, context) -> ServerConfigRuntime.handleServerIdentity(payload.toPayload())
 			)
 			.playToClient(
-				ServerConfigSyncChunkPayload.TYPE,
-				ServerConfigSyncChunkPayload.STREAM_CODEC,
-				(payload, context) -> ServerConfigRuntime.handleSyncChunk(payload)
+				SyncPacket.TYPE,
+				SyncPacket.STREAM_CODEC,
+				(payload, context) -> ServerConfigRuntime.handleSyncChunk(payload.toPayload())
 			);
 	}
 }

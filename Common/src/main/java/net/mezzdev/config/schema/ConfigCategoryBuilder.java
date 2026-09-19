@@ -121,7 +121,7 @@ public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implement
 		if (validValues.isEmpty()) {
 			throw new IllegalArgumentException("validValues must not be empty.");
 		}
-		T firstValidValue = ErrorUtil.checkNotNull(validValues.getFirst(), "validValues[0]");
+		T firstValidValue = ErrorUtil.checkNotNull(validValues.get(0), "validValues[0]");
 		EnumSerializer<T> serializer = new EnumSerializer<>(firstValidValue.getDeclaringClass(), validValues);
 		return addList(name, defaultValue, serializer);
 	}

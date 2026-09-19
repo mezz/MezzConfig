@@ -1,5 +1,8 @@
 # NeoForge ModDevGradle setup
 
+The examples use Minecraft 1.21.1. In the MezzConfig artifact names, replace
+`1.21.1` with your mod's [supported Minecraft version](../README.md#supported-minecraft-versions).
+
 ## Gradle
 
 In `build.gradle.kts`, choose the MezzConfig version and add its Maven

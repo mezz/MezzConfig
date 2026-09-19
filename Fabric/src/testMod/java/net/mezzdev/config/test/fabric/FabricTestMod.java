@@ -94,7 +94,7 @@ public final class FabricTestMod implements ModInitializer {
 			throw new IllegalStateException("Fabric activated or published a client schema on a dedicated server.");
 		}
 		if (clientSchema.getCategories().size() != 1 ||
-			clientSchema.getCategories().getFirst().getConfigValues().size() != 4
+			clientSchema.getCategories().get(0).getConfigValues().size() != 4
 		) {
 			throw new IllegalStateException("Fabric did not build the client smoke-test schema.");
 		}
@@ -108,7 +108,7 @@ public final class FabricTestMod implements ModInitializer {
 			.orElseThrow(() -> new IllegalStateException("The Fabric server schema has no active config path."));
 		if (!Files.isRegularFile(serverPath) ||
 			serverSchema.getCategories().size() != 1 ||
-			serverSchema.getCategories().getFirst().getConfigValues().size() != 3
+			serverSchema.getCategories().get(0).getConfigValues().size() != 3
 		) {
 			throw new IllegalStateException("Fabric did not load the authoritative server schema.");
 		}

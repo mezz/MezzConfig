@@ -116,4 +116,13 @@ public class ClientWorldConfigPathUtilTest {
 		return ClientWorldConfigPathUtil.getServerDirPath()
 			.resolve(pathName);
 	}
+
+	@Test
+	public void localWorldPathsKeepPortableNamesAndExistingEscaping() {
+		// Operation and assertions: moving path handling out of Minecraft must preserve saved locations.
+		assertEquals(Path.of("world", "local", "_CON_"), ClientWorldConfigPathUtil.getLocalWorldPath("CON"));
+		assertEquals(Path.of("world", "local", "a_b_c_d_e_f_g_h"),
+			ClientWorldConfigPathUtil.getLocalWorldPath("a.b/c\\d\ne\tf\u0000g:h"));
+		assertEquals(Path.of("world", "local", "_"), ClientWorldConfigPathUtil.getLocalWorldPath("   "));
+	}
 }

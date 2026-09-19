@@ -2,11 +2,11 @@ package net.mezzdev.config.fabric;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
-import net.mezzdev.config.registration.ConfigPhysicalSideProvider;
+import net.mezzdev.config.minecraft.MinecraftConfigEnvironment;
 
 import java.nio.file.Path;
 
-public final class ConfigFabricPhysicalSideProvider implements ConfigPhysicalSideProvider {
+public final class ConfigFabricPhysicalSideProvider extends MinecraftConfigEnvironment {
 	@Override
 	public Path getConfigRoot() {
 		return FabricLoader.getInstance().getConfigDir();

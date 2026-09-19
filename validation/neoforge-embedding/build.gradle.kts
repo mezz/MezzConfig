@@ -4,21 +4,23 @@ import java.util.zip.ZipFile
 
 plugins {
     java
-    id("net.neoforged.moddev") version "2.0.146"
+    id("net.neoforged.moddev")
 }
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+val minecraftVersion = providers.gradleProperty("minecraftVersion").orElse("1.21.1").get()
+layout.buildDirectory.set(layout.projectDirectory.dir("build/$minecraftVersion"))
 val mezzConfigVersion: String by project
 val mezzConfigVersionRange = "[0.5.0,1.0.0)"
 
 repositories {
-    maven { url = uri("../../build/publication-validation") }
+    maven { url = uri("../../build/$minecraftVersion/publication-validation") }
 }
 
 // Keep this dependency block aligned with docs/neoforge.md.
 dependencies {
-    jarJar("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }
+    jarJar("net.mezzdev.config:mezz_config-$minecraftVersion-neoforge:$mezzConfigVersion") { version { strictly(mezzConfigVersionRange); prefer(mezzConfigVersion) } }
 }
 
 val consumerJar = tasks.named<Jar>("jar")
@@ -27,11 +29,12 @@ val validateEmbeddedRuntime = tasks.register("validateEmbeddedRuntime") {
     inputs.file(consumerJar.flatMap { it.archiveFile })
     doLast {
         val requiredEntries = mapOf(
-            "mezz_config-1.21.1-neoforge" to setOf(
+            "mezz_config-$minecraftVersion-neoforge" to setOf(
                 "net/mezzdev/config/neoforge/ConfigNeoForge.class",
                 "META-INF/neoforge.mods.toml",
                 "net/mezzdev/config/api/Configs.class",
                 "net/mezzdev/config/registration/ConfigProvider.class",
+                "net/mezzdev/config/minecraft/MinecraftConfigRuntime.class",
                 "net/mezzdev/config/modshade/net/mezzdev/filewatcher/FileWatcher.class",
                 "net/mezzdev/config/modshade/net/mezzdev/deduplicatingrunner/DeduplicatingRunner.class",
                 "META-INF/services/net.mezzdev.config.api.Configs\$IConfigProvider"

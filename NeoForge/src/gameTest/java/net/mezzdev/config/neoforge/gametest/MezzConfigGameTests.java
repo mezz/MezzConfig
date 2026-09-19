@@ -11,12 +11,8 @@ import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
 import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.server.ServerConfigKey;
-import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.neoforged.testframework.annotation.ForEachTest;
-import net.neoforged.testframework.annotation.TestHolder;
-import net.neoforged.testframework.gametest.EmptyTemplate;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,7 +22,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-@ForEachTest(groups = "server_config")
 public final class MezzConfigGameTests {
 	private static final String TEST_MOD_ID = "mezz_config_test_neoforge";
 	private static final Duration FILE_WATCHER_TEST_CHANGE_SETTLING_DELAY = Duration.ofMillis(25);
@@ -35,9 +30,6 @@ public final class MezzConfigGameTests {
 
 	}
 
-	@GameTest
-	@EmptyTemplate
-	@TestHolder(description = "Starting a dedicated-server world activates its authoritative config file.")
 	public static void dedicatedServerActivatesAuthoritativeConfig(GameTestHelper helper) {
 		// Setup: the NeoForge test server has registered its server-owned schema during startup.
 		IConfigSchema schema = getServerSchema();
@@ -58,9 +50,6 @@ public final class MezzConfigGameTests {
 		helper.succeed();
 	}
 
-	@GameTest
-	@EmptyTemplate
-	@TestHolder(description = "A dedicated server starts without publishing client-owned schemas.")
 	public static void dedicatedServerStartsWithoutClientSchemas(GameTestHelper helper) {
 		// Operation: inspect schemas registered during dedicated-server startup.
 		boolean hasClientSchema = Configs.getSchemas()
@@ -74,9 +63,6 @@ public final class MezzConfigGameTests {
 		helper.succeed();
 	}
 
-	@GameTest
-	@EmptyTemplate
-	@TestHolder(description = "A dedicated server keeps common client schema declarations inert.")
 	public static void dedicatedServerKeepsClientSchemaDeclarationsInert(GameTestHelper helper) {
 		// Setup: create installation-wide and per-world client schema builders on a dedicated server.
 		IConfigRegistration registration = Configs.forMod(TEST_MOD_ID);
@@ -107,9 +93,6 @@ public final class MezzConfigGameTests {
 		helper.succeed();
 	}
 
-	@GameTest
-	@EmptyTemplate
-	@TestHolder(description = "A dedicated server keeps client sorting configs independent and in memory.")
 	public static void dedicatedServerKeepsClientSortingConfigsInMemory(GameTestHelper helper) {
 		// Setup: a client config registration is available on the dedicated server.
 		IConfigRegistration registration = Configs.forMod(TEST_MOD_ID);
@@ -136,9 +119,6 @@ public final class MezzConfigGameTests {
 	}
 
 	// The GameTest server advances ticks much faster than wall time, so this uses a test-specific 25 ms settling delay.
-	@GameTest(timeoutTicks = 10000)
-	@EmptyTemplate
-	@TestHolder(description = "Editing an authoritative config file schedules its reload without server-tick polling.")
 	public static void authoritativeFileChangeSchedulesReload(GameTestHelper helper) {
 		// Setup: a watched authoritative config starts with a known value and valid file contents.
 		WatchedServerConfig config = createFastWatchedServerConfig();
@@ -228,7 +208,7 @@ public final class MezzConfigGameTests {
 	}
 
 	private static GameTestAssertException failure(String message) {
-		return new GameTestAssertException(message);
+		return GameTestFailures.create(message);
 	}
 
 	private record WatchedServerConfig(Path path, IConfigValue<Boolean> enabled) {}

@@ -21,7 +21,7 @@ vanilla server or any server that does not have MezzConfig installed.
 Choose the guide for your loader:
 
 - [Fabric Loom](docs/fabric.md)
-- [ForgeGradle](docs/forge.md)
+- [Forge with Legacy ModDevGradle](docs/forge.md)
 - NeoForge with [ModDevGradle](docs/neoforge.md) or
   [NeoGradle](docs/neogradle.md)
 
@@ -38,31 +38,22 @@ Start with the [API guide](docs/API.md). Deeper guides cover
 [sorting configs](docs/sorting.md). The published Javadocs are the reference for
 exact contracts and exceptions.
 
-## Building MezzConfig
+## Supported Minecraft versions
 
-Build all artifacts and run the test suite with Java 21:
+Choose the MezzConfig artifacts that match your mod's Minecraft version and loader.
+Each runtime jar supports its exact Minecraft version.
 
-```text
-./gradlew build
-```
+| Minecraft | Java | Loaders |
+| --- | --- | --- |
+| 1.19.2, 1.20.1 | 17 | Fabric, Forge |
+| 1.21.1 | 21 | Fabric, NeoForge |
+| 1.21.11 | 21 | Fabric, NeoForge |
+| 26.1.2, 26.2, 26.3 | 25 | Fabric, NeoForge |
 
-Run the automated release checks used by CI with:
+## Contributing
 
-```text
-./gradlew spotlessCheck build :Common:apiJavadoc :Common:checkJarCompatibility validateDocumentationLinks validateFabricEmbedding
-./gradlew --no-configuration-cache validateNeoForgeEmbedding
-./gradlew :NeoForge:runGameTestServer
-./gradlew --no-configuration-cache :Fabric:runServerSmokeTest :Forge:runServerSmokeTest
-./gradlew :Fabric:publishMods :Forge:publishMods :NeoForge:publishMods -PpublishDryRun=true
-```
-
-The embedding checks also run `validatePublishing`, which writes artifacts only
-to `build/publication-validation`. The NeoForge check builds a separate consumer
-using the documented dependencies and inspects its nested jars and metadata.
-
-Before release, also check client joins, disconnects, reconnects, and world
-switches on each loader. Confirm that per-world listeners observe context
-changes and server settings synchronize correctly.
+See [Building MezzConfig](docs/multiversion.md) for build commands, JDK requirements,
+and IDE setup.
 
 ## License
 

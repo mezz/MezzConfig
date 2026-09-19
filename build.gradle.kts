@@ -9,6 +9,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
+import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
@@ -21,7 +22,7 @@ import java.util.Locale
 import java.util.zip.ZipFile
 
 plugins {
-    id("me.modmuss50.mod-publish-plugin") version("1.1.0") apply(false)
+    id("me.modmuss50.mod-publish-plugin") apply(false)
 
     // https://github.com/mezz/JavaFormatting
     id("net.mezzdev.java-formatting") version("0.4.0")
@@ -35,17 +36,7 @@ plugins {
     // https://github.com/neoforged/JarCompatibilityChecker
     id("net.neoforged.jarcompatibilitychecker") version("0.1.19") apply(false)
 
-    // https://maven.fabricmc.net/fabric-loom/fabric-loom.gradle.plugin/maven-metadata.xml
-    id("fabric-loom") version("1.13.6") apply(false)
 
-    // https://projects.neoforged.net/neoforged/moddevgradle
-    id("net.neoforged.moddev") version("2.0.146") apply(false)
-
-    // https://files.minecraftforge.net/net/minecraftforge/gradle/ForgeGradle/index.html
-    id("net.minecraftforge.gradle") version("6.0.54") apply(false)
-
-    // https://mvnrepository.com/artifact/org.parchmentmc.librarian.forgegradle/org.parchmentmc.librarian.forgegradle.gradle.plugin
-    id("org.parchmentmc.librarian.forgegradle") version("1.2.0") apply(false)
 }
 repositories {
     mavenCentral()
@@ -57,12 +48,12 @@ val fabricTestModId: String by extra
 val fabricLoaderVersion: String by extra
 val fabricLoaderVersionRange: String by extra
 val fabricApiVersionRange: String by extra
-val forgeVersionRange: String by extra
+val forgeVersionRange = findProperty("forgeVersionRange")?.toString().orEmpty()
 val forgeTestModId: String by extra
 val githubUrl: String by extra
-val forgeLoaderVersionRange: String by extra
-val neoforgeVersionRange: String by extra
-val neoforgeLoaderVersionRange: String by extra
+val forgeLoaderVersionRange = findProperty("forgeLoaderVersionRange")?.toString().orEmpty()
+val neoforgeVersionRange = findProperty("neoforgeVersionRange")?.toString().orEmpty()
+val neoforgeLoaderVersionRange = findProperty("neoforgeLoaderVersionRange")?.toString().orEmpty()
 val neoforgeTestModId: String by extra
 val minecraftVersion: String by extra
 val minecraftVersionRange: String by extra
@@ -176,7 +167,8 @@ abstract class ValidateFabricPublication : DefaultTask() {
         val fabricJar = fabricJar.get().asFile
         val requiredEntries = setOf(
             "net/mezzdev/config/fabric/ConfigFabric.class",
-            "net/mezzdev/config/registration/ConfigProvider.class"
+            "net/mezzdev/config/registration/ConfigProvider.class",
+            "net/mezzdev/config/minecraft/MinecraftConfigRuntime.class"
         )
         ZipFile(fabricJar).use { archive ->
             for (requiredEntry in requiredEntries) {
@@ -185,6 +177,16 @@ abstract class ValidateFabricPublication : DefaultTask() {
                 }
             }
         }
+    }
+}
+
+abstract class ValidateApiConsumerClasspath : DefaultTask() {
+    @get:Classpath
+    abstract val consumerClasspath: ConfigurableFileCollection
+
+    @TaskAction
+    fun validate() {
+        logger.lifecycle("Published API resolves against the loader compile classpath ({} files).", consumerClasspath.files.size)
     }
 }
 
@@ -224,6 +226,11 @@ val validatePublishing = tasks.register("validatePublishing") {
     description = "Publishes every Maven publication to a local validation repository."
 }
 
+val validatePublishedApiConsumers = tasks.register("validatePublishedApiConsumers") {
+    group = "verification"
+    description = "Resolves the published API against every supported loader's Minecraft dependency constraints."
+}
+
 val publishMavenRelease = tasks.register("publishMavenRelease") {
     group = "publishing"
     description = "Publishes the supported Maven artifacts to the release repository."
@@ -257,13 +264,48 @@ tasks.register<GradleBuild>("validateNeoForgeEmbedding") {
     dependsOn(validatePublishing)
     dir = file("validation/neoforge-embedding")
     tasks = listOf("check")
-    startParameter.projectProperties = mapOf("mezzConfigVersion" to projectVersion)
+    startParameter.projectCacheDir = file(".gradle/targets/$minecraftVersion/neoforge-embedding")
+    startParameter.projectProperties = mapOf("mezzConfigVersion" to projectVersion, "minecraftVersion" to minecraftVersion)
     notCompatibleWithConfigurationCache("Runs a separate consumer build against the local validation repository.")
 }
 
 subprojects {
     version = projectVersion
     group = modGroup
+
+    if (name in setOf("Fabric", "Forge", "NeoForge")) {
+        plugins.withId("java") {
+            afterEvaluate {
+                val compileClasspath = configurations.getByName("compileClasspath")
+                val consumer = configurations.create("publishedApiConsumer") {
+                    isCanBeConsumed = false
+                    isCanBeResolved = true
+                    extendsFrom(compileClasspath)
+                    compileClasspath.attributes.keySet().forEach { key ->
+                        @Suppress("UNCHECKED_CAST")
+                        val typedKey = key as Attribute<Any>
+                        attributes.attribute(typedKey, compileClasspath.attributes.getAttribute(typedKey)!!)
+                    }
+                }
+                val apiModule = "${configModId}-${minecraftVersion}-config-api"
+                repositories {
+                    exclusiveContent {
+                        forRepository {
+                            maven { url = rootProject.layout.buildDirectory.dir("publication-validation").get().asFile.toURI() }
+                        }
+                        filter { includeModule(modGroup, apiModule) }
+                    }
+                }
+                dependencies.add(consumer.name, "$modGroup:$apiModule:$projectVersion")
+                val validateConsumer = tasks.register<ValidateApiConsumerClasspath>("validatePublishedApiConsumer") {
+                    group = "verification"
+                    dependsOn(validatePublishing)
+                    consumerClasspath.from(consumer)
+                }
+                validatePublishedApiConsumers.configure { dependsOn(validateConsumer) }
+            }
+        }
+    }
 
     plugins.withId("me.modmuss50.mod-publish-plugin") {
         val loaderName = project.name
@@ -456,12 +498,10 @@ subprojects {
 
 publishMavenRelease.configure {
     if (providers.gradleProperty("DEPLOY_DIR").isPresent) {
-        dependsOn(
-            ":Common:publishConfigApiJarPublicationToReleaseRepository",
-            ":Fabric:publishConfigFabricJarPublicationToReleaseRepository",
-            ":Forge:publishConfigForgeJarPublicationToReleaseRepository",
-            ":NeoForge:publishConfigNeoForgeJarPublicationToReleaseRepository"
-        )
+        dependsOn(":Common:publishConfigApiJarPublicationToReleaseRepository")
+        listOf("Fabric", "Forge", "NeoForge").filter { findProject(":$it") != null }.forEach {
+            dependsOn(":$it:publishConfig${it}JarPublicationToReleaseRepository")
+        }
     } else {
         doFirst {
             throw GradleException("No Maven release repository was provided; set DEPLOY_DIR.")

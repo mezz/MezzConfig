@@ -11,32 +11,61 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - minecraft: 1.19.2
+            java: 21
+            modloaders: [fabric, forge]
+          - minecraft: 1.20.1
+            java: 21
+            modloaders: [fabric, forge]
+          - minecraft: 1.21.1
+            java: 21
+            modloaders: [fabric, neoforge]
+          - minecraft: 1.21.11
+            java: 21
+            modloaders: [fabric, neoforge]
+          - minecraft: 26.1.2
+            java: 25
+            modloaders: [fabric, neoforge]
+          - minecraft: '26.2'
+            java: 25
+            modloaders: [fabric, neoforge]
+          - minecraft: '26.3'
+            java: 25
+            modloaders: [fabric, neoforge]
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Set up Java 21
+      - name: Install compile and test toolchains
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: 21
+          java-version: |
+            17
+            21
+            ${{ matrix.java }}
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Validate build, API, documentation, and publications
-        run: ./gradlew --stacktrace spotlessCheck build :Common:apiJavadoc :Common:checkJarCompatibility validateDocumentationLinks validateFabricEmbedding
+        run: ./gradlew -PminecraftVersion=${{ matrix.minecraft }} --stacktrace spotlessCheck build :Common:apiJavadoc :Common:checkJarCompatibility validateDocumentationLinks validateFabricEmbedding validatePublishedApiConsumers
 
-      - name: Run NeoForge server GameTests
-        run: ./gradlew --stacktrace :NeoForge:runGameTestServer
+      - name: Run Fabric loader smoke test
+        if: contains(matrix.modloaders, 'fabric')
+        run: ./gradlew -PminecraftVersion=${{ matrix.minecraft }} --stacktrace --no-configuration-cache :Fabric:runServerSmokeTest
 
-      - name: Validate NeoForge consumer embedding
-        run: ./gradlew --stacktrace --no-configuration-cache validateNeoForgeEmbedding
+      - name: Run Forge loader smoke test
+        if: contains(matrix.modloaders, 'forge')
+        run: ./gradlew -PminecraftVersion=${{ matrix.minecraft }} --stacktrace --no-configuration-cache :Forge:runServerSmokeTest
 
-      - name: Run Fabric and Forge loader smoke tests
-        run: ./gradlew --stacktrace --no-configuration-cache :Fabric:runServerSmokeTest :Forge:runServerSmokeTest
+      - name: Run NeoForge GameTests and consumer embedding
+        if: contains(matrix.modloaders, 'neoforge')
+        run: ./gradlew -PminecraftVersion=${{ matrix.minecraft }} --stacktrace --no-configuration-cache :NeoForge:runGameTestServer validateNeoForgeEmbedding
 
-      - name: Dry run CurseForge and Modrinth publishing
-        run: ./gradlew --stacktrace :Fabric:publishMods :Forge:publishMods :NeoForge:publishMods -PpublishDryRun=true
+      - name: Check release metadata without publishing
+        run: ./gradlew -PminecraftVersion=${{ matrix.minecraft }} --stacktrace publishMods -PpublishDryRun=true

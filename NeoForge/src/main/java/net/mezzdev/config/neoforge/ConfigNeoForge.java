@@ -2,6 +2,7 @@ package net.mezzdev.config.neoforge;
 
 import net.neoforged.api.distmarker.Dist;
 import net.mezzdev.config.server.ServerConfigRuntime;
+import net.mezzdev.config.minecraft.MinecraftConfigRuntime;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
@@ -19,11 +20,11 @@ public final class ConfigNeoForge {
 
 	public ConfigNeoForge(IEventBus modEventBus, Dist dist) {
 		ConfigNeoForgeNetwork.register(modEventBus);
-		NeoForge.EVENT_BUS.addListener((ServerStartedEvent event) -> ServerConfigRuntime.onServerStarted(event.getServer()));
+		NeoForge.EVENT_BUS.addListener((ServerStartedEvent event) -> MinecraftConfigRuntime.onServerStarted(event.getServer()));
 		NeoForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> ServerConfigRuntime.onServerStopped());
 		NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedInEvent event) -> {
 			if (event.getEntity() instanceof ServerPlayer player) {
-				ServerConfigRuntime.onPlayerJoin(player);
+				MinecraftConfigRuntime.onPlayerJoin(player);
 			}
 		});
 		if (dist.isClient()) {

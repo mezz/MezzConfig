@@ -4,9 +4,6 @@ import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.registration.ConfigProvider;
 import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.util.ErrorUtil;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.storage.LevelResource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -26,8 +23,20 @@ public final class ServerConfigRuntime {
 		ServerConfigRuntime::getConfigManager
 	);
 	private static volatile @Nullable Path worldConfigRoot;
-	private static volatile @Nullable MinecraftServer activeServer;
+	private static volatile @Nullable Server activeServer;
 	private static volatile @Nullable UUID activeServerId;
+
+	public interface Server {
+		Path getWorldRoot();
+		void execute(Runnable task);
+		Iterable<? extends Player> getPlayers();
+	}
+
+	public interface Player {
+		String getName();
+		boolean sendIdentity(UUID serverId);
+		boolean sendSync(byte[] data);
+	}
 
 	private ServerConfigRuntime() {
 
@@ -54,9 +63,9 @@ public final class ServerConfigRuntime {
 		}
 	}
 
-	public static void onServerStarted(MinecraftServer server) {
+	public static void onServerStarted(Server server) {
 		activeServer = ErrorUtil.checkNotNull(server, "server");
-		Path worldRoot = server.getWorldPath(LevelResource.ROOT).normalize();
+		Path worldRoot = server.getWorldRoot().normalize();
 		worldConfigRoot = worldRoot.resolve("serverconfig").normalize();
 		activeServerId = getOrCreateServerId(worldRoot);
 		SERVER_SCHEMA_VERSIONS.clear();
@@ -92,7 +101,7 @@ public final class ServerConfigRuntime {
 	}
 
 	private static void synchronizeServerSchema(ConfigSchema schema) {
-		MinecraftServer server = activeServer;
+		Server server = activeServer;
 		if (server == null) {
 			return;
 		}
@@ -109,7 +118,7 @@ public final class ServerConfigRuntime {
 		});
 	}
 
-	public static void onPlayerJoin(ServerPlayer player) {
+	public static void onPlayerJoin(Player player) {
 		UUID serverId = activeServerId;
 		if (serverId != null) {
 			ServerConfigNetworking.sendToPlayer(player, new ServerIdentityPayload(serverId));
@@ -121,13 +130,13 @@ public final class ServerConfigRuntime {
 		CLIENT_CONNECTION.handleServerIdentity(payload);
 	}
 
-	private static void broadcastSchema(MinecraftServer server, ConfigSchema schema) {
-		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+	private static void broadcastSchema(Server server, ConfigSchema schema) {
+		for (Player player : server.getPlayers()) {
 			sendSchema(player, schema);
 		}
 	}
 
-	private static void sendSchema(ServerPlayer player, ConfigSchema schema) {
+	private static void sendSchema(Player player, ConfigSchema schema) {
 		try {
 			ServerConfigSyncPayload payload = new ServerConfigSyncPayload(
 				schema.getServerKey(),

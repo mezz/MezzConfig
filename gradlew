@@ -169,6 +169,16 @@ fi
 #   * --module-path (only if needed)
 #   * DEFAULT_JVM_OPTS, JAVA_OPTS, and GRADLE_OPTS environment variables.
 
+# Keep task history and Loom launch files separate when switching Minecraft targets.
+mezzconfig_target=$(sed -n 's/^minecraftVersion=//p' "$APP_HOME/gradle.properties" | tail -n 1)
+mezzconfig_target=${mezzconfig_target:-1.21.1}
+for mezzconfig_arg do
+    case $mezzconfig_arg in
+        -PminecraftVersion=*) mezzconfig_target=${mezzconfig_arg#-PminecraftVersion=} ;;
+    esac
+done
+set -- --project-cache-dir "$APP_HOME/.gradle/targets/$mezzconfig_target" "$@"
+
 # For Cygwin or MSYS, switch paths to Windows format before running java
 if "$cygwin" || "$msys" ; then
     APP_HOME=$( cygpath --path --mixed "$APP_HOME" )

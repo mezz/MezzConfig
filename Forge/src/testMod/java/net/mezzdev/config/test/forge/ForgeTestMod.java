@@ -98,7 +98,7 @@ public final class ForgeTestMod {
 			throw new IllegalStateException("Forge activated or published a client schema on a dedicated server.");
 		}
 		if (clientSchema.getCategories().size() != 1 ||
-			clientSchema.getCategories().getFirst().getConfigValues().size() != 4
+			clientSchema.getCategories().get(0).getConfigValues().size() != 4
 		) {
 			throw new IllegalStateException("Forge did not build the client smoke-test schema.");
 		}
@@ -112,7 +112,7 @@ public final class ForgeTestMod {
 			.orElseThrow(() -> new IllegalStateException("The Forge server schema has no active config path."));
 		if (!Files.isRegularFile(serverPath) ||
 			serverSchema.getCategories().size() != 1 ||
-			serverSchema.getCategories().getFirst().getConfigValues().size() != 3
+			serverSchema.getCategories().get(0).getConfigValues().size() != 3
 		) {
 			throw new IllegalStateException("Forge did not load the authoritative server schema.");
 		}

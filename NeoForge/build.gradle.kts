@@ -17,6 +17,7 @@ publishMods {
 val neoforgeVersion: String by extra
 val minecraftVersion: String by extra
 val configModId: String by extra
+val jspecifyVersion: String by extra
 val configModGroup: String by extra
 val neoforgeTestModId: String by extra
 val modJavaVersion: String by extra
@@ -44,12 +45,28 @@ val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
 val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
 fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
     zipTree(archiveTask.flatMap { it.archiveFile })
+// Run the same complete, shaded runtime that is included in the published mod.
+val configModRunSourceSet = sourceSets.create("configModRun") {
+    java.setSrcDirs(emptyList<String>())
+    resources.setSrcDirs(emptyList<String>())
+    val directory = layout.buildDirectory.dir("mod-run").get().asFile
+    output.setResourcesDir(directory)
+    java.destinationDirectory.set(directory)
+}
+val prepareConfigModRun = tasks.register<Sync>("prepareConfigModRun") {
+    from(sourceSets.main.get().output)
+    from(zipTreeArchive(commonModShadeJarTask)) { exclude("META-INF/MANIFEST.MF") }
+    into(configModRunSourceSet.java.destinationDirectory)
+}
+tasks.named(configModRunSourceSet.classesTaskName) { dependsOn(prepareConfigModRun) }
+
 val gameTestJunitResultsDir = layout.buildDirectory.dir("test-results/gameTest")
 val testModSourceSet = sourceSets.create("testMod") {
     compileClasspath += sourceSets.main.get().output
     runtimeClasspath += sourceSets.main.get().output
 }
 val gameTestSourceSet = sourceSets.create("gameTest") {
+    java.srcDir("src/${if (minecraftVersion == "1.21.1") "gameTestLegacy" else "gameTestModern"}/java")
     compileClasspath += sourceSets.main.get().output
     runtimeClasspath += sourceSets.main.get().output
 }
@@ -75,9 +92,7 @@ neoForge {
 
     mods {
         create(configModId) {
-            sourceSet(sourceSets.main.get())
-            sourceSet(commonProject.sourceSets.main.get())
-            sourceSet(commonApiSourceSet)
+            sourceSet(configModRunSourceSet)
         }
         create(neoforgeTestModId) {
             sourceSet(testModSourceSet)
@@ -97,18 +112,18 @@ neoForge {
         }
         create("client") {
             client()
-            gameDirectory = file("run/client/Dev")
+            gameDirectory = file("run/$minecraftVersion/client/Dev")
             logLevel = Level.DEBUG
         }
         create("server") {
             server()
-            gameDirectory = file("run/server")
+            gameDirectory = file("run/$minecraftVersion/server")
             programArguments.addAll("nogui")
             logLevel = Level.INFO
         }
         create("gameTestServer") {
             type.set("gameTestServer")
-            gameDirectory = file("run/gameTestServer")
+            gameDirectory = file("run/$minecraftVersion/gameTestServer")
             sourceSet = gameTestSourceSet
             getLoadedMods().add(gameTestMod.get())
             systemProperty("mezzConfig.gameTest.junitDir", gameTestJunitResultsDir.get().asFile.absolutePath)
@@ -120,7 +135,7 @@ neoForge {
 val testModClassesTask = tasks.named(testModSourceSet.classesTaskName)
 val testModRunTasks = setOf("runClient", "runServer", "runGameTestServer")
 tasks.matching { it.name in testModRunTasks }.configureEach {
-    dependsOn(testModClassesTask)
+    dependsOn(testModClassesTask, prepareConfigModRun)
 }
 
 tasks.check {
@@ -140,12 +155,6 @@ dependencies {
     }
     compileOnly(commonApiSourceSet.output)
     add(testModSourceSet.compileOnlyConfigurationName, "com.google.code.findbugs:jsr305:$jsr305Version")
-    add("additionalRuntimeClasspath", "net.mezzdev:deduplicating-runner:$deduplicatingRunnerVersion") {
-        isTransitive = false
-    }
-    add("additionalRuntimeClasspath", "net.mezzdev:filewatcher:$fileWatcherVersion") {
-        isTransitive = false
-    }
     add(gameTestSourceSet.implementationConfigurationName, "net.neoforged:testframework:$neoforgeVersion") {
         isTransitive = false
     }
@@ -213,4 +222,14 @@ idea {
             excludeDirs.add(file(fileName))
         }
     }
+}
+
+sourceSets.main {
+    java.srcDir("src/${if (minecraftVersion == "1.21.1") "loader4" else "loader10"}/java")
+    java.srcDir(rootProject.file("Minecraft/src/main/java"))
+    java.srcDir(rootProject.file("Minecraft/src/payload/java"))
+    java.srcDir(rootProject.file("Minecraft/src/${if (minecraftVersion == "1.21.1") "resource" else "identifier"}/java"))
+}
+dependencies {
+    compileOnly("org.jspecify:jspecify:$jspecifyVersion")
 }

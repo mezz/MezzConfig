@@ -1,27 +1,11 @@
-import net.fabricmc.loom.task.RemapJarTask
-import net.fabricmc.loom.task.RemapSourcesJarTask
+import net.fabricmc.loom.api.LoomGradleExtensionAPI
 
 plugins {
     java
     idea
     `maven-publish`
-    id("fabric-loom")
+    id("net.fabricmc.fabric-loom") apply false
     id("me.modmuss50.mod-publish-plugin")
-}
-
-publishMods {
-    file.set(tasks.named<RemapJarTask>("remapJar").flatMap { it.archiveFile })
-}
-
-repositories {
-    fun exclusiveMaven(url: String, filter: Action<InclusiveRepositoryContentDescriptor>) =
-        exclusiveContent {
-            forRepository { maven(url) }
-            filter(filter)
-        }
-    exclusiveMaven("https://maven.parchmentmc.org") {
-        includeGroupByRegex("org\\.parchmentmc.*")
-    }
 }
 
 // gradle.properties
@@ -29,12 +13,14 @@ val fabricLoaderVersion: String by extra
 val fabricApiVersion: String by extra
 val minecraftVersion: String by extra
 val configModId: String by extra
+val jspecifyVersion: String by extra
 val configModGroup: String by extra
-val fabricTestModId: String by extra
 val modJavaVersion: String by extra
-val parchmentMinecraftVersion: String by extra
-val parchmentVersionFabric: String by extra
 val jsr305Version: String by extra
+
+val unobfuscatedMinecraft = minecraftVersion.startsWith("26.")
+val packetBufferNetworking = minecraftVersion == "1.19.2" || minecraftVersion == "1.20.1"
+pluginManager.apply(if (unobfuscatedMinecraft) "net.fabricmc.fabric-loom" else "net.fabricmc.fabric-loom-remap")
 
 group = configModGroup
 
@@ -80,15 +66,12 @@ tasks.withType<JavaCompile> {
     }
 }
 
+val modDependencyConfiguration = if (unobfuscatedMinecraft) "implementation" else "modImplementation"
 dependencies {
-    minecraft("com.mojang:minecraft:$minecraftVersion")
-    @Suppress("UnstableApiUsage")
-    mappings(loom.layered {
-        officialMojangMappings()
-        parchment("org.parchmentmc.data:parchment-${parchmentMinecraftVersion}:${parchmentVersionFabric}@zip")
-    })
-    modImplementation("net.fabricmc:fabric-loader:$fabricLoaderVersion")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
+    add(modDependencyConfiguration, "net.fabricmc:fabric-loader:$fabricLoaderVersion")
+    add(modDependencyConfiguration, "net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
+    add("minecraft", "com.mojang:minecraft:$minecraftVersion")
+    compileOnly("org.jspecify:jspecify:$jspecifyVersion")
     compileOnly("com.google.code.findbugs:jsr305:$jsr305Version")
     dependencyProjects.forEach {
         compileOnly(it)
@@ -101,7 +84,46 @@ dependencies {
     }
 }
 
-loom {
+val loom = extensions.getByType<LoomGradleExtensionAPI>()
+if (!unobfuscatedMinecraft) {
+    val parchmentMinecraftVersion: String by extra
+    val parchmentVersionFabric: String by extra
+    repositories {
+        exclusiveContent {
+            forRepository { maven("https://maven.parchmentmc.org") }
+            filter { includeGroupByRegex("org\\.parchmentmc.*") }
+        }
+    }
+    dependencies {
+        add("mappings", loom.layered {
+            officialMojangMappings()
+            parchment("org.parchmentmc.data:parchment-${parchmentMinecraftVersion}:${parchmentVersionFabric}@zip")
+        })
+    }
+}
+
+val runtimeJar = tasks.named<AbstractArchiveTask>(if (unobfuscatedMinecraft) "jar" else "remapJar")
+val publishedSourcesJar = tasks.named<AbstractArchiveTask>(if (unobfuscatedMinecraft) "sourcesJar" else "remapSourcesJar")
+tasks.assemble { dependsOn(runtimeJar, publishedSourcesJar) }
+
+publishMods {
+    file.set(runtimeJar.flatMap { it.archiveFile })
+}
+publishing {
+    publications {
+        register<MavenPublication>("configFabricJar") {
+            if (!unobfuscatedMinecraft) {
+                @Suppress("UnstableApiUsage")
+                loom.disableDeprecatedPomGeneration(this)
+            }
+            artifactId = baseArchivesName
+            artifact(runtimeJar)
+            artifact(publishedSourcesJar)
+        }
+    }
+}
+
+configure<LoomGradleExtensionAPI> {
     mods {
         create(configModId) {
             sourceSet(sourceSets.main.get())
@@ -120,7 +142,7 @@ loom {
                 it.absoluteFile.toString()
             }
 
-        val loomRunDir = File("run")
+        val loomRunDir = File("run/$minecraftVersion")
 
         named("client") {
             client()
@@ -145,7 +167,7 @@ loom {
         create("serverSmokeTest") {
             server()
             configName = "MezzConfig Fabric Server Smoke Test"
-            runDir("build/run/server-smoke")
+            runDir(serverSmokeTestRunDir.get().asFile.relativeTo(projectDir).path)
             programArgs("--nogui")
             vmArgs(
                 "-Dfabric.classPathGroups=${classPathGroupsString}",
@@ -171,10 +193,6 @@ tasks.named<Jar>("sourcesJar") {
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     archiveClassifier.set("sources")
-}
-
-tasks.assemble {
-    dependsOn(tasks.remapJar, tasks.remapSourcesJar)
 }
 
 val testModClassesTask = tasks.named(testModSourceSet.classesTaskName)
@@ -209,22 +227,22 @@ tasks.matching { it.name == "runServerSmokeTest" }.configureEach {
     }
 }
 
-publishing {
-    publications {
-        register<MavenPublication>("configFabricJar") {
-            @Suppress("UnstableApiUsage")
-            loom.disableDeprecatedPomGeneration(this)
-            artifactId = baseArchivesName
-            artifact(tasks.named<RemapJarTask>("remapJar"))
-            artifact(tasks.named<RemapSourcesJarTask>("remapSourcesJar"))
-        }
-    }
-}
-
 idea {
     module {
         for (fileName in listOf("build", "run", "out", "logs")) {
             excludeDirs.add(file(fileName))
         }
+    }
+}
+
+sourceSets.main {
+    java.srcDir(rootProject.file("Minecraft/src/main/java"))
+    if (packetBufferNetworking) {
+        java.srcDir("src/packet-buffer/java")
+    } else {
+        java.srcDir("src/payload/java")
+        java.srcDir("src/${if (unobfuscatedMinecraft) "payload-clientbound" else "payload-s2c"}/java")
+        java.srcDir(rootProject.file("Minecraft/src/payload/java"))
+        java.srcDir(rootProject.file("Minecraft/src/${if (minecraftVersion == "1.21.1") "resource" else "identifier"}/java"))
     }
 }

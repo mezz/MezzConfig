@@ -11,8 +11,8 @@ import net.mezzdev.config.value.AppliedConfigValueChange;
 import net.mezzdev.config.value.ConfigValueMigration;
 import net.mezzdev.config.value.ConfigValueReference;
 import net.mezzdev.config.value.ConfigValueUpdate;
-import net.minecraft.locale.Language;
-import net.minecraft.network.chat.Component;
+import net.mezzdev.config.registration.ConfigProvider;
+import net.mezzdev.config.registration.ConfigPhysicalSideProvider;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -666,13 +666,13 @@ public final class ConfigSerializer {
 	}
 
 	public static boolean canLocalizeComments() {
-		Language language = Language.getInstance();
-		return language.has(CONFIG_NAME_KEY) &&
-			language.has(CONFIG_DESCRIPTION_KEY) &&
-			language.has(CONFIG_VALUE_VALUES_KEY) &&
-			language.has(CONFIG_DEFAULT_VALUE_KEY) &&
-			language.has(CONFIG_REQUIRES_WORLD_RESTART_KEY) &&
-			language.has(CONFIG_REQUIRES_GAME_RESTART_KEY);
+		ConfigPhysicalSideProvider language = ConfigProvider.getEnvironment();
+		return language.hasTranslation(CONFIG_NAME_KEY) &&
+			language.hasTranslation(CONFIG_DESCRIPTION_KEY) &&
+			language.hasTranslation(CONFIG_VALUE_VALUES_KEY) &&
+			language.hasTranslation(CONFIG_DEFAULT_VALUE_KEY) &&
+			language.hasTranslation(CONFIG_REQUIRES_WORLD_RESTART_KEY) &&
+			language.hasTranslation(CONFIG_REQUIRES_GAME_RESTART_KEY);
 	}
 
 	private static void serializeCategory(
@@ -755,12 +755,12 @@ public final class ConfigSerializer {
 			addCommentedStrings(serialized, "Description: " + localizationKey + ".description", indentation);
 			return;
 		}
-		Component nameComponent = Component.translatable(localizationKey);
-		String localizedName = getLocalizedComment(CONFIG_NAME_KEY, "Name: %s", nameComponent.getString());
+		String nameComponent = ConfigProvider.getEnvironment().translate(localizationKey);
+		String localizedName = getLocalizedComment(CONFIG_NAME_KEY, "Name: %s", nameComponent);
 		addCommentedStrings(serialized, localizedName, indentation);
 
-		Component descriptionComponent = Component.translatable(localizationKey + ".description");
-		String description = getLocalizedComment(CONFIG_DESCRIPTION_KEY, "Description: %s", descriptionComponent.getString());
+		String descriptionComponent = ConfigProvider.getEnvironment().translate(localizationKey + ".description");
+		String description = getLocalizedComment(CONFIG_DESCRIPTION_KEY, "Description: %s", descriptionComponent);
 		addCommentedStrings(serialized, description, indentation);
 	}
 
@@ -811,15 +811,15 @@ public final class ConfigSerializer {
 	}
 
 	private static String getLocalizedComment(String translationKey, String fallback) {
-		if (Language.getInstance().has(translationKey)) {
-			return Component.translatable(translationKey).getString();
+		if (ConfigProvider.getEnvironment().hasTranslation(translationKey)) {
+			return ConfigProvider.getEnvironment().translate(translationKey);
 		}
 		return fallback;
 	}
 
 	private static String getLocalizedComment(String translationKey, String fallbackFormat, String value) {
-		if (Language.getInstance().has(translationKey)) {
-			return Component.translatable(translationKey, value).getString();
+		if (ConfigProvider.getEnvironment().hasTranslation(translationKey)) {
+			return ConfigProvider.getEnvironment().translate(translationKey, value);
 		}
 		return fallbackFormat.formatted(value);
 	}

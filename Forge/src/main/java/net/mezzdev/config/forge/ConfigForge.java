@@ -2,6 +2,7 @@ package net.mezzdev.config.forge;
 
 import net.minecraftforge.api.distmarker.Dist;
 import net.mezzdev.config.server.ServerConfigRuntime;
+import net.mezzdev.config.minecraft.MinecraftConfigRuntime;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.player.PlayerEvent;
@@ -19,11 +20,11 @@ public final class ConfigForge {
 
 	public ConfigForge() {
 		new ConfigForgeNetwork();
-		MinecraftForge.EVENT_BUS.addListener((ServerStartedEvent event) -> ServerConfigRuntime.onServerStarted(event.getServer()));
+		MinecraftForge.EVENT_BUS.addListener((ServerStartedEvent event) -> MinecraftConfigRuntime.onServerStarted(event.getServer()));
 		MinecraftForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> ServerConfigRuntime.onServerStopped());
 		MinecraftForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedInEvent event) -> {
 			if (event.getEntity() instanceof ServerPlayer player) {
-				ServerConfigRuntime.onPlayerJoin(player);
+				MinecraftConfigRuntime.onPlayerJoin(player);
 			}
 		});
 		ConfigForgeClientSafeRunner clientSafeRunner = new ConfigForgeClientSafeRunner();

@@ -35,6 +35,10 @@ public final class ConfigProvider implements Configs.IConfigProvider {
 	private static final boolean CLIENT_CONFIGS_AVAILABLE = PHYSICAL_SIDE_PROVIDER.isPhysicalClient();
 	private static final ConfigManager CONFIG_MANAGER = createConfigManager();
 
+	public static ConfigPhysicalSideProvider getEnvironment() {
+		return PHYSICAL_SIDE_PROVIDER;
+	}
+
 	public static ConfigManager getConfigManager() {
 		return CONFIG_MANAGER;
 	}

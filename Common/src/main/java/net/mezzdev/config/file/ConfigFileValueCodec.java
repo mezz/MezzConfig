@@ -146,9 +146,10 @@ public final class ConfigFileValueCodec {
 		}
 
 		private @Nullable JsonElement deserializeString() throws IOException {
+			String path = reader.getPath();
 			String value = reader.nextString();
 			if (!isValidUnicode(value)) {
-				fail("JSON strings must contain valid Unicode without unpaired UTF-16 surrogates at " + reader.getPreviousPath() + ".");
+				fail("JSON strings must contain valid Unicode without unpaired UTF-16 surrogates at " + path + ".");
 				return null;
 			}
 			return new JsonPrimitive(value);

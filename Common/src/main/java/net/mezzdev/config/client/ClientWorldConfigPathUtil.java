@@ -1,12 +1,6 @@
 package net.mezzdev.config.client;
 
-import net.minecraft.FileUtil;
-import net.minecraft.SharedConstants;
-import net.minecraft.client.Minecraft;
-import net.minecraft.network.Connection;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.world.level.storage.LevelResource;
-import net.mezzdev.config.server.ServerConfigRuntime;
+import net.mezzdev.config.registration.ConfigProvider;
 import net.mezzdev.config.util.ErrorUtil;
 
 import java.net.IDN;
@@ -14,8 +8,14 @@ import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 public final class ClientWorldConfigPathUtil {
+	private static final int DEFAULT_MINECRAFT_PORT = 25565;
+	private static final int MAX_PORT = 65_535;
+	// Preserve Minecraft's escaping rules so existing config directory names stay stable.
+	private static final Pattern INVALID_PATH_CHARACTERS = Pattern.compile("[./\\\"\\\\\\n\\r\\t\\x00\\f`?*<>|:]");
+	private static final Pattern RESERVED_NAME = Pattern.compile("(?:COM|CLOCK\\$|CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])", Pattern.CASE_INSENSITIVE);
 	private static final Path WORLD_DIR_PATH = Path.of("world");
 	private static final Path DEFAULT_DIR_PATH = WORLD_DIR_PATH.resolve("default");
 	private static final Path LOCAL_DIR_PATH = WORLD_DIR_PATH.resolve("local");
@@ -26,33 +26,11 @@ public final class ClientWorldConfigPathUtil {
 	}
 
 	public static Optional<Path> getWorldPath(Path configDirectory) {
-		Path configDir = ErrorUtil.checkNotNull(configDirectory, "configDirectory");
-		Minecraft minecraft = Minecraft.getInstance();
-		return Optional.ofNullable(minecraft.getConnection())
-			.flatMap(clientPacketListener -> {
-				Connection connection = clientPacketListener.getConnection();
-				if (connection.isMemoryConnection()) {
-					return Optional.ofNullable(minecraft.getSingleplayerServer())
-						.flatMap(ClientWorldConfigPathUtil::getLevelId)
-						.map(ClientWorldConfigPathUtil::sanitizePathName)
-						.map(levelId -> LOCAL_DIR_PATH.resolve(levelId));
-				}
-				Optional<UUID> serverId = ServerConfigRuntime.getRemoteServerId();
-				if (serverId.isPresent()) {
-					return serverId.map(ClientWorldConfigPathUtil::getServerPath);
-				}
-				return Optional.ofNullable(minecraft.getCurrentServer())
-					.map(serverData -> getServerPath(serverData.name, serverData.ip, serverData.isLan()));
-			})
-			.map(configDir::resolve);
+		return ConfigProvider.getEnvironment().getClientWorldPath(ErrorUtil.checkNotNull(configDirectory, "configDirectory"));
 	}
 
-	private static Optional<String> getLevelId(MinecraftServer minecraftServer) {
-		Path worldPath = minecraftServer.getWorldPath(LevelResource.ROOT)
-			.normalize();
-		Path levelId = worldPath.getFileName();
-		return Optional.ofNullable(levelId)
-			.map(Path::toString);
+	public static Path getLocalWorldPath(String levelId) {
+		return LOCAL_DIR_PATH.resolve(sanitizePathName(levelId));
 	}
 
 	public static Path getServerPath(String serverName, String serverAddress) {
@@ -92,7 +70,7 @@ public final class ClientWorldConfigPathUtil {
 		String host = serverAddressAndPort.host();
 		host = sanitizePathName(host.toLowerCase(Locale.ROOT));
 		int port = serverAddressAndPort.port();
-		if (port != SharedConstants.DEFAULT_MINECRAFT_PORT) {
+		if (port != DEFAULT_MINECRAFT_PORT) {
 			return "%s %d".formatted(host, port);
 		}
 		return host;
@@ -118,7 +96,7 @@ public final class ClientWorldConfigPathUtil {
 				throw new IllegalArgumentException("Invalid bracketed server address: " + serverAddress);
 			}
 			String host = serverAddress.substring(1, hostEnd);
-			int port = SharedConstants.DEFAULT_MINECRAFT_PORT;
+			int port = DEFAULT_MINECRAFT_PORT;
 			if (serverAddress.length() > hostEnd + 1) {
 				if (serverAddress.charAt(hostEnd + 1) != ':') {
 					throw new IllegalArgumentException("Invalid bracketed server address: " + serverAddress);
@@ -136,7 +114,7 @@ public final class ClientWorldConfigPathUtil {
 			return new ServerAddressAndPort(toAscii(host), port);
 		}
 
-		return new ServerAddressAndPort(toAscii(serverAddress), SharedConstants.DEFAULT_MINECRAFT_PORT);
+		return new ServerAddressAndPort(toAscii(serverAddress), DEFAULT_MINECRAFT_PORT);
 	}
 
 	private static String toAscii(String host) {
@@ -145,7 +123,7 @@ public final class ClientWorldConfigPathUtil {
 
 	private static int parsePort(String value) {
 		int port = Integer.parseInt(value);
-		if (port < 0 || port > 65_535) {
+		if (port < 0 || port > MAX_PORT) {
 			throw new IllegalArgumentException("Invalid port: " + value);
 		}
 		return port;
@@ -157,12 +135,12 @@ public final class ClientWorldConfigPathUtil {
 	}
 
 	private static String sanitizePathName(String filename) {
-		String sanitized = FileUtil.sanitizeName(filename)
+		String sanitized = INVALID_PATH_CHARACTERS.matcher(filename).replaceAll("_")
 			.trim();
 		if (sanitized.isEmpty()) {
 			return "_";
 		}
-		if (!FileUtil.isPathPortable(Path.of(sanitized))) {
+		if (RESERVED_NAME.matcher(sanitized).matches()) {
 			return "_%s_".formatted(sanitized);
 		}
 		return sanitized;

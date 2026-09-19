@@ -26,7 +26,6 @@ class FailOnJccErrors : Action<Task> {
 plugins {
     id("idea")
     id("java")
-    id("net.neoforged.moddev")
     id("net.neoforged.jarcompatibilitychecker")
     id("maven-publish")
     id("net.mezzdev.modshade")
@@ -56,7 +55,6 @@ repositories {
 // gradle.properties
 val jUnitVersion: String by extra
 val targetMinecraftVersion = providers.gradleProperty("minecraftVersion").get()
-val neoformTimestamp: String by extra
 val configModId: String by extra
 val configModGroup: String by extra
 val modJavaVersion: String by extra
@@ -112,10 +110,7 @@ val deduplicatingRunnerLicense by configurations.creating {
     isTransitive = false
 }
 
-neoForge {
-    neoFormVersion = "$targetMinecraftVersion-$neoformTimestamp"
-    addModdingDependenciesTo(sourceSets.test.get())
-}
+
 
 dependencies {
     fileWatcherLicense("mezz:FileWatcher:$fileWatcherVersion")
@@ -129,12 +124,14 @@ dependencies {
     implementation("org.jetbrains:annotations:$jetbrainsAnnotationsVersion")
     implementation("org.jspecify:jspecify:$jspecifyVersion")
     implementation("org.apache.logging.log4j:log4j-api:$log4jVersion")
+    implementation("com.google.code.gson:gson:2.8.9")
     testImplementation("org.junit.jupiter:junit-jupiter:$jUnitVersion")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.test {
     useJUnitPlatform()
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
     include(
         "net/mezzdev/config/test/**",
         "net/mezzdev/config/file/**",
@@ -150,7 +147,7 @@ tasks.test {
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(modJavaVersion))
+        languageVersion.set(JavaLanguageVersion.of(21))
     }
     withSourcesJar()
 }
@@ -202,7 +199,7 @@ val apiBaseline by configurations.creating {
 }
 
 dependencies {
-    apiBaseline("$group:$apiArchivesName:$apiBaselineVersion")
+    apiBaseline("$group:${configModId}-1.21.1-config-api:$apiBaselineVersion")
 }
 
 val apiBaselineArchives = apiBaseline.incoming.artifactView {
@@ -261,7 +258,7 @@ tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
     javaToolchains {
         compilerFor {
-            languageVersion.set(JavaLanguageVersion.of(modJavaVersion))
+            languageVersion.set(JavaLanguageVersion.of(21))
         }
     }
 }
@@ -310,4 +307,9 @@ idea {
             excludeDirs.add(file(fileName))
         }
     }
+}
+
+// The shared runtime and public API are usable on every supported Minecraft JVM.
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(if (name == "compileTestJava") 21 else 17)
 }
