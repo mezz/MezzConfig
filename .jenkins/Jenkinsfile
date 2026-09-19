@@ -65,9 +65,8 @@ def minecraftTargets() {
 }
 
 def minecraftLoaders(String target) {
-    def manifest = new Properties()
-    manifest.load(new StringReader(readFile("versions/${target}.properties")))
-    return manifest.getProperty('loaders').split(',').toList()
+    def manifest = readProperties file: "versions/${target}.properties"
+    return manifest.loaders.split(',').toList()
 }
 
 def artifactPatterns() {
