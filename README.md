@@ -1,3 +1,9 @@
+[![CI](https://github.com/mezz/MezzConfig/actions/workflows/ci.yml/badge.svg?branch=multiversion)](https://github.com/mezz/MezzConfig/actions/workflows/ci.yml)
+[![CurseForge downloads](https://cf.way2muchnoise.eu/full_1689768_downloads.svg)](https://www.curseforge.com/minecraft/mc-mods/mezzconfig)
+[![Modrinth downloads](https://img.shields.io/modrinth/dt/7tEfOcA7?logo=modrinth&label=Modrinth)](https://modrinth.com/mod/mezzconfig)
+[![Discord](https://img.shields.io/discord/358816755646332941?color=5865F2&logo=discord&logoColor=white&label=Discord)](https://discord.gg/sCQcWU2)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 # MezzConfig
 
 MezzConfig is a typed configuration library for Minecraft mods. It gives mods
