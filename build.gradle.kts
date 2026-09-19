@@ -9,7 +9,6 @@ import org.gradle.api.provider.Property
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
-import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
@@ -180,16 +179,6 @@ abstract class ValidateFabricPublication : DefaultTask() {
     }
 }
 
-abstract class ValidateApiConsumerClasspath : DefaultTask() {
-    @get:Classpath
-    abstract val consumerClasspath: ConfigurableFileCollection
-
-    @TaskAction
-    fun validate() {
-        logger.lifecycle("Published API resolves against the loader compile classpath ({} files).", consumerClasspath.files.size)
-    }
-}
-
 fun normalizeReleaseVersion(value: String): String {
     val tagName = value.trim().substringAfterLast('/')
     return tagName.removePrefix("v")
@@ -297,10 +286,16 @@ subprojects {
                     }
                 }
                 dependencies.add(consumer.name, "$modGroup:$apiModule:$projectVersion")
-                val validateConsumer = tasks.register<ValidateApiConsumerClasspath>("validatePublishedApiConsumer") {
+                val consumerConfigurationName = consumer.name
+                val validateConsumer = tasks.register("validatePublishedApiConsumer") {
                     group = "verification"
                     dependsOn(validatePublishing)
-                    consumerClasspath.from(consumer)
+                    notCompatibleWithConfigurationCache("Resolves artifacts published by this build during task execution.")
+                    doLast {
+                        // Capturing the configuration would let the cache resolve it before publication.
+                        val files = project.configurations.getByName(consumerConfigurationName).files
+                        logger.lifecycle("Published API resolves against the loader compile classpath ({} files).", files.size)
+                    }
                 }
                 validatePublishedApiConsumers.configure { dependsOn(validateConsumer) }
             }
