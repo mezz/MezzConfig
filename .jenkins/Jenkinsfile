@@ -271,21 +271,26 @@ pipeline {
             }
             steps {
                 script {
-                    def releaseMetadata = discordNotifier.getGradleReleaseMetadata(
-                        version: getReleaseVersion()
-                    )
-                    releaseNotifier(
-                        workerJob: '/mezz/release-notifier-worker',
-                        repository: 'mezz/MezzConfig',
-                        channel: 'multiversion',
-                        projectName: releaseMetadata.projectName,
-                        version: releaseMetadata.version,
-                        baseCommit: findPreviousReleaseCommit(),
-                        headCommit: env.GIT_COMMIT,
-                        releaseLinks: releaseMetadata.releaseLinks,
-                        minecraftVersions: minecraftTargets(),
-                        modLoaders: releaseMetadata.modLoaders
-                    )
+                    def baseCommit = findPreviousReleaseCommit()
+                    if (baseCommit) {
+                        def releaseMetadata = discordNotifier.getGradleReleaseMetadata(
+                            version: getReleaseVersion()
+                        )
+                        releaseNotifier(
+                            workerJob: '/mezz/release-notifier-worker',
+                            repository: 'mezz/MezzConfig',
+                            channel: 'multiversion',
+                            projectName: releaseMetadata.projectName,
+                            version: releaseMetadata.version,
+                            baseCommit: baseCommit,
+                            headCommit: env.GIT_COMMIT,
+                            releaseLinks: releaseMetadata.releaseLinks,
+                            minecraftVersions: minecraftTargets(),
+                            modLoaders: releaseMetadata.modLoaders
+                        )
+                    } else {
+                        echo 'No previous release commit found; recording this release as the notification baseline.'
+                    }
                     currentBuild.description = "jenkins-release-notifier-source:v1:${env.GIT_COMMIT}"
                 }
             }
