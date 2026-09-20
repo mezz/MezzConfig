@@ -9,6 +9,7 @@ version="${version}"
 displayName="MezzConfig"
 displayURL="${githubUrl}"
 logoFile="mezz_config-icon.png"
+iconFile="mezz_config-icon.png"
 displayTest="IGNORE_SERVER_VERSION"
 authors="${modAuthor}"
 description='''
