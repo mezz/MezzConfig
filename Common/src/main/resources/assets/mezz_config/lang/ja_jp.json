@@ -1,0 +1,20 @@
+{
+  "mezz_config.config.name": "項目名：%s",
+  "mezz_config.config.description": "説明：%s",
+  "mezz_config.config.valueValues": "有効値：%s",
+  "mezz_config.config.defaultValue": "デフォルト値：%s",
+  "mezz_config.config.requiresWorldRestart": "反映させるにはワールドの再起動が必要です。",
+  "mezz_config.config.requiresGameRestart": "反映させるにはゲームの再起動が必要です。",
+  "mezz_config.config.fileWatcher": "ファイルの監視",
+  "mezz_config.config.fileWatcher.description": "configファイルの自動監視および再読み込みのタイミングを制御します。",
+  "mezz_config.config.fileWatcher.enabled": "ファイルの自動監視",
+  "mezz_config.config.fileWatcher.enabled.description": "configファイルを自動監視し、ゲーム外で変更されたときに再読み込みします。",
+  "mezz_config.config.fileWatcher.changeSettlingDelayMilliseconds": "変更反映待機時間",
+  "mezz_config.config.fileWatcher.changeSettlingDelayMilliseconds.description": "変更されたconfigファイルを再読み込みする前に、最後のファイルシステムイベントから待機する時間（ミリ秒）。",
+  "mezz_config.config.fileWatcher.missingDirectoryRetryIntervalMilliseconds": "存在しないディレクトリの再試行間隔",
+  "mezz_config.config.fileWatcher.missingDirectoryRetryIntervalMilliseconds.description": "まだ存在しない設定ディレクトリの監視を開始するために、再試行する間隔（ミリ秒）。",
+  "mezz_config.config.logging": "ログ記録",
+  "mezz_config.config.logging.description": "MezzConfigのオプションの診断ログ記録を制御します。",
+  "mezz_config.config.logging.logUntranslatedKeys": "未翻訳キーをログに記録",
+  "mezz_config.config.logging.logUntranslatedKeys.description": "現在の言語に存在しないカテゴリおよび値の翻訳キーをログに記録します。開発環境ではデフォルトで有効です。"
+}
