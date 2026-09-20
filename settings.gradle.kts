@@ -20,6 +20,7 @@ pluginManagement {
         id("net.fabricmc.fabric-loom") version pins.getProperty("loomVersion")
         id("net.neoforged.moddev") version providers.gradleProperty("moddevVersion").get()
         id("net.neoforged.moddev.legacyforge") version providers.gradleProperty("moddevVersion").get()
+        id("net.minecraftforge.gradle") version providers.gradleProperty("forgeGradleVersion").get()
         id("me.modmuss50.mod-publish-plugin") version providers.gradleProperty("publishPluginVersion").get()
     }
 
@@ -40,6 +41,15 @@ pluginManagement {
 			includeGroup("codechicken")
 			includeGroup("net.covers1624")
 		}
+		maven("https://maven.minecraftforge.net") {
+			content { includeGroupByRegex("net\\.minecraftforge.*") }
+		}
+		maven("https://repo.spongepowered.org/repository/maven-public/") {
+			content {
+				includeGroupByRegex("org\\.spongepowered.*")
+				includeGroupByRegex("net\\.minecraftforge.*")
+			}
+		}
 		exclusiveMaven("https://maven.blamejared.com/") {
 			includeGroup("net.mezzdev.java-formatting")
 			includeModule("net.mezzdev.gradle", "JavaFormatting")
@@ -56,6 +66,9 @@ val pins = java.util.Properties().apply {
 val loaders = pins.getProperty("loaders").split(",")
 include("Changelog", "Common")
 loaders.forEach { include(it) }
+if ("Forge" in loaders && pins.getProperty("forgeTool") == "forgegradle") {
+    project(":Forge").buildFileName = "forgegradle.gradle.kts"
+}
 gradle.beforeProject {
     pins.forEach { key, value -> extensions.extraProperties.set(key.toString(), value) }
     layout.buildDirectory.set(layout.projectDirectory.dir("build/$target"))

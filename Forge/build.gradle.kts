@@ -34,6 +34,7 @@ configurations.named(testMod.implementationConfigurationName) { extendsFrom(conf
 configurations.named(testMod.compileOnlyConfigurationName) { extendsFrom(configurations.compileOnly.get()) }
 
 sourceSets.main {
+    java.srcDir("src/packet-buffer/java")
     java.srcDir(rootProject.file("Minecraft/src/main/java"))
 }
 java {

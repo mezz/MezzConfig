@@ -179,6 +179,32 @@ abstract class ValidateFabricPublication : DefaultTask() {
     }
 }
 
+abstract class ValidateForgePublication : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val forgeJar: RegularFileProperty
+
+    @TaskAction
+    fun validate() {
+        val forgeJar = forgeJar.get().asFile
+        val requiredEntries = setOf(
+            "net/mezzdev/config/forge/ConfigForge.class",
+            "net/mezzdev/config/forge/ConfigForgeNetwork.class",
+            "net/mezzdev/config/registration/ConfigProvider.class",
+            "net/mezzdev/config/minecraft/MinecraftConfigRuntime.class",
+            "net/mezzdev/config/modshade/net/mezzdev/deduplicatingrunner/DeduplicatingRunner.class",
+            "net/mezzdev/config/modshade/net/mezzdev/filewatcher/FileWatcher.class"
+        )
+        ZipFile(forgeJar).use { archive ->
+            for (requiredEntry in requiredEntries) {
+                if (archive.getEntry(requiredEntry) == null) {
+                    throw GradleException("Forge Maven artifact '${forgeJar.name}' is missing '$requiredEntry'.")
+                }
+            }
+        }
+    }
+}
+
 fun normalizeReleaseVersion(value: String): String {
     val tagName = value.trim().substringAfterLast('/')
     return tagName.removePrefix("v")
@@ -247,6 +273,17 @@ tasks.register<ValidateFabricPublication>("validateFabricEmbedding") {
     ))
 }
 
+tasks.register<ValidateForgePublication>("validateForgeEmbedding") {
+    group = "verification"
+    description = "Checks that the published Forge artifact contains the complete runtime."
+    dependsOn(validatePublishing)
+    val publicationGroupPath = modGroup.replace('.', '/')
+    val forgeModule = "${configModId}-${minecraftVersion}-forge"
+    forgeJar.set(layout.buildDirectory.file(
+        "publication-validation/$publicationGroupPath/$forgeModule/$projectVersion/$forgeModule-$projectVersion.jar"
+    ))
+}
+
 tasks.register<GradleBuild>("validateNeoForgeEmbedding") {
     group = "verification"
     description = "Builds a ModDevGradle consumer and checks its embedded runtime and API."
@@ -278,11 +315,21 @@ subprojects {
                 }
                 val apiModule = "${configModId}-${minecraftVersion}-config-api"
                 repositories {
-                    exclusiveContent {
-                        forRepository {
-                            maven { url = rootProject.layout.buildDirectory.dir("publication-validation").get().asFile.toURI() }
+                    if (plugins.hasPlugin("net.minecraftforge.gradle")) {
+                        // ForgeGradle's Mavenizer repository has already been used by this point and cannot be
+                        // mutated by Gradle's exclusive-content repository setup.
+                        maven {
+                            name = "publishedApiValidation"
+                            url = rootProject.layout.buildDirectory.dir("publication-validation").get().asFile.toURI()
+                            content { includeModule(modGroup, apiModule) }
                         }
-                        filter { includeModule(modGroup, apiModule) }
+                    } else {
+                        exclusiveContent {
+                            forRepository {
+                                maven { url = rootProject.layout.buildDirectory.dir("publication-validation").get().asFile.toURI() }
+                            }
+                            filter { includeModule(modGroup, apiModule) }
+                        }
                     }
                 }
                 dependencies.add(consumer.name, "$modGroup:$apiModule:$projectVersion")

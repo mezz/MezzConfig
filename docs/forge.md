@@ -1,13 +1,10 @@
-# Forge Legacy ModDevGradle setup
+# Forge setup
 
-This guide is for projects using `net.neoforged.moddev.legacyforge` on Minecraft
-1.19.2 or 1.20.1. The examples use 1.20.1; use your Minecraft version in the
-MezzConfig artifact names.
+MezzConfig supports ForgeGradle 7 on Minecraft 1.21.1 and Legacy
+ModDevGradle on Minecraft 1.19.2 and 1.20.1. Use your Minecraft version in
+the artifact names below.
 
-## Gradle
-
-In `build.gradle.kts`, choose the MezzConfig version and add its Maven
-repository:
+Choose the MezzConfig version and add its Maven repository:
 
 ```kotlin
 val mezzConfigVersion = "<version>"
@@ -17,11 +14,58 @@ repositories {
 }
 ```
 
-After configuring `legacyForge`, add the following setup and dependencies:
+## ForgeGradle 7 (Minecraft 1.21.1)
+
+After applying `net.minecraftforge.gradle`, use ForgeGradle's Mavenizer for the
+Forge dependency and pin it to the official Minecraft mappings. The separate
+runtime configuration keeps MezzConfig out of your published dependency
+metadata while making it available to development game runs:
+
+```kotlin
+val minecraftVersion = "1.21.1"
+val forgeVersion = "52.1.16"
+
+minecraft {
+	mappings("official", minecraftVersion)
+}
+
+val mezzConfigRuntime by configurations.creating {
+	isCanBeConsumed = false
+	isCanBeResolved = false
+}
+configurations.runtimeClasspath {
+	extendsFrom(mezzConfigRuntime)
+}
+
+minecraft.mavenizer(repositories)
+repositories {
+	maven(fg.forgeMaven)
+	maven(fg.minecraftLibsMaven)
+}
+
+dependencies {
+	val forgeDependency = create(
+		"net.minecraftforge:forge:$minecraftVersion-$forgeVersion"
+	) as ExternalModuleDependency
+	forgeDependency.attributes {
+		attribute(Attribute.of("net.minecraftforge.mappings.channel", String::class.java), "official")
+		attribute(Attribute.of("net.minecraftforge.mappings.version", String::class.java), minecraftVersion)
+	}
+	implementation(minecraft.dependency(forgeDependency))
+
+	compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
+	mezzConfigRuntime("net.mezzdev.config:mezz_config-1.21.1-forge:$mezzConfigVersion")
+}
+```
+
+## Legacy ModDevGradle (Minecraft 1.19.2 and 1.20.1)
+
+After configuring `legacyForge`, create a remapped development dependency. This
+example targets Minecraft 1.20.1:
 
 ```kotlin
 val mezzConfigRuntime = obfuscation.createRemappingConfiguration(
-    configurations.getByName("additionalRuntimeClasspath")
+	configurations.getByName("additionalRuntimeClasspath")
 )
 
 dependencies {
@@ -30,10 +74,8 @@ dependencies {
 }
 ```
 
-The API dependency lets your code use MezzConfig. The remapping configuration
-makes its Forge runtime available to development game runs.
-
-Run `./gradlew build` and distribute the release jar produced by `reobfJar`.
+The API dependency lets your code use MezzConfig. The runtime dependency makes
+the complete Forge mod available to development game runs.
 
 ## Tell Forge about MezzConfig
 
@@ -54,11 +96,32 @@ version range only when your mod supports a different range.
 
 ## Optional: include MezzConfig in your jar
 
-You can include MezzConfig when your mod must work as a single download. This
-makes installation simpler, but increases your jar size and packages another
-copy in every mod that uses this option.
+You can include MezzConfig when your mod must work as a single download. Keep
+the embedded version range the same as the one in `mods.toml`.
 
-Add the supported range and the complete Forge artifact:
+For ForgeGradle 7, apply `net.minecraftforge.jarjar`, register its task, and add
+the complete Forge artifact:
+
+```kotlin
+plugins {
+	id("net.minecraftforge.jarjar")
+}
+
+val mezzConfigVersionRange = "[0.5.0,1.0.0)"
+jarJar.register()
+
+dependencies {
+	"jarJar"("net.mezzdev.config:mezz_config-1.21.1-forge:$mezzConfigVersion") {
+		isTransitive = false
+		jarJar.configure(this) {
+			setRange(mezzConfigVersionRange)
+			setVersion(mezzConfigVersion)
+		}
+	}
+}
+```
+
+For Legacy ModDevGradle, use its `jarJar` configuration:
 
 ```kotlin
 val mezzConfigVersionRange = "[0.5.0,1.0.0)"
@@ -68,6 +131,6 @@ dependencies {
 }
 ```
 
-Keep the range the same as the one in `mods.toml`. Run `./gradlew build` and
-distribute the release jar produced by `reobfJar`. The included copy satisfies
-the required dependency; keep the `mods.toml` entry.
+Run `./gradlew build` and distribute the release jar produced by your Forge
+tooling. The included copy satisfies the required dependency; keep the
+`mods.toml` entry.

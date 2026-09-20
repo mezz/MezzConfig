@@ -24,7 +24,7 @@ jobs:
             modloaders: [fabric, forge]
           - minecraft: 1.21.1
             java: 21
-            modloaders: [fabric, neoforge]
+            modloaders: [fabric, forge, neoforge]
           - minecraft: 1.21.11
             java: 21
             modloaders: [fabric, neoforge]
@@ -61,7 +61,7 @@ jobs:
 
       - name: Run Forge loader smoke test
         if: contains(matrix.modloaders, 'forge')
-        run: ./gradlew -PminecraftVersion=${{ matrix.minecraft }} --stacktrace --no-configuration-cache :Forge:runServerSmokeTest
+        run: ./gradlew -PminecraftVersion=${{ matrix.minecraft }} --stacktrace --no-configuration-cache validateForgeEmbedding :Forge:runServerSmokeTest
 
       - name: Run NeoForge GameTests and consumer embedding
         if: contains(matrix.modloaders, 'neoforge')

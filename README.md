@@ -27,7 +27,7 @@ vanilla server or any server that does not have MezzConfig installed.
 Choose the guide for your loader:
 
 - [Fabric Loom](docs/fabric.md)
-- [Forge with Legacy ModDevGradle](docs/forge.md)
+- [Forge with ForgeGradle or Legacy ModDevGradle](docs/forge.md)
 - NeoForge with [ModDevGradle](docs/neoforge.md) or
   [NeoGradle](docs/neogradle.md)
 
@@ -52,7 +52,7 @@ Each runtime jar supports its exact Minecraft version.
 | Minecraft | Java | Loaders |
 | --- | --- | --- |
 | 1.19.2, 1.20.1 | 17 | Fabric, Forge |
-| 1.21.1 | 21 | Fabric, NeoForge |
+| 1.21.1 | 21 | Fabric, Forge, NeoForge |
 | 1.21.11 | 21 | Fabric, NeoForge |
 | 26.1.2, 26.2, 26.3 | 25 | Fabric, NeoForge |
 

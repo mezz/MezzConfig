@@ -115,6 +115,9 @@ def validateMinecraftTarget(String target) {
             validationTasks.add(':NeoForge:runGameTestServer')
             validationTasks.add('validateNeoForgeEmbedding')
         }
+        if (loaders.contains('Forge')) {
+            validationTasks.add('validateForgeEmbedding')
+        }
         validationTasks.addAll(loaders.findAll { it != 'NeoForge' }.collect { ":${it}:runServerSmokeTest" })
         validationTasks.add(':Changelog:makeChangelog')
         sh "${command} --no-configuration-cache ${validationTasks.join(' ')} ${getReleaseGradleArgs()}"
