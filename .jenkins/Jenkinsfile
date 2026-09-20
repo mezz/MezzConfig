@@ -73,14 +73,6 @@ def minecraftTargets() {
     return ['1.19.2', '1.20.1', '1.21.1', '1.21.11', '26.1.2', '26.2', '26.3']
 }
 
-def validationTargetBatches() {
-    return [
-        'Java 21 A': ['1.19.2', '1.21.11'],
-        'Java 21 B': ['1.20.1', '1.21.1'],
-        'Java 25': ['26.1.2', '26.2', '26.3']
-    ]
-}
-
 def minecraftLoaders(String target) {
     def manifest = readProperties file: "versions/${target}.properties"
     return manifest.loaders.split(',').toList()
@@ -133,28 +125,12 @@ def validateMinecraftTarget(String target) {
     }
 }
 
-def validateMinecraftTargetsInParallel() {
-    def targetBatches = validationTargetBatches()
-    def configuredTargets = minecraftTargets()
-    def batchedTargets = targetBatches.values().flatten()
-    if (batchedTargets.size() != configuredTargets.size() ||
-        !batchedTargets.containsAll(configuredTargets) ||
-        !configuredTargets.containsAll(batchedTargets)
-    ) {
-        error 'Validation target batches must contain every configured Minecraft target exactly once.'
-    }
-
-    def branches = [:]
-    targetBatches.each { batchName, batchTargets ->
-        branches[batchName] = {
-            batchTargets.each { target ->
-                stage("Minecraft ${target}") {
-                    validateMinecraftTarget(target)
-                }
-            }
+def validateMinecraftTargets() {
+    minecraftTargets().each { target ->
+        stage("Minecraft ${target}") {
+            validateMinecraftTarget(target)
         }
     }
-    parallel branches
 }
 
 pipeline {
@@ -217,7 +193,7 @@ pipeline {
         stage('Validate Minecraft Targets') {
             steps {
                 script {
-                    validateMinecraftTargetsInParallel()
+                    validateMinecraftTargets()
                 }
             }
         }
