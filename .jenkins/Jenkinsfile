@@ -47,17 +47,26 @@ def getReleaseGradleArgs() {
     return ''
 }
 
+def normalizeFullCommitId(value) {
+    def commitId = value?.trim()
+    return commitId ==~ /[0-9a-fA-F]{40}/ ? commitId : null
+}
+
 def findPreviousReleaseCommit() {
     def descriptionPrefix = 'jenkins-release-notifier-source:v1:'
     def previousBuild = currentBuild.previousBuild
     while (previousBuild != null) {
         def description = previousBuild.description ?: ''
         if (description.startsWith(descriptionPrefix)) {
-            return description.substring(descriptionPrefix.length())
+            def commitId = normalizeFullCommitId(description.substring(descriptionPrefix.length()))
+            if (commitId) {
+                return commitId
+            }
+            echo "Ignoring invalid release notification baseline from build #${previousBuild.number}."
         }
         previousBuild = previousBuild.previousBuild
     }
-    return env.GIT_PREVIOUS_SUCCESSFUL_COMMIT
+    return normalizeFullCommitId(env.GIT_PREVIOUS_SUCCESSFUL_COMMIT)
 }
 
 def minecraftTargets() {
