@@ -17,7 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 
 @Mod(ForgeTestMod.MOD_ID)
 public final class ForgeTestMod {
@@ -32,13 +31,12 @@ public final class ForgeTestMod {
 		if (successFile != null) {
 			MinecraftForge.EVENT_BUS.addListener((ServerStartedEvent event) -> {
 				MinecraftServer server = event.getServer();
-				CompletableFuture.delayedExecutor(3, TimeUnit.SECONDS)
-					.execute(() -> server.execute(() -> runSmokeTest(
-						clientSchema,
-						serverSchema,
-						server,
-						Path.of(successFile)
-					)));
+				CompletableFuture.runAsync(() -> server.execute(() -> runSmokeTest(
+					clientSchema,
+					serverSchema,
+					server,
+					Path.of(successFile)
+				)));
 			});
 		}
 	}

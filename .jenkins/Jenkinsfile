@@ -64,6 +64,14 @@ def minecraftTargets() {
     return ['1.19.2', '1.20.1', '1.21.1', '1.21.11', '26.1.2', '26.2', '26.3']
 }
 
+def validationTargetBatches() {
+    return [
+        'Java 21 A': ['1.19.2', '1.21.11'],
+        'Java 21 B': ['1.20.1', '1.21.1'],
+        'Java 25': ['26.1.2', '26.2', '26.3']
+    ]
+}
+
 def minecraftLoaders(String target) {
     def manifest = readProperties file: "versions/${target}.properties"
     return manifest.loaders.split(',').toList()
@@ -77,20 +85,73 @@ def artifactPatterns() {
     }.join(',')
 }
 
+def withMinecraftTarget(String target, Closure action) {
+    def loaders = minecraftLoaders(target)
+    def jdk = tool(target.startsWith('26.') ? 'jdk-25' : 'jdk-21')
+    withEnv(["JAVA_HOME=${jdk}", "PATH+MEZZCONFIG_JAVA=${jdk}/bin"]) {
+        action("./gradlew -PminecraftVersion=${shellQuote(target)}", loaders)
+    }
+}
+
 def forEachMinecraftTarget(Closure action) {
     minecraftTargets().each { target ->
-        def loaders = minecraftLoaders(target)
-        def jdk = tool(target.startsWith('26.') ? 'jdk-25' : 'jdk-21')
-        withEnv(["JAVA_HOME=${jdk}", "PATH+MEZZCONFIG_JAVA=${jdk}/bin"]) {
-            action("./gradlew -PminecraftVersion=${shellQuote(target)} --no-daemon", loaders)
+        withMinecraftTarget(target, action)
+    }
+}
+
+def validateMinecraftTarget(String target) {
+    withMinecraftTarget(target) { command, loaders ->
+        def validationTasks = [
+            'clean',
+            'spotlessCheck',
+            'build',
+            ':Common:apiJavadoc',
+            ':Common:checkJarCompatibility',
+            'validateDocumentationLinks',
+            'validateFabricEmbedding',
+            'validatePublishedApiConsumers'
+        ]
+        if (loaders.contains('NeoForge')) {
+            validationTasks.add(':NeoForge:runGameTestServer')
+            validationTasks.add('validateNeoForgeEmbedding')
+        }
+        validationTasks.addAll(loaders.findAll { it != 'NeoForge' }.collect { ":${it}:runServerSmokeTest" })
+        validationTasks.add(':Changelog:makeChangelog')
+        sh "${command} --no-configuration-cache ${validationTasks.join(' ')} ${getReleaseGradleArgs()}"
+    }
+}
+
+def validateMinecraftTargetsInParallel() {
+    def targetBatches = validationTargetBatches()
+    def configuredTargets = minecraftTargets()
+    def batchedTargets = targetBatches.values().flatten()
+    if (batchedTargets.size() != configuredTargets.size() ||
+        !batchedTargets.containsAll(configuredTargets) ||
+        !configuredTargets.containsAll(batchedTargets)
+    ) {
+        error 'Validation target batches must contain every configured Minecraft target exactly once.'
+    }
+
+    def branches = [:]
+    targetBatches.each { batchName, batchTargets ->
+        branches[batchName] = {
+            batchTargets.each { target ->
+                stage("Minecraft ${target}") {
+                    validateMinecraftTarget(target)
+                }
+            }
         }
     }
+    parallel branches
 }
 
 pipeline {
     agent any
     tools {
         jdk "jdk-21"
+    }
+    options {
+        skipDefaultCheckout(true)
     }
 
     environment {
@@ -135,57 +196,10 @@ pipeline {
             }
         }
 
-        stage('Validate') {
+        stage('Validate Minecraft Targets') {
             steps {
                 script {
-                    forEachMinecraftTarget { command, loaders ->
-                        sh "${command} clean spotlessCheck build :Common:apiJavadoc :Common:checkJarCompatibility validateDocumentationLinks validateFabricEmbedding validatePublishedApiConsumers ${getReleaseGradleArgs()}"
-                    }
-                }
-            }
-        }
-
-        stage('NeoForge Server GameTests') {
-            steps {
-                script {
-                    forEachMinecraftTarget { command, loaders ->
-                        if (loaders.contains('NeoForge')) {
-                            sh "${command} --no-configuration-cache :NeoForge:runGameTestServer ${getReleaseGradleArgs()}"
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Fabric and Forge Server Smoke Tests') {
-            steps {
-                script {
-                    forEachMinecraftTarget { command, loaders ->
-                        def smokeTasks = loaders.findAll { it != 'NeoForge' }.collect { ":${it}:runServerSmokeTest" }.join(' ')
-                        sh "${command} --no-configuration-cache ${smokeTasks} ${getReleaseGradleArgs()}"
-                    }
-                }
-            }
-        }
-
-        stage('NeoForge Consumer Embedding') {
-            steps {
-                script {
-                    forEachMinecraftTarget { command, loaders ->
-                        if (loaders.contains('NeoForge')) {
-                            sh "${command} --no-configuration-cache validateNeoForgeEmbedding ${getReleaseGradleArgs()}"
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Create Changelogs') {
-            steps {
-                script {
-                    forEachMinecraftTarget { command, loaders ->
-                        sh "${command} :Changelog:makeChangelog ${getReleaseGradleArgs()}"
-                    }
+                    validateMinecraftTargetsInParallel()
                 }
             }
         }

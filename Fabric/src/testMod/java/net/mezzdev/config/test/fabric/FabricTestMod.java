@@ -16,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 
 public final class FabricTestMod implements ModInitializer {
 	private static final String MOD_ID = "mezz_config_test_fabric";
@@ -29,8 +28,8 @@ public final class FabricTestMod implements ModInitializer {
 		IConfigSchema serverSchema = registerServerConfig(registration);
 		String successFile = System.getProperty(SMOKE_TEST_SUCCESS_FILE_PROPERTY);
 		if (successFile != null) {
-			ServerLifecycleEvents.SERVER_STARTED.register(server -> CompletableFuture.delayedExecutor(3, TimeUnit.SECONDS)
-				.execute(() -> server.execute(() -> runSmokeTest(
+			ServerLifecycleEvents.SERVER_STARTED.register(server -> CompletableFuture.runAsync(
+				() -> server.execute(() -> runSmokeTest(
 					clientSchema,
 					serverSchema,
 					server,

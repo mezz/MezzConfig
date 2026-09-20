@@ -49,6 +49,16 @@ dependencies {
 
 val smokeDirectory = layout.buildDirectory.dir("run/server-smoke")
 val smokeResult = smokeDirectory.map { it.file("smoke-test-passed") }
+val serverSmokeTestProperties = """
+    generate-structures=false
+    generator-settings={"layers":[{"block":"minecraft:bedrock","height":1}],"biome":"minecraft:plains"}
+    level-type=minecraft:flat
+    online-mode=false
+    server-port=0
+    simulation-distance=2
+    spawn-protection=0
+    view-distance=2
+""".trimIndent() + "\n"
 val forgeArtifactVersion = "$minecraftVersion-$forgeVersion"
 legacyForge {
     enable {
@@ -114,7 +124,7 @@ tasks.named("runServerSmokeTest") {
         val result = outputs.files.singleFile
         result.parentFile.mkdirs()
         result.resolveSibling("eula.txt").writeText("eula=true\n")
-        result.resolveSibling("server.properties").writeText("online-mode=false\nserver-port=0\n")
+        result.resolveSibling("server.properties").writeText(serverSmokeTestProperties)
         result.delete()
     }
     doLast {

@@ -42,6 +42,16 @@ val commonModShadeJarTask = commonProject.tasks.named<Jar>("modShadeJar")
 val commonModShadeSourcesJarTask = commonProject.tasks.named<Jar>("modShadeSourcesJar")
 val serverSmokeTestRunDir = layout.buildDirectory.dir("run/server-smoke")
 val serverSmokeTestSuccessFile = serverSmokeTestRunDir.map { it.file("smoke-test-passed") }
+val serverSmokeTestProperties = """
+    generate-structures=false
+    generator-settings={"layers":[{"block":"minecraft:bedrock","height":1}],"biome":"minecraft:plains"}
+    level-type=minecraft:flat
+    online-mode=false
+    server-port=0
+    simulation-distance=2
+    spawn-protection=0
+    view-distance=2
+""".trimIndent() + "\n"
 fun zipTreeArchive(archiveTask: TaskProvider<Jar>) =
     zipTree(archiveTask.flatMap { it.archiveFile })
 
@@ -217,7 +227,7 @@ tasks.matching { it.name == "runServerSmokeTest" }.configureEach {
         val successFile = outputs.files.singleFile
         successFile.parentFile.mkdirs()
         successFile.resolveSibling("eula.txt").writeText("eula=true\n")
-        successFile.resolveSibling("server.properties").writeText("online-mode=false\nserver-port=0\n")
+        successFile.resolveSibling("server.properties").writeText(serverSmokeTestProperties)
         successFile.delete()
     }
     doLast {
