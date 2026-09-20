@@ -3,6 +3,7 @@ package net.mezzdev.config.api.migration;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -46,7 +47,7 @@ public interface IConfigMigrationResult {
 	Optional<Path> getLegacyPath();
 
 	/**
-	 * Get the preserved backup that can be shown to the user or used for recovery.
+	 * Get the preserved legacy-source backup that can be shown to the user or used for recovery.
 	 * A failed migration may still have a backup when failure happened after backup creation.
 	 *
 	 * @return normalized absolute backup path, if a backup was created
@@ -54,6 +55,35 @@ public interface IConfigMigrationResult {
 	 * @since 0.3.0
 	 */
 	Optional<Path> getBackupPath();
+
+	/**
+	 * Get the number of destination config values imported by this successful migration.
+	 * Failed and skipped migrations report zero.
+	 *
+	 * @return imported destination value count
+	 *
+	 * @since 0.6.0
+	 */
+	int getImportedValueCount();
+
+	/**
+	 * Get the number of legacy values that could not be imported.
+	 * A migration may still succeed when it imports other usable values.
+	 *
+	 * @return rejected legacy value count
+	 *
+	 * @since 0.6.0
+	 */
+	int getRejectedValueCount();
+
+	/**
+	 * Get bounded diagnostic messages produced while parsing or converting legacy values.
+	 *
+	 * @return immutable migration diagnostics in encounter order
+	 *
+	 * @since 0.6.0
+	 */
+	List<String> getDiagnostics();
 
 	/**
 	 * Get the reason an attempted migration failed.

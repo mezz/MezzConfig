@@ -1,68 +1,61 @@
 # Migrate existing settings
 
-MezzConfig has different migration tools for storage names, file locations, and
-foreign file formats. Choose the narrowest tool that matches the change.
+Use a migration when a config value, config file, or saved sort order has moved
+or changed format. A migration is a one-time import: MezzConfig considers it
+only when the destination file does not exist. An existing destination always
+wins.
 
 [Back to the API guide](API.md)
 
-## Choose a migration
+## Choose the migration API
 
-| Change | API |
-| --- | --- |
-| Rename a value in the same category | `IConfigValueBuilder.addLegacyName` |
-| Move or rename a value inside a MezzConfig schema | `IConfigValueBuilder.addLegacyValue` |
-| Move a value and change its type or serialized form | `IConfigValueBuilder.addLegacyValueMigration` |
-| Move an entire MezzConfig file | `IConfigSchemaBuilder.setLegacySources` |
-| Import a file that was not written by MezzConfig | `IConfigSchemaBuilder.setLegacyMigration` |
-| Import an old persistent sort order | `ISortingConfig.setLegacyMigration` |
+| Existing data | Change | API |
+| --- | --- | --- |
+| MezzConfig file | Rename a value in the same category | `IConfigValueBuilder.addLegacyName` |
+| MezzConfig file | Move or rename a value | `IConfigValueBuilder.addLegacyValue` |
+| MezzConfig file | Move a value and change its type or format | `IConfigValueBuilder.addLegacyValueMigration` |
+| MezzConfig file | Move or rename the file | `IConfigSchemaBuilder.setLegacySources` |
+| Another format | Import values into a MezzConfig schema | `IConfigSchemaBuilder.setLegacyMigration` |
+| Saved sort order | Import an old order | `ISortingConfig.setLegacyMigration` |
 
-Schema and value migrations run only when the new destination config does not
-already exist. This keeps an old file from overwriting settings that have
-already been saved in the new location and avoids migration work during normal
-config loads. The value-level methods describe how `setLegacySources` maps the
-selected source into the current schema; they do not migrate an existing
-destination file in place. Within the selected source, a current storage key
-wins over its legacy mappings regardless of file order.
+The value-level methods apply only while `setLegacySources` imports an older
+MezzConfig file. They do not modify a destination file that already exists.
 
-For `CLIENT_PER_WORLD` and `SERVER` schemas, the migration waits until the first
-local world destination becomes active. Building the schema at the title screen
-or receiving settings from a remote server does not complete the migration.
-It is considered once per schema instance, not again for each world visited.
-Permanently inactive client declarations on a dedicated server report
-`SKIPPED_INACTIVE` without reading the legacy files.
+## Import an older MezzConfig file
 
-## Rename a value
-
-Use `addLegacyName` when only the value's storage name changed:
+Declare the current schema, add legacy mappings where storage changed, and
+then list the old file locations:
 
 ```java
+IConfigSchemaBuilder schema = configs.createClientSchemaBuilder(
+	"client.ini",
+	"example_mod.config.client"
+);
+
+IConfigCategoryBuilder general = schema.addCategory("general");
 IConfigValue<Boolean> enabled = general.addBoolean("enabled", true)
 	.addLegacyName("enableIntegration")
 	.build();
-```
 
-When `setLegacySources` imports the old file, MezzConfig maps
-`[general].enableIntegration` to `[general].enabled` and writes the current name
-to the new destination.
-
-## Move a value
-
-Use `addLegacyValue` when the old value was in another category, had another
-name, or both:
-
-```java
+IConfigCategoryBuilder search = schema.addCategory("search");
 IConfigValue<String> filter = search.addString("filter", "")
 	.addLegacyValue("general", "ingredientFilter")
 	.build();
+
+schema.setLegacySources(List.of(
+	oldConfigDirectory.resolve("example-client.ini"),
+	olderConfigDirectory.resolve("example.cfg")
+));
+
+IConfigSchema clientConfig = schema.build();
 ```
 
-The current serializer must still understand the old stored form. This mapping
-is used when `setLegacySources` imports the old file.
+MezzConfig checks the paths in order and imports the first file that exists.
+Values whose storage names did not change are matched automatically. In the
+example, `addLegacyName` handles a rename within one category, while
+`addLegacyValue` handles a move from another category.
 
-## Change a value's type or format
-
-When the old form needs conversion, provide its serializer and a typed
-conversion function:
+Use `addLegacyValueMigration` when the old value also needs conversion:
 
 ```java
 IConfigValue<Duration> timeout = general.addValue(
@@ -79,48 +72,18 @@ IConfigValue<Duration> timeout = general.addValue(
 	.build();
 ```
 
-The migration source must use an old category, an old value name, or both. If a
-format changes under the same storage name, move to a new storage name and
-migrate from the old one. These conversions run only while `setLegacySources`
-imports a source into a missing destination config.
+The old category or value name must differ from the current storage location.
+If only the serialized format changed, give the current value a new storage
+name and migrate from the old one. When a source contains both a current key
+and a legacy key for the same value, the current key wins.
 
-## Move a MezzConfig file
-
-Use `setLegacySources` when the old file was also written by MezzConfig:
-
-```java
-IConfigSchemaBuilder schema = configs.createClientSchemaBuilder(
-	"client.ini",
-	"example_mod.config.client"
-);
-
-// Declare and build the destination values first.
-IConfigValue<Boolean> enabled = schema.addCategory("general")
-	.addBoolean("enabled", true)
-	.build();
-
-schema.setLegacySources(List.of(
-	oldConfigDirectory.resolve("example-client.ini"),
-	olderConfigDirectory.resolve("example.cfg")
-));
-
-IConfigSchema clientConfig = schema.build();
-```
-
-Paths are checked in order. MezzConfig loads the first existing source with the
-current schema, including value-level legacy names and conversions. It preserves
-and backs up the source, then writes the imported values to the new location.
-
-## Import a foreign config format
+## Import another config format
 
 Use `setLegacyMigration` when the old file was not written by MezzConfig. The
-callback parses only the old format and supplies typed destination values:
+migrator reads the old format and supplies typed values from the destination
+schema:
 
 ```java
-IConfigSchemaBuilder schema = configs.createClientSchemaBuilder(
-	"client.ini",
-	"example_mod.config.client"
-);
 IConfigValue<Boolean> enabled = schema.addCategory("general")
 	.addBoolean("enabled", true)
 	.build();
@@ -133,34 +96,45 @@ schema.setLegacyMigration(List.of(oldPropertiesFile), (path, migration) -> {
 
 	String stored = properties.getProperty("enabled");
 	if (stored != null) {
-		boolean migratedEnabled = switch (stored.trim()) {
-			case "true" -> true;
-			case "false" -> false;
-			default -> throw new IllegalArgumentException(
+		switch (stored.trim()) {
+			case "true" -> migration.set(enabled, true);
+			case "false" -> migration.set(enabled, false);
+			default -> migration.rejectValue(
 				"Invalid legacy enabled value: " + stored
 			);
-		};
-		migration.set(enabled, migratedEnabled);
+		}
 	}
 });
-
-IConfigSchema clientConfig = schema.build();
 ```
 
-MezzConfig validates all queued values before applying any of them. It handles
-backup creation and writing the current format atomically; the callback does
-not need to understand MezzConfig's file format.
+Call `rejectValue` when one legacy value is invalid but other values can still
+be imported. Throw an exception when the file as a whole cannot be read or
+interpreted. MezzConfig validates all supplied values together, backs up the
+selected source, and writes the destination.
 
-`IConfigMigrationContext` can also update a persistent sorting config as part
-of the same import with `setSortedValues(...)`.
+If the migration supplies any usable update, MezzConfig writes it and keeps the
+defaults for rejected settings. If it reports rejections without any usable
+update, migration fails and does not create the destination.
 
-## Observe the result
+The same migrator can call `setSortedValues(...)` to import a persistent sort
+order along with the schema values.
 
-Implement `IConfigMigrator` as a class when the mod needs the final outcome:
+## Handle the result
+
+Implement `IConfigMigrator` as a class when the mod needs to override
+`onMigrationComplete` and report the outcome:
 
 ```java
 @Override
 public void onMigrationComplete(IConfigMigrationResult result) {
+	if (!result.getDiagnostics().isEmpty()) {
+		LOGGER.warn("Config migration {}: {} imported, {} rejected: {}",
+			result.getStatus(),
+			result.getImportedValueCount(),
+			result.getRejectedValueCount(),
+			result.getDiagnostics());
+	}
+
 	if (result.getStatus() == ConfigMigrationStatus.FAILED) {
 		result.getFailure().ifPresent(error ->
 			LOGGER.error("Could not migrate the old config", error)
@@ -169,19 +143,31 @@ public void onMigrationComplete(IConfigMigrationResult result) {
 }
 ```
 
-The result distinguishes a successful migration, a destination that already
-exists, a missing legacy source, an inactive destination, and a failure. It can
-also expose the selected source, destination, and preserved backup paths.
+| Status | Meaning |
+| --- | --- |
+| `MIGRATED` | The destination was created from a legacy source. |
+| `SKIPPED_DESTINATION_EXISTS` | The destination already existed. |
+| `SKIPPED_NO_LEGACY_FILE` | None of the candidate source files existed. |
+| `SKIPPED_INACTIVE` | The destination is unavailable in this environment. |
+| `FAILED` | Nothing was imported and the destination was not created. |
 
-The completion callback runs once after MezzConfig reaches a final outcome. An
-exception from the callback is logged but does not change that outcome.
+The result also provides imported config value and rejected value counts,
+diagnostics, the selected source and destination paths, and the source backup
+path. The completion callback runs once after migration reaches one of these
+outcomes.
 
-## Migration guarantees
+To retry after a failure, fix the legacy source and restart. If a destination
+already exists, preserve it if needed, delete it, and restart.
 
-- Candidate paths are normalized and checked in declaration order.
-- A file-level migration never replaces an existing destination.
-- Typed updates are validated as one transaction.
-- A failed migration does not partially update the destination schema.
-- A selected legacy file is preserved and backed up before replacement work.
+## When migration runs
 
-For persistent runtime orders, see [Sorting configs](sorting.md#migrate-an-old-order).
+Migration normally runs when the schema is built. World-scoped client and
+server schemas wait until their first local world destination becomes active.
+A remote server config does not trigger local migration. A client-only schema
+on a dedicated server reports `SKIPPED_INACTIVE`.
+
+Each migration is considered once per schema instance. Visiting another world
+does not run it again.
+
+For a standalone persistent order, see
+[Sorting configs](sorting.md#migrate-an-old-order).

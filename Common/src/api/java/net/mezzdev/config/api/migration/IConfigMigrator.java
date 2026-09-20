@@ -37,8 +37,7 @@ public interface IConfigMigrator {
 	 * Lambdas may ignore it. MezzConfig calls it once for every registered migration after reaching a final outcome.
 	 * World-scoped schemas wait until their first local destination becomes active; waiting for a world or receiving a
 	 * remote server snapshot does not complete the migration. Permanently inactive declarations report
-	 * {@link ConfigMigrationStatus#SKIPPED_INACTIVE}. An
-	 * exception from this method is logged and does not change that outcome.
+	 * {@link ConfigMigrationStatus#SKIPPED_INACTIVE}. An exception from this method is logged and does not change that outcome.
 	 *
 	 * @param result final structured migration result
 	 *

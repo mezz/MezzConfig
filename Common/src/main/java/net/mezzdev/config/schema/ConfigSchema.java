@@ -416,19 +416,33 @@ public class ConfigSchema implements IConfigSchema {
 		if (migrationSpec == null || migrationCompleted) {
 			return MigrationAttempt.NOT_ATTEMPTED;
 		}
+		ConfigMigrationResult result = runMigration(destinationPath);
+		completeMigration(result);
+		return switch (result.getStatus()) {
+			case MIGRATED -> MigrationAttempt.MIGRATED;
+			case FAILED -> MigrationAttempt.FAILED;
+			default -> MigrationAttempt.SKIPPED;
+		};
+	}
+
+	private ConfigMigrationResult runMigration(Path destinationPath) {
+		ConfigMigrationSpec migrationSpec = this.migrationSpec;
+		if (migrationSpec == null) {
+			throw new IllegalStateException("Config schema has no registered legacy source or migration.");
+		}
 		destinationPath = destinationPath.toAbsolutePath().normalize();
 		Path legacyPath = null;
-		Path backupPath = null;
+		Path legacyBackupPath = null;
+		ConfigMigrationContext context = null;
 		try {
 			if (Files.exists(destinationPath)) {
-				completeMigration(new ConfigMigrationResult(
+				return new ConfigMigrationResult(
 					ConfigMigrationStatus.SKIPPED_DESTINATION_EXISTS,
 					destinationPath,
 					null,
 					null,
 					null
-				));
-				return MigrationAttempt.SKIPPED;
+				);
 			}
 
 			legacyPath = migrationSpec.legacyPaths()
@@ -437,50 +451,69 @@ public class ConfigSchema implements IConfigSchema {
 				.findFirst()
 				.orElse(null);
 			if (legacyPath == null) {
-				completeMigration(new ConfigMigrationResult(
+				return new ConfigMigrationResult(
 					ConfigMigrationStatus.SKIPPED_NO_LEGACY_FILE,
 					destinationPath,
 					null,
 					null,
 					null
-				));
-				return MigrationAttempt.SKIPPED;
+				);
 			}
 
-			backupPath = ConfigFileUtil.backUpFile(legacyPath);
-			ConfigMigrationContext context = new ConfigMigrationContext(this);
+			legacyBackupPath = ConfigFileUtil.backUpFile(legacyPath);
+			context = new ConfigMigrationContext(this);
 			try {
 				if (migrationSpec.loadsAlternateSource()) {
-					context.addValueUpdates(ConfigSerializer.parseMigrationUpdates(legacyPath, categories));
+					context.addParseResult(ConfigSerializer.parseMigrationUpdates(legacyPath, categories));
 				} else {
 					migrationSpec.migrate(legacyPath, context);
 				}
 			} finally {
 				context.close();
 			}
-			commitMigration(destinationPath, backupPath, context);
-			completeMigration(new ConfigMigrationResult(
+			if (!context.hasUpdates() && !context.getDiagnostics().isEmpty()) {
+				throw new IllegalArgumentException("Legacy config parsing produced no usable updates; see migration diagnostics.");
+			}
+			commitMigration(destinationPath, legacyBackupPath, context);
+			ConfigMigrationResult result = new ConfigMigrationResult(
 				ConfigMigrationStatus.MIGRATED,
 				destinationPath,
 				legacyPath,
-				backupPath,
+				legacyBackupPath,
+				context.getValueUpdates().size(),
+				context.getRejectedValueCount(),
+				context.getDiagnostics(),
 				null
-			));
-			LOGGER.info("Migrated legacy config file '{}' to '{}'; the source was preserved and backed up at '{}'.", legacyPath, destinationPath, backupPath);
-			return MigrationAttempt.MIGRATED;
+			);
+			LOGGER.info(
+				"Migrated legacy config file '{}' to '{}'; the source was preserved and backed up at '{}'.",
+				legacyPath,
+				destinationPath,
+				legacyBackupPath
+			);
+			return result;
 		} catch (Exception failure) {
 			if (failure instanceof InterruptedException) {
 				Thread.currentThread().interrupt();
 			}
-			completeMigration(new ConfigMigrationResult(
+			int rejectedValueCount = 0;
+			List<String> diagnostics = List.of();
+			if (context != null) {
+				rejectedValueCount = context.getRejectedValueCount();
+				diagnostics = context.getDiagnostics();
+			}
+			ConfigMigrationResult result = new ConfigMigrationResult(
 				ConfigMigrationStatus.FAILED,
 				destinationPath,
 				legacyPath,
-				backupPath,
+				legacyBackupPath,
+				0,
+				rejectedValueCount,
+				diagnostics,
 				failure
-			));
+			);
 			LOGGER.error("Failed to migrate legacy config file '{}' to '{}'; no migration updates were applied and the source was preserved.", legacyPath, destinationPath, failure);
-			return MigrationAttempt.FAILED;
+			return result;
 		}
 	}
 
@@ -495,7 +528,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	private void commitMigration(
 		Path destinationPath,
-		Path backupPath,
+		Path legacyBackupPath,
 		ConfigMigrationContext context
 	) throws IOException {
 		List<ConfigValueUpdate<?>> valueUpdates = context.getValueUpdates();
@@ -519,10 +552,9 @@ public class ConfigSchema implements IConfigSchema {
 				throw new IllegalArgumentException("Migration updates must not overwrite a registered legacy file: " + legacyPath);
 			}
 		}
-		if (outputs.containsKey(backupPath)) {
-			throw new IllegalArgumentException("Migration updates must not overwrite the legacy file backup: " + backupPath);
+		if (outputs.containsKey(legacyBackupPath)) {
+			throw new IllegalArgumentException("Migration updates must not overwrite the legacy file backup: " + legacyBackupPath);
 		}
-
 		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
 		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
 		List<SortingConfig.MigrationUpdate<?>> appliedSortingUpdates = new ArrayList<>();

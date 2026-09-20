@@ -5,6 +5,7 @@ import net.mezzdev.config.api.migration.IConfigMigrationResult;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 
 public record ConfigMigrationResult(
@@ -12,12 +13,32 @@ public record ConfigMigrationResult(
 	@Nullable Path destinationPath,
 	@Nullable Path legacyPath,
 	@Nullable Path backupPath,
+	int importedValueCount,
+	int rejectedValueCount,
+	List<String> diagnostics,
 	@Nullable Exception failure
 ) implements IConfigMigrationResult {
 	public ConfigMigrationResult {
 		destinationPath = normalize(destinationPath);
 		legacyPath = normalize(legacyPath);
 		backupPath = normalize(backupPath);
+		if (importedValueCount < 0) {
+			throw new IllegalArgumentException("importedValueCount must not be negative.");
+		}
+		if (rejectedValueCount < 0) {
+			throw new IllegalArgumentException("rejectedValueCount must not be negative.");
+		}
+		diagnostics = List.copyOf(diagnostics);
+	}
+
+	public ConfigMigrationResult(
+		ConfigMigrationStatus status,
+		@Nullable Path destinationPath,
+		@Nullable Path legacyPath,
+		@Nullable Path backupPath,
+		@Nullable Exception failure
+	) {
+		this(status, destinationPath, legacyPath, backupPath, 0, 0, List.of(), failure);
 	}
 
 	private static @Nullable Path normalize(@Nullable Path path) {
@@ -45,6 +66,21 @@ public record ConfigMigrationResult(
 	@Override
 	public Optional<Path> getBackupPath() {
 		return Optional.ofNullable(backupPath);
+	}
+
+	@Override
+	public int getImportedValueCount() {
+		return importedValueCount;
+	}
+
+	@Override
+	public int getRejectedValueCount() {
+		return rejectedValueCount;
+	}
+
+	@Override
+	public List<String> getDiagnostics() {
+		return diagnostics;
 	}
 
 	@Override

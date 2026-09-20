@@ -75,6 +75,20 @@ public final class ConfigSerializer {
 		}
 	}
 
+	public record MigrationParseResult(
+		List<ConfigValueUpdate<?>> updates,
+		int rejectedValueCount,
+		List<String> diagnostics
+	) {
+		public MigrationParseResult {
+			updates = List.copyOf(updates);
+			if (rejectedValueCount < 0) {
+				throw new IllegalArgumentException("rejectedValueCount must not be negative.");
+			}
+			diagnostics = List.copyOf(diagnostics);
+		}
+	}
+
 	private static String getLineErrorString(Path path, int lineNumber, String line, String errorMessage) {
 		return """
 			%s
@@ -196,7 +210,7 @@ public final class ConfigSerializer {
 		return applyContentsWithoutNotifying(path, categories, settings, contents);
 	}
 
-	public static List<ConfigValueUpdate<?>> parseMigrationUpdates(
+	public static MigrationParseResult parseMigrationUpdates(
 		Path path,
 		List<ConfigCategory> categories
 	) throws IOException, ConfigFileReader.MalformedFileException {
@@ -215,7 +229,11 @@ public final class ConfigSerializer {
 				parsedFile.problemCount()
 			);
 		}
-		return List.copyOf(updates.values());
+		return new MigrationParseResult(
+			List.copyOf(updates.values()),
+			parsedFile.rejectedValueCount(),
+			parsedFile.diagnostics()
+		);
 	}
 
 	private static ParsedConfigFile parse(
@@ -294,7 +312,7 @@ public final class ConfigSerializer {
 				IDeserializeResult<JsonElement> decodeResult = ConfigFileValueCodec.deserialize(encodedValue);
 				final JsonElement value = decodeResult.getResult().orElse(null);
 				if (value == null) {
-					problems.log(
+					problems.rejectValue(
 						lineNumber,
 						line,
 						"Invalid encoded config value: " + String.join("\n", decodeResult.getDiagnostics())
@@ -308,7 +326,7 @@ public final class ConfigSerializer {
 						migrations = getMovedValueMigrations(categories, legacyValueReference);
 					}
 					if (migrations.isEmpty()) {
-						problems.log(lineNumber, line, getUnknownConfigValueError(category, categoryName, key));
+						problems.rejectValue(lineNumber, line, getUnknownConfigValueError(category, categoryName, key));
 					} else {
 						migrationEntries.add(new DeferredConfigValueMigration(lineNumber, line, value, migrations));
 					}
@@ -326,7 +344,12 @@ public final class ConfigSerializer {
 					}
 					List<String> diagnostics = parsedValue.result().getDiagnostics();
 					if (!diagnostics.isEmpty()) {
-						problems.log(lineNumber, line, getDeserializeDiagnostics(ConfigFileValueCodec.serialize(value), diagnostics));
+						String message = getDeserializeDiagnostics(ConfigFileValueCodec.serialize(value), diagnostics);
+						if (parsedValue.result().getResult().isEmpty()) {
+							problems.rejectValue(lineNumber, line, message);
+						} else {
+							problems.log(lineNumber, line, message);
+						}
 					}
 				}
 			} else {
@@ -343,7 +366,12 @@ public final class ConfigSerializer {
 		if (migrateLegacyValues) {
 			parsedValues = resolveConfigValues(migrationEntries, currentStorageValues, problems);
 		}
-		return new ParsedConfigFile(parsedValues, problems.count());
+		return new ParsedConfigFile(
+			parsedValues,
+			problems.count(),
+			problems.rejectedValueCount(),
+			problems.diagnostics()
+		);
 	}
 
 	private static List<ParsedConfigValue<?>> resolveConfigValues(
@@ -367,6 +395,9 @@ public final class ConfigSerializer {
 				ParsedConfigValue<?> parsedValue = parseMigration(migration, deferredMigration.value());
 				parsedValues.add(parsedValue);
 				diagnostics.addAll(parsedValue.result().getDiagnostics());
+				if (parsedValue.result().getResult().isEmpty()) {
+					problems.rejectValue();
+				}
 			}
 			if (!diagnostics.isEmpty()) {
 				problems.log(
@@ -498,10 +529,13 @@ public final class ConfigSerializer {
 
 	private record ParsedConfigFile(
 		List<ParsedConfigValue<?>> values,
-		int problemCount
+		int problemCount,
+		int rejectedValueCount,
+		List<String> diagnostics
 	) {
 		private ParsedConfigFile {
 			values = List.copyOf(values);
+			diagnostics = List.copyOf(diagnostics);
 		}
 	}
 
@@ -541,7 +575,9 @@ public final class ConfigSerializer {
 
 	private static final class ProblemTracker {
 		private final Path path;
+		private final List<String> diagnostics = new ArrayList<>();
 		private int count;
+		private int rejectedValueCount;
 
 		private ProblemTracker(Path path) {
 			this.path = path;
@@ -549,15 +585,37 @@ public final class ConfigSerializer {
 
 		private void log(int lineNumber, String line, String message) {
 			count++;
+			String diagnostic = getLineErrorString(path, lineNumber, line, message);
 			if (count <= MAX_LOGGED_PROBLEMS) {
-				LOGGER.error(getLineErrorString(path, lineNumber, line, message));
+				diagnostics.add(diagnostic);
+				LOGGER.error(diagnostic);
 			} else if (count == MAX_LOGGED_PROBLEMS + 1) {
-				LOGGER.error("Config file '{}' has more than {} problems; suppressing further per-line diagnostics.", path, MAX_LOGGED_PROBLEMS);
+				String suppressed = "Config file '%s' has more than %s problems; suppressing further per-line diagnostics."
+					.formatted(path, MAX_LOGGED_PROBLEMS);
+				diagnostics.add(suppressed);
+				LOGGER.error(suppressed);
 			}
+		}
+
+		private void rejectValue(int lineNumber, String line, String message) {
+			rejectValue();
+			log(lineNumber, line, message);
+		}
+
+		private void rejectValue() {
+			rejectedValueCount++;
 		}
 
 		private int count() {
 			return count;
+		}
+
+		private int rejectedValueCount() {
+			return rejectedValueCount;
+		}
+
+		private List<String> diagnostics() {
+			return List.copyOf(diagnostics);
 		}
 	}
 

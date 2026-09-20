@@ -36,6 +36,22 @@ public interface IConfigMigrationContext {
 	<T> IConfigMigrationContext set(IConfigValue<T> configValue, T value);
 
 	/**
+	 * Report one legacy value that could not be imported while allowing other usable values to continue.
+	 * Each call increments the final result's rejected-value count and includes the diagnostic in that result.
+	 * If the migration reports rejected values but supplies no usable schema or sorting updates, the migration fails without
+	 * creating or replacing the destination config.
+	 *
+	 * @param diagnostic explanation suitable for logs or user-facing recovery details
+	 * @return this migration context
+	 *
+	 * @throws IllegalArgumentException if {@code diagnostic} is blank
+	 * @throws IllegalStateException if the migration callback has returned
+	 *
+	 * @since 0.6.0
+	 */
+	IConfigMigrationContext rejectValue(String diagnostic);
+
+	/**
 	 * Import a saved order, including any values the user had hidden.
 	 * <p>
 	 * The collections have the same meaning and validation rules as

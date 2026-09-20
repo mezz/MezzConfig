@@ -604,6 +604,52 @@ public class ConfigMigrationTest {
 		assertFalse(Files.exists(getClientPath(configRoot, "client.ini")));
 	}
 
+	@Test
+	public void alternateSourceWithOnlyRejectedValuesDoesNotCreateDestination(@TempDir Path configRoot) throws IOException {
+		// Setup: an alternate source has a known value whose stored representation is unusable.
+		Path legacyPath = configRoot.resolve("old/client.ini");
+		writeFile(legacyPath, "[general]\nenabled = invalid\n");
+		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
+		IConfigSchemaBuilder builder = registration.createClientSchemaBuilder("client.ini", "migration_test.client");
+		IConfigValue<Boolean> enabled = builder.addCategory("general")
+			.addBoolean("enabled", true)
+			.build();
+		builder.setLegacySources(List.of(legacyPath));
+
+		// Operation: automatic migration parses the source.
+		builder.build();
+		Path destinationPath = getClientPath(configRoot, "client.ini");
+
+		// Assertions: rejected-only parsing leaves defaults active and no destination prevents a later retry.
+		assertTrue(enabled.get());
+		assertFalse(Files.exists(destinationPath));
+	}
+
+	@Test
+	public void customMigrationCanReportRejectedValues(@TempDir Path configRoot) throws IOException {
+		// Setup: a foreign-format parser rejects its only value without throwing from the callback.
+		Path legacyPath = configRoot.resolve("old/client.cfg");
+		writeFile(legacyPath, "invalid legacy input");
+		IConfigRegistration registration = ConfigProvider.createRegistration(configRoot, MOD_ID);
+		IConfigSchemaBuilder builder = registration.createClientSchemaBuilder("client.ini", "migration_test.client");
+		builder.addCategory("general").addBoolean("enabled", true).build();
+		RecordingMigrator migrator = new RecordingMigrator(
+			(path, context) -> context.rejectValue("Legacy enabled value was invalid.")
+		);
+		builder.setLegacyMigration(List.of(legacyPath), migrator);
+
+		// Operation: build the schema and run the reported rejection through normal startup migration.
+		builder.build();
+
+		// Assertions: the callback result exposes the rejection and no defaults are published as a migrated destination.
+		IConfigMigrationResult result = migrator.getResult();
+		assertEquals(ConfigMigrationStatus.FAILED, result.getStatus());
+		assertEquals(0, result.getImportedValueCount());
+		assertEquals(1, result.getRejectedValueCount());
+		assertEquals(List.of("Legacy enabled value was invalid."), result.getDiagnostics());
+		assertFalse(Files.exists(getClientPath(configRoot, "client.ini")));
+	}
+
 	private static Path getClientPath(Path configRoot, String fileName) {
 		return configRoot.resolve(MOD_ID).resolve("client").resolve(fileName).toAbsolutePath().normalize();
 	}

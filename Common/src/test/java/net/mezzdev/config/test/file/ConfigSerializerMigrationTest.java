@@ -352,6 +352,29 @@ public class ConfigSerializerMigrationTest {
 		assertEquals(List.of("first: false -> true, second: true -> false; first = true; second = false"), secondBatches);
 	}
 
+	@Test
+	public void parseMigrationUpdatesReportsImportedRejectedAndDiagnosticCounts(@TempDir Path tempDir) throws Exception {
+		// Setup: one known value is usable and another is rejected by its current serializer.
+		Path path = tempDir.resolve("test.ini");
+		Files.write(path, List.of(
+			"[general]",
+			"enabled = false",
+			"count = invalid"
+		));
+		ConfigCategoryBuilder categoryBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		categoryBuilder.addBoolean("enabled", true).build();
+		categoryBuilder.addInteger("count", 0).build();
+		ConfigCategory category = buildCategory(path, categoryBuilder);
+
+		// Operation: parse the source without applying its usable update.
+		ConfigSerializer.MigrationParseResult result = ConfigSerializer.parseMigrationUpdates(path, List.of(category));
+
+		// Assertions: the parse result accounts for both values and retains the rejection diagnostic.
+		assertEquals(1, result.updates().size());
+		assertEquals(1, result.rejectedValueCount());
+		assertFalse(result.diagnostics().isEmpty());
+	}
+
 	private static String formatBatch(
 		List<? extends IAppliedConfigValueChange<?>> changes,
 		boolean first,
@@ -384,7 +407,7 @@ public class ConfigSerializerMigrationTest {
 	private static void migrate(Path path, List<ConfigCategory> categories) throws IOException {
 		try {
 			List<AppliedConfigValueChange<?>> changes = new ArrayList<>();
-			for (ConfigValueUpdate<?> update : ConfigSerializer.parseMigrationUpdates(path, categories)) {
+			for (ConfigValueUpdate<?> update : ConfigSerializer.parseMigrationUpdates(path, categories).updates()) {
 				AppliedConfigValueChange<?> change = update.apply();
 				if (change != null) {
 					changes.add(change);
