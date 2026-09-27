@@ -1,7 +1,11 @@
 package net.mezzdev.config.file;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -10,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.List;
 
 public final class ConfigFileUtil {
@@ -24,27 +29,57 @@ public final class ConfigFileUtil {
 	}
 
 	static String writeUsingTempFileAndGetFingerprint(Path path, List<? extends CharSequence> lines) throws IOException {
+		return writeUsingTempFileAndGetFingerprint(path, lines, null);
+	}
+
+	static String writeUsingTempFileAndGetFingerprint(
+		Path path,
+		List<? extends CharSequence> lines,
+		@Nullable String loadedFingerprint
+	) throws IOException {
 		validateReadableContents(lines);
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		MessageDigest digest = ConfigFileReader.newFingerprintDigest();
+		try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+			new DigestOutputStream(output, digest),
+			StandardCharsets.UTF_8
+		))) {
+			for (CharSequence line : lines) {
+				writer.append(line);
+				writer.newLine();
+			}
+		}
+		byte[] bytes = output.toByteArray();
+		String fingerprint = ConfigFileReader.finishFingerprint(digest);
+		// A startup refresh can compare with the bytes already read while loading the config.
+		boolean unchanged;
+		if (loadedFingerprint == null) {
+			unchanged = hasSameContents(path, bytes);
+		} else {
+			unchanged = fingerprint.equals(loadedFingerprint);
+		}
+		if (unchanged) {
+			return fingerprint;
+		}
 		Path tempFileDirectory = createParentDirectories(path);
 		Path tempFile = Files.createTempFile(tempFileDirectory, null, null);
 		try {
-			MessageDigest digest = ConfigFileReader.newFingerprintDigest();
-			try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
-				new DigestOutputStream(Files.newOutputStream(tempFile), digest),
-				StandardCharsets.UTF_8
-			))) {
-				for (CharSequence line : lines) {
-					writer.append(line);
-					writer.newLine();
-				}
-			}
-			String fingerprint = ConfigFileReader.finishFingerprint(digest);
+			Files.write(tempFile, bytes);
 			moveAtomicReplace(tempFile, path);
 			return fingerprint;
 		} finally {
 			if (Files.exists(tempFile)) {
 				Files.delete(tempFile);
 			}
+		}
+	}
+
+	private static boolean hasSameContents(Path path, byte[] bytes) {
+		try (InputStream input = Files.newInputStream(path)) {
+			return Arrays.equals(bytes, input.readNBytes(bytes.length + 1));
+		} catch (IOException ignored) {
+			// Comparing is optional: missing or unreadable files still get a normal save attempt.
+			return false;
 		}
 	}
 

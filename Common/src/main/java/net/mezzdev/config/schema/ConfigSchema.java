@@ -349,7 +349,7 @@ public class ConfigSchema implements IConfigSchema {
 			pendingFileChanges.clear();
 			List<InitialSave> initialSaves = List.of();
 			if (shouldInitializeDefault) {
-				initialSaves = getInitialSaves(defaultPath, null, activePathChanged, false, true);
+				initialSaves = getInitialSaves(defaultPath, null, activePathChanged, false, true, null);
 			}
 			if (previousPath != null) {
 				resetValuesToDefaults();
@@ -392,8 +392,9 @@ public class ConfigSchema implements IConfigSchema {
 		resetValuesToDefaults();
 		load(defaultPath, preparedFileLoads);
 		MigrationAttempt migrationAttempt = attemptMigration(path);
+		String loadedFingerprint = null;
 		if (migrationAttempt != MigrationAttempt.MIGRATED) {
-			load(path, preparedFileLoads);
+			loadedFingerprint = load(path, preparedFileLoads);
 		}
 		if (!restartValuesInitialized) {
 			promotePendingValuesWithoutNotifying(ConfigValueRestartRequirement.GAME_RESTART);
@@ -406,7 +407,8 @@ public class ConfigSchema implements IConfigSchema {
 				path,
 				activePathChanged,
 				isSynchronizedServerSchema(),
-				migrationAttempt != MigrationAttempt.FAILED
+				migrationAttempt != MigrationAttempt.FAILED,
+				loadedFingerprint
 			)
 		);
 	}
@@ -646,24 +648,20 @@ public class ConfigSchema implements IConfigSchema {
 		);
 	}
 
-	private void load(@Nullable Path path, Map<Path, ConfigFileReader.Contents> preparedFileLoads) {
+	private @Nullable String load(@Nullable Path path, Map<Path, ConfigFileReader.Contents> preparedFileLoads) {
 		if (path == null || !Files.exists(path)) {
-			return;
+			return null;
 		}
 		try {
 			ConfigFileReader.Contents contents = preparedFileLoads.get(path);
 			if (contents == null) {
-				ConfigSerializer.loadWithoutNotifyingUnconditionally(path, categories, mode.serializationSettings());
-			} else {
-				ConfigSerializer.applyContentsWithoutNotifying(
-					path,
-					categories,
-					mode.serializationSettings(),
-					contents
-				);
+				return ConfigSerializer.loadWithoutNotifyingAndGetFingerprint(path, categories, mode.serializationSettings());
 			}
+			ConfigSerializer.applyContentsWithoutNotifying(path, categories, mode.serializationSettings(), contents);
+			return contents.fingerprint();
 		} catch (IOException e) {
 			handleFileError("load", path, e);
+			return null;
 		}
 	}
 
@@ -672,16 +670,17 @@ public class ConfigSchema implements IConfigSchema {
 		@Nullable Path activePath,
 		boolean activePathChanged,
 		boolean createActiveFileOnActivation,
-		boolean allowActiveInitialSave
+		boolean allowActiveInitialSave,
+		@Nullable String loadedFingerprint
 	) {
 		List<InitialSave> initialSaves = new ArrayList<>(2);
 		if (defaultPath != null && !Files.exists(defaultPath)) {
-			initialSaves.add(new InitialSave(defaultPath, true));
+			initialSaves.add(new InitialSave(defaultPath, true, null));
 		}
 		if (allowActiveInitialSave && activePath != null && !activePath.equals(defaultPath) && activePathChanged &&
 			(createActiveFileOnActivation || defaultPath == null || Files.exists(activePath))
 		) {
-			initialSaves.add(new InitialSave(activePath, false));
+			initialSaves.add(new InitialSave(activePath, false, loadedFingerprint));
 		}
 		return List.copyOf(initialSaves);
 	}
@@ -1027,7 +1026,7 @@ public class ConfigSchema implements IConfigSchema {
 			if (initialSave.defaults()) {
 				saveDefaultIfMissing(initialSave.path());
 			} else {
-				write(initialSave.path());
+				write(initialSave.path(), initialSave.loadedFingerprint());
 			}
 		} catch (IOException e) {
 			handleFileError("save", initialSave.path(), e);
@@ -1047,6 +1046,10 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private void write(Path path) throws IOException {
+		write(path, null);
+	}
+
+	private void write(Path path, @Nullable String loadedFingerprint) throws IOException {
 		Path defaultPath = activeDefaultPath;
 		if (defaultPath != null) {
 			saveDefaultIfMissing(defaultPath);
@@ -1054,7 +1057,7 @@ public class ConfigSchema implements IConfigSchema {
 		if (mode.serializationSettings().localizeComments()) {
 			logUntranslatedKeysIfNeeded(path);
 		}
-		ConfigSerializer.save(path, categories, mode.serializationSettings());
+		ConfigSerializer.save(path, categories, mode.serializationSettings(), loadedFingerprint);
 	}
 
 	private void handleFileError(String action, Path path, IOException error) {
@@ -1561,7 +1564,8 @@ public class ConfigSchema implements IConfigSchema {
 
 	private record InitialSave(
 		Path path,
-		boolean defaults
+		boolean defaults,
+		@Nullable String loadedFingerprint
 	) {}
 
 	private enum ServerSnapshotState {

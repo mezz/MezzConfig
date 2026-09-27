@@ -38,6 +38,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -65,6 +66,45 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigSchemaTest {
+	@Test
+	public void startupRefreshReusesLoadedFingerprintOnlyForThatSave(@TempDir Path tempDir) throws IOException {
+		// Setup: generate a canonical client file whose saved setting differs from its declared default.
+		Path path = tempDir.resolve("client.ini");
+		Files.writeString(path, "[general]\nenabled = false\n");
+		ConfigCategoryBuilder originalBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		originalBuilder.addBoolean("enabled", true).build();
+		createSchema(path, List.of(originalBuilder), List.of(originalBuilder)).register(null, false);
+		String loadedContents = Files.readString(path);
+		String externalEdit = "[general]\nenabled = true\n";
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true).build();
+		enabled.addListener(change -> {
+			// Change the file after loading but before the startup refresh compares its serialized contents.
+			try {
+				Files.writeString(path, externalEdit);
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+		});
+		Deque<Runnable> scheduledTasks = new ArrayDeque<>();
+		ConfigSchema schema = new ConfigSchema(path, List.of(builder), List.of(builder), (command, delay) -> {
+			scheduledTasks.add(command);
+			return CompletableFuture.completedFuture(null);
+		});
+
+		// Operation: register using the fingerprint of the original read, without reopening the modified file.
+		schema.register(null, false);
+
+		// Assertions: unchanged serialization skips the startup write based on the loaded snapshot.
+		assertFalse(enabled.get());
+		assertEquals(externalEdit, Files.readString(path));
+
+		// Later saves check the current file instead of continuing to trust that initial snapshot.
+		schema.markDirty();
+		runScheduledTasks(scheduledTasks);
+		assertEquals(loadedContents, Files.readString(path));
+	}
+
 	@Test
 	public void schemasMustHaveStorageCategories() {
 		// Operation and assertions: schemas require at least one storage category.

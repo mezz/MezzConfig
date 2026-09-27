@@ -147,7 +147,7 @@ public final class ConfigSerializer {
 		Path path,
 		List<ConfigCategory> categories
 	) throws IOException {
-		return loadFileWithoutNotifying(path, categories, true, DEFAULT_SETTINGS);
+		return loadFileWithoutNotifying(path, categories, true, DEFAULT_SETTINGS).changes();
 	}
 
 	public static List<AppliedConfigValueChange<?>> loadWithoutNotifyingUnconditionally(
@@ -162,7 +162,15 @@ public final class ConfigSerializer {
 		List<ConfigCategory> categories,
 		Settings settings
 	) throws IOException {
-		return loadFileWithoutNotifying(path, categories, false, settings);
+		return loadFileWithoutNotifying(path, categories, false, settings).changes();
+	}
+
+	public static String loadWithoutNotifyingAndGetFingerprint(
+		Path path,
+		List<ConfigCategory> categories,
+		Settings settings
+	) throws IOException {
+		return loadFileWithoutNotifying(path, categories, false, settings).fingerprint();
 	}
 
 	public static List<AppliedConfigValueChange<?>> applyContentsWithoutNotifying(
@@ -189,7 +197,9 @@ public final class ConfigSerializer {
 		return List.copyOf(changes);
 	}
 
-	private static List<AppliedConfigValueChange<?>> loadFileWithoutNotifying(
+	private record LoadedFile(List<AppliedConfigValueChange<?>> changes, String fingerprint) {}
+
+	private static LoadedFile loadFileWithoutNotifying(
 		Path path,
 		List<ConfigCategory> categories,
 		boolean skipFilesJustSaved,
@@ -201,13 +211,14 @@ public final class ConfigSerializer {
 		} catch (ConfigFileReader.MalformedFileException e) {
 			LOGGER.error("Malformed config file '{}': {}", path, e.getMessage());
 			recoverMalformedFile(path, categories, new FailureFingerprint(e.fingerprint()), 1, settings);
-			return List.of();
+			return new LoadedFile(List.of(), e.fingerprint());
 		}
 		if (skipFilesJustSaved && isFileUnchangedSinceLastSave(path, contents.fingerprint())) {
 			LOGGER.debug("Skipping loading config file, it was just saved by us: {}", path);
-			return List.of();
+			return new LoadedFile(List.of(), contents.fingerprint());
 		}
-		return applyContentsWithoutNotifying(path, categories, settings, contents);
+		List<AppliedConfigValueChange<?>> changes = applyContentsWithoutNotifying(path, categories, settings, contents);
+		return new LoadedFile(changes, contents.fingerprint());
 	}
 
 	public static MigrationParseResult parseMigrationUpdates(
@@ -620,7 +631,7 @@ public final class ConfigSerializer {
 	}
 
 	public static void save(Path path, List<ConfigCategory> categories) throws IOException {
-		save(path, categories, false, DEFAULT_SETTINGS);
+		save(path, categories, false, DEFAULT_SETTINGS, null);
 	}
 
 	public static void saveDefaults(Path path, List<ConfigCategory> categories) throws IOException {
@@ -632,7 +643,7 @@ public final class ConfigSerializer {
 		List<ConfigCategory> categories,
 		Settings settings
 	) throws IOException {
-		save(path, categories, true, settings);
+		save(path, categories, true, settings, null);
 	}
 
 	public static void save(
@@ -640,18 +651,28 @@ public final class ConfigSerializer {
 		List<ConfigCategory> categories,
 		Settings settings
 	) throws IOException {
-		save(path, categories, false, settings);
+		save(path, categories, false, settings, null);
+	}
+
+	public static void save(
+		Path path,
+		List<ConfigCategory> categories,
+		Settings settings,
+		@Nullable String loadedFingerprint
+	) throws IOException {
+		save(path, categories, false, settings, loadedFingerprint);
 	}
 
 	private static void save(
 		Path path,
 		List<ConfigCategory> categories,
 		boolean saveDefaults,
-		Settings settings
+		Settings settings,
+		@Nullable String loadedFingerprint
 	) throws IOException {
 		List<String> serialized = serialize(categories, saveDefaults, settings, Map.of());
 		LOGGER.debug("Saving config file: {}", path);
-		String fingerprint = ConfigFileUtil.writeUsingTempFileAndGetFingerprint(path, serialized);
+		String fingerprint = ConfigFileUtil.writeUsingTempFileAndGetFingerprint(path, serialized, loadedFingerprint);
 		savedFileFingerprints.put(normalize(path), fingerprint);
 	}
 
