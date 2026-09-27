@@ -30,7 +30,6 @@ val testMod = sourceSets.create("testMod") {
 val smokeTest = sourceSets.create("smokeTest") {
     java.setSrcDirs(emptyList<String>())
     resources.setSrcDirs(emptyList<String>())
-    runtimeClasspath = sourceSets.main.get().runtimeClasspath
 }
 configurations.named(testMod.implementationConfigurationName) { extendsFrom(configurations.implementation.get()) }
 configurations.named(testMod.compileOnlyConfigurationName) { extendsFrom(configurations.compileOnly.get()) }
@@ -46,6 +45,30 @@ java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(modJavaVersion))
     withSourcesJar()
 }
+
+// Forge needs one directory per development mod. Merge completed outputs for runs,
+// leaving compilation and resource processing with their own output directories.
+fun mergedRunSourceSet(name: String, source: SourceSet): SourceSet {
+    val runSourceSet = sourceSets.create(name) {
+        java.setSrcDirs(emptyList<String>())
+        resources.setSrcDirs(emptyList<String>())
+        val directory = layout.buildDirectory.dir("mod-run/$name")
+        java.destinationDirectory.set(directory)
+        output.setResourcesDir(directory)
+    }
+    val prepareRun = tasks.register<Sync>(runSourceSet.getTaskName("prepare", "output")) {
+        from(source.output)
+        into(runSourceSet.java.destinationDirectory)
+    }
+    tasks.named(runSourceSet.classesTaskName) { dependsOn(prepareRun) }
+    return runSourceSet
+}
+val configModRun = mergedRunSourceSet("configModRun", sourceSets.main.get())
+val testModRun = mergedRunSourceSet("testModRun", testMod)
+sourceSets.main {
+    runtimeClasspath = (runtimeClasspath - output) + configModRun.output
+}
+smokeTest.runtimeClasspath = sourceSets.main.get().runtimeClasspath
 
 minecraft.mavenizer(repositories)
 repositories {
@@ -86,8 +109,8 @@ minecraft {
         configureEach {
             systemProperty("forge.logging.console.level", "info")
             mods {
-                create(configModId) { source(sourceSets.main.get()) }
-                create(forgeTestModId) { source(testMod) }
+                create(configModId) { source(configModRun) }
+                create(forgeTestModId) { source(testModRun) }
             }
         }
         create("client") {
@@ -112,7 +135,7 @@ tasks.withType<JavaExec>().configureEach {
     javaLauncher.set(javaToolchains.launcherFor {
         languageVersion.set(JavaLanguageVersion.of(modJavaVersion))
     })
-    classpath(testMod.output)
+    classpath(testModRun.output)
 }
 tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -142,7 +165,7 @@ tasks.assemble { dependsOn(shadedJar, shadedSourcesJar) }
 tasks.check { dependsOn(tasks.named(testMod.classesTaskName)) }
 val smokeRunTaskName = smokeTest.getTaskName("run", "server")
 tasks.matching { it.name in setOf("runClient", "runServer", smokeRunTaskName) }.configureEach {
-    dependsOn(tasks.named(testMod.classesTaskName))
+    dependsOn(tasks.named(testModRun.classesTaskName))
 }
 tasks.matching { it.name == smokeRunTaskName }.configureEach {
     outputs.file(smokeResult)
