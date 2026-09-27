@@ -11,6 +11,7 @@ import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 import net.mezzdev.config.file.ConfigFileUtil;
+import net.mezzdev.config.file.ConfigFileWriteProtection;
 import net.mezzdev.config.file.ConfigManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -453,6 +454,65 @@ public class ConfigsTest {
 		// Assertions: recovery backs up the oversized source and writes a bounded default file.
 		assertEquals(MAX_CONFIG_FILE_BYTES + 1, Files.size(ConfigFileUtil.getBackupPath(oversizedPath, 1)));
 		assertTrue(Files.size(oversizedPath) < MAX_CONFIG_FILE_BYTES);
+	}
+
+	@Test
+	public void clientRegistrationRetainsLoadedValuesWhenRefreshFails(@TempDir Path configRoot) throws IOException {
+		// Setup: readable pack defaults and user settings exist, but the user file cannot be replaced.
+		Path path = getClientPath(configRoot, FILE_NAME);
+		writeEnabled(getClientDefaultPath(configRoot, FILE_NAME), true);
+		String original = "[general]\nenabled = false\nbounded = 1\n";
+		writeFile(path, original);
+		IConfigRegistration registration = createRegistration(configRoot);
+		try (var protection = ConfigFileWriteProtection.protect(path)) {
+			// Operation: registration loads the settings, then fails to refresh their generated file contents.
+			TestSchema config = createSchema(registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true);
+
+			// Assertions: the schema is published with the loaded settings and the original file is preserved.
+			assertTrue(Configs.getSchemas().contains(config.schema()));
+			assertTrue(config.schema().isActive());
+			assertFalse(config.enabled().get());
+			assertEquals(1, config.bounded().get());
+			assertEquals(original, Files.readString(path));
+		}
+	}
+
+	@Test
+	public void loadedClientFileStillRequiresMissingPackDefaultsToBeCreated(@TempDir Path configRoot) throws IOException {
+		// Setup: a user config is readable, but a regular file blocks creation of the pack-default directory.
+		Path path = getClientPath(configRoot, FILE_NAME);
+		writeEnabled(path, false);
+		Files.writeString(getClientDefaultPath(configRoot, FILE_NAME).getParent(), "not a directory");
+		IConfigRegistration registration = createRegistration(configRoot);
+		int schemaCount = Configs.getSchemas().size();
+
+		// Operation: attempt to register the loaded config without its required pack-default file.
+		assertThrows(UncheckedIOException.class, () -> createSchema(
+			registration.createClientSchemaBuilder(FILE_NAME, "registration_test.client"), true
+		));
+
+		// Assertions: the creation failure remains fatal and the schema is not published.
+		assertEquals(schemaCount, Configs.getSchemas().size());
+		assertEquals("[general]\nenabled = false\n", Files.readString(path));
+	}
+
+	@Test
+	public void missingExplicitClientFileMustBeCreatedBeforeRegistration(@TempDir Path configRoot) throws IOException {
+		// Setup: a regular file blocks the parent directory of a missing explicit client config.
+		Path parent = configRoot.resolve("explicit");
+		Files.writeString(parent, "not a directory");
+		Path path = parent.resolve("client.ini");
+		IConfigRegistration registration = createRegistration(configRoot);
+		int schemaCount = Configs.getSchemas().size();
+
+		// Operation: attempt to register a config that has neither loaded nor been created.
+		assertThrows(UncheckedIOException.class, () -> createSchema(
+			registration.createClientSchemaBuilder(path, "registration_test.client"), true
+		));
+
+		// Assertions: optional refresh handling does not hide initial-creation failures.
+		assertEquals(schemaCount, Configs.getSchemas().size());
+		assertEquals("not a directory", Files.readString(parent));
 	}
 
 	@Test

@@ -18,6 +18,7 @@ import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.api.value.color.PackedColor;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.file.ConfigFileReader;
+import net.mezzdev.config.file.ConfigFileWriteProtection;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
@@ -103,6 +104,36 @@ public class ConfigSchemaTest {
 		schema.markDirty();
 		runScheduledTasks(scheduledTasks);
 		assertEquals(loadedContents, Files.readString(path));
+	}
+
+	@Test
+	public void failedInitialRefreshDoesNotSuppressLaterSaveFailures(@TempDir Path tempDir) throws IOException {
+		// Setup: an existing client config is readable, with delayed saves controlled by the test.
+		Path path = tempDir.resolve("client.ini");
+		String original = "[general]\nenabled = false\n";
+		Files.writeString(path, original);
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true).build();
+		Deque<Runnable> scheduledTasks = new ArrayDeque<>();
+		ConfigSchema schema = new ConfigSchema(path, List.of(builder), List.of(builder), (command, delay) -> {
+			scheduledTasks.add(command);
+			return CompletableFuture.completedFuture(null);
+		});
+		try (var protection = ConfigFileWriteProtection.protect(path)) {
+			// Operation: tolerate the startup refresh failure, then attempt to persist a user change.
+			schema.register(null, false);
+			assertFalse(enabled.get());
+			assertTrue(enabled.set(true));
+
+			// Assertions: an ordinary save still fails visibly and leaves the existing file intact.
+			assertThrows(UncheckedIOException.class, () -> runScheduledTasks(scheduledTasks));
+			assertEquals(original, Files.readString(path));
+		}
+
+		// Once writes are allowed again, the same registered schema can persist its current settings.
+		schema.markDirty();
+		runScheduledTasks(scheduledTasks);
+		assertTrue(Files.readString(path).contains("enabled = true"));
 	}
 
 	@Test

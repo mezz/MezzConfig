@@ -95,6 +95,8 @@ public interface IConfigSchemaBuilder {
 	 * config screens so integrations can discover the schema. Client schemas built on a dedicated server remain inactive
 	 * and default-backed, which allows the same declaration code to run on both sides. Active local files are loaded or
 	 * created before this method returns.
+	 * If an existing client file loads successfully but cannot be refreshed, its loaded settings remain available and a
+	 * warning is logged. Failures to read or create required files still prevent registration.
 	 *
 	 * @return the registered config schema
 	 * @throws IllegalArgumentException when a backing file path is already reserved or the complete default config cannot

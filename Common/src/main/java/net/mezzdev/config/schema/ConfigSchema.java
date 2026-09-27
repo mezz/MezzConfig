@@ -1057,7 +1057,18 @@ public class ConfigSchema implements IConfigSchema {
 		if (mode.serializationSettings().localizeComments()) {
 			logUntranslatedKeysIfNeeded(path);
 		}
-		ConfigSerializer.save(path, categories, mode.serializationSettings(), loadedFingerprint);
+		try {
+			ConfigSerializer.save(path, categories, mode.serializationSettings(), loadedFingerprint);
+		} catch (IOException e) {
+			if (type != ConfigSchemaType.CLIENT || loadedFingerprint == null) {
+				throw e;
+			}
+			LOGGER.warn(
+				"Failed to refresh loaded client config file '{}'; continuing with the loaded settings. " +
+					"The refreshed config could not be saved. Check file permissions, read-only attributes, and other programs accessing the file.",
+				path, e
+			);
+		}
 	}
 
 	private void handleFileError(String action, Path path, IOException error) {
