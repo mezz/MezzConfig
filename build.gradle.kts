@@ -287,7 +287,7 @@ tasks.register<ValidateForgePublication>("validateForgeEmbedding") {
 tasks.register<GradleBuild>("validateNeoForgeEmbedding") {
     group = "verification"
     description = "Builds a ModDevGradle consumer and checks its embedded runtime and API."
-    dependsOn(validatePublishing)
+    dependsOn(validatePublishing, ":NeoForge:standaloneJar")
     dir = file("validation/neoforge-embedding")
     tasks = listOf("check")
     startParameter.projectCacheDir = file(".gradle/targets/$minecraftVersion/neoforge-embedding")

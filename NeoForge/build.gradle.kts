@@ -9,10 +9,6 @@ plugins {
     id("me.modmuss50.mod-publish-plugin")
 }
 
-publishMods {
-    file.set(tasks.jar.flatMap { it.archiveFile })
-}
-
 // gradle.properties
 val neoforgeVersion: String by extra
 val minecraftVersion: String by extra
@@ -63,13 +59,15 @@ tasks.named(configModRunSourceSet.classesTaskName) { dependsOn(prepareConfigModR
 val gameTestJunitResultsDir = layout.buildDirectory.dir("test-results/gameTest")
 val testModSourceSet = sourceSets.create("testMod") {
     compileClasspath += sourceSets.main.get().output
-    runtimeClasspath += sourceSets.main.get().output
 }
 val gameTestSourceSet = sourceSets.create("gameTest") {
     java.srcDir("src/${if (minecraftVersion == "1.21.1") "gameTestLegacy" else "gameTestModern"}/java")
     compileClasspath += sourceSets.main.get().output
     runtimeClasspath += sourceSets.main.get().output
 }
+val standaloneSmokeTestRunDir = layout.buildDirectory.dir("standalone-smoke-test/run")
+val standaloneSmokeTestSuccessFile = standaloneSmokeTestRunDir.map { it.file("result.txt") }
+val jeiSmokeTestJar = providers.gradleProperty("jeiSmokeTestJar")
 
 configurations.named(testModSourceSet.implementationConfigurationName) {
     extendsFrom(configurations.implementation.get())
@@ -129,6 +127,19 @@ neoForge {
             systemProperty("mezzConfig.gameTest.junitDir", gameTestJunitResultsDir.get().asFile.absolutePath)
             logLevel = Level.INFO
         }
+        create("standaloneServerSmokeTest") {
+            server()
+            gameDirectory = standaloneSmokeTestRunDir.get().asFile
+            sourceSet = testModSourceSet
+            // Load MezzConfig from the packaged jar in mods/, alongside the existing test mod.
+            getLoadedMods().set(setOf(testMod.get()))
+            programArguments.add("nogui")
+            systemProperty("mezzConfig.loaderSmokeTest.successFile", standaloneSmokeTestSuccessFile.get().asFile.absolutePath)
+            systemProperty("mezzConfig.loaderSmokeTest.expectedVersion",
+                providers.gradleProperty("standaloneSmokeTestExpectedVersion").orElse(project.version.toString()).get())
+            systemProperty("mezzConfig.loaderSmokeTest.requireJei", jeiSmokeTestJar.isPresent.toString())
+            logLevel = Level.INFO
+        }
     }
 }
 
@@ -183,6 +194,64 @@ tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+val standaloneMetadata = tasks.register<ProcessResources>("processStandaloneMetadata") {
+    val properties = mapOf(
+        "group" to configModGroup,
+        "artifact" to baseArchivesName,
+        "version" to project.version.toString(),
+        "runtimeFileName" to tasks.jar.get().archiveFileName.get()
+    )
+    inputs.properties(properties)
+    from("src/standalone") { expand(properties) }
+    into(layout.buildDirectory.dir("standalone"))
+}
+
+val standaloneJar = tasks.register<Jar>("standaloneJar") {
+    description = "Builds the standalone download with a replaceable Jar-in-Jar runtime."
+    archiveClassifier.set("standalone")
+    manifest.attributes(
+        "FMLModType" to "GAMELIBRARY",
+        "Automatic-Module-Name" to "net.mezzdev.config.neoforge.distribution"
+    )
+    from(standaloneMetadata)
+    from(tasks.jar) { into("META-INF/jarjar") }
+}
+
+publishMods {
+    file.set(standaloneJar.flatMap { it.archiveFile })
+}
+
+val prepareStandaloneSmokeTestMods = tasks.register<Sync>("prepareStandaloneSmokeTestMods") {
+    from(providers.gradleProperty("standaloneSmokeTestJar").orNull ?: standaloneJar)
+    jeiSmokeTestJar.orNull?.let { from(it) }
+    into(standaloneSmokeTestRunDir.map { it.dir("mods") })
+}
+
+tasks.named("runStandaloneServerSmokeTest") {
+    dependsOn(prepareStandaloneSmokeTestMods, testModClassesTask)
+    outputs.file(standaloneSmokeTestSuccessFile)
+    outputs.upToDateWhen { false }
+    doFirst {
+        val result = outputs.files.singleFile
+        result.parentFile.mkdirs()
+        result.resolveSibling("eula.txt").writeText("eula=true\n")
+        result.resolveSibling("server.properties").writeText("""
+            online-mode=false
+            server-port=0
+            level-type=minecraft:flat
+            generate-structures=false
+            spawn-protection=0
+            view-distance=2
+            simulation-distance=2
+            sync-chunk-writes=false
+        """.trimIndent() + "\n")
+        result.delete()
+    }
+    doLast {
+        check(outputs.files.singleFile.isFile) { "The NeoForge standalone loader smoke test did not report success." }
+    }
+}
+
 val sourcesJarTask = tasks.named<Jar>("sourcesJar") {
     dependsOn(commonModShadeSourcesJarTask)
     from(sourceSets.main.get().allJava)
@@ -194,7 +263,7 @@ val sourcesJarTask = tasks.named<Jar>("sourcesJar") {
 }
 
 tasks.assemble {
-    dependsOn(sourcesJarTask)
+    dependsOn(sourcesJarTask, standaloneJar)
 }
 
 val cleanGameTestJunitResults = tasks.register<Delete>("cleanGameTestJunitResults") {

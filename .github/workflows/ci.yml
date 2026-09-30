@@ -65,7 +65,7 @@ jobs:
 
       - name: Run NeoForge GameTests and consumer embedding
         if: contains(matrix.modloaders, 'neoforge')
-        run: ./gradlew -PminecraftVersion=${{ matrix.minecraft }} --stacktrace --no-configuration-cache :NeoForge:runGameTestServer validateNeoForgeEmbedding
+        run: ./gradlew -PminecraftVersion=${{ matrix.minecraft }} --stacktrace --no-configuration-cache :NeoForge:runGameTestServer :NeoForge:runStandaloneServerSmokeTest validateNeoForgeEmbedding
 
       - name: Check release metadata without publishing
         run: ./gradlew -PminecraftVersion=${{ matrix.minecraft }} --stacktrace publishMods -PpublishDryRun=true

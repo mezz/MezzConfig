@@ -1,0 +1,16 @@
+{
+  "jars": [
+    {
+      "identifier": {
+        "group": "${group}",
+        "artifact": "${artifact}"
+      },
+      "version": {
+        "range": "[${version},)",
+        "artifactVersion": "${version}"
+      },
+      "path": "META-INF/jarjar/${runtimeFileName}",
+      "isObfuscated": false
+    }
+  ]
+}

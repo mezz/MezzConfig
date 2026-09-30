@@ -15,6 +15,9 @@ Jars are written to `<module>/build/<minecraft>/libs/`. `build` runs the unit
 tests; [CI](../.github/workflows/ci.yml) also checks loader runtimes and published
 artifacts.
 
+For NeoForge, distribute the `-standalone.jar`; the unclassified jar is the
+Maven runtime for other mods to embed.
+
 ## IntelliJ
 
 Import using the Gradle wrapper and the JDK for your target. To change targets,
