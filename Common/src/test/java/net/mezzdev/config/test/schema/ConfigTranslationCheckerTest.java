@@ -1,8 +1,10 @@
 package net.mezzdev.config.test.schema;
 
+import net.mezzdev.config.api.schema.ConfigSchemaType;
+import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
-import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchemaDefinition;
 import net.mezzdev.config.schema.ConfigTranslationChecker;
 import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
 import org.junit.jupiter.api.Test;
@@ -23,17 +25,22 @@ class ConfigTranslationCheckerTest {
 		category.addBoolean("enabled", true)
 			.build();
 		ConfigEditorCategoryBuilder advanced = new ConfigEditorCategoryBuilder("missing.config", "advanced");
-		ConfigSchema schema = new ConfigSchema(
-			Path.of("test.ini"),
+		ConfigSchemaDefinition definition = new ConfigSchemaDefinition(
+			"test.ini",
+			"mezz_config",
+			new StaticConfigSchemaPathResolver(Path.of("test.ini")),
 			List.of(category),
 			List.of(category, advanced),
-			NO_SAVE_SCHEDULER
+			NO_SAVE_SCHEDULER,
+			ConfigSchemaType.CLIENT,
+			null,
+			null
 		);
 
 		// Operation: inspect every localization key used by the schema and its editor categories.
 		List<String> untranslatedKeys = ConfigTranslationChecker.getUntranslatedKeys(
-			schema.getEditorCategories(),
-			schema.getCategories()
+			definition.getEditorCategories(),
+			definition.getCategories()
 		);
 
 		// Assertions: both names and descriptions are reported once, in schema declaration order.

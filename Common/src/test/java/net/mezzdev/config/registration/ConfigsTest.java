@@ -112,7 +112,8 @@ public class ConfigsTest {
 		assertEquals(explicitPath, explicit.schema().getPath().orElseThrow());
 		assertFalse(server.schema().isActive());
 		assertEquals(Optional.empty(), server.schema().getPath());
-		assertTrue(getConfigManager().getServerSchemas().contains(server.schema()));
+		assertTrue(getConfigManager().getServerSynchronizations().stream()
+			.anyMatch(synchronization -> synchronization.getSchema() == server.schema()));
 	}
 
 	@Test
@@ -201,7 +202,8 @@ public class ConfigsTest {
 		// Assertions: it is registered for synchronization but remains pathless and does not create world data yet.
 		assertEquals(ConfigSchemaType.SERVER, config.schema().getType());
 		assertFalse(config.schema().isActive());
-		assertTrue(getConfigManager().getServerSchemas().contains(config.schema()));
+		assertTrue(getConfigManager().getServerSynchronizations().stream()
+			.anyMatch(synchronization -> synchronization.getSchema() == config.schema()));
 		assertFalse(Files.exists(getServerWorldDefaultPath(configRoot, FILE_NAME)));
 	}
 

@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Set;
 
 public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
+	private static final String DEFAULT_MOD_ID = "mezz_config";
 	private final Set<String> categoryNames = new HashSet<>();
 	private final List<ConfigCategoryBuilder> categoryBuilders = new ArrayList<>();
 	private final List<ConfigEditorCategoryBuilder> editorCategoryBuilders = new ArrayList<>();
@@ -31,7 +32,7 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	private boolean built;
 
 	public ConfigSchemaBuilder(Path configFile, String localizationPath, ConfigManager configManager) {
-		this(ConfigSchema.DEFAULT_MOD_ID, new StaticConfigSchemaPathResolver(configFile), localizationPath, configManager);
+		this(DEFAULT_MOD_ID, new StaticConfigSchemaPathResolver(configFile), localizationPath, configManager);
 	}
 
 	@Override
@@ -56,7 +57,7 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 	}
 
 	public ConfigSchemaBuilder(ConfigSchemaPathResolver pathResolver, String localizationPath, ConfigManager configManager) {
-		this(ConfigSchema.DEFAULT_MOD_ID, pathResolver, localizationPath, configManager);
+		this(DEFAULT_MOD_ID, pathResolver, localizationPath, configManager);
 	}
 
 	public ConfigSchemaBuilder(String modId, Path configFile, String localizationPath, ConfigManager configManager) {
@@ -117,13 +118,13 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 		boolean registrationEnabled
 	) {
 		this.id = ErrorUtil.checkNotNull(id, "id");
-		this.modId = ConfigSchema.validateModId(modId);
+		this.modId = ErrorUtil.checkNotBlank(modId, "modId");
 		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
 		this.localizationPath = ErrorUtil.checkNotNull(localizationPath, "localizationPath");
 		this.configManager = ErrorUtil.checkNotNull(configManager, "configManager");
 		this.type = ErrorUtil.checkNotNull(type, "type");
 		this.serverKey = serverKey;
-		ConfigSchema.validateServerKey(type, serverKey);
+		ConfigSchemaDefinition.validateServerKey(type, serverKey);
 		this.registrationEnabled = registrationEnabled;
 	}
 
@@ -159,7 +160,7 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 			throw new IllegalStateException("Config schema must have at least one storage category.");
 		}
 		built = true;
-		ConfigSchema schema = new ConfigSchema(
+		ConfigSchemaDefinition definition = new ConfigSchemaDefinition(
 			id,
 			modId,
 			pathResolver,
@@ -171,11 +172,9 @@ public class ConfigSchemaBuilder implements IConfigSchemaBuilder {
 			migrationSpec
 		);
 		if (registrationEnabled) {
-			configManager.registerSchema(schema);
-		} else {
-			schema.completeInactiveMigration();
+			return configManager.registerSchema(definition);
 		}
-		return schema;
+		return definition.createInactive();
 	}
 
 	private void checkNotBuilt() {

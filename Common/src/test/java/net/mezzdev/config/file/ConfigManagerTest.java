@@ -1,10 +1,15 @@
 package net.mezzdev.config.file;
 
+import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.api.schema.ConfigSchemaType;
+import net.mezzdev.config.api.value.serializer.IDeserializeResult;
+import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchemaDefinition;
 import net.mezzdev.config.schema.ConfigSchemaPathResolver;
 import net.mezzdev.config.server.ServerConfigKey;
+import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -58,11 +63,11 @@ public class ConfigManagerTest {
 		);
 		Path clientPath = tempDir.resolve("client.ini");
 		Path serverPath = tempDir.resolve("server.ini");
-		InstallationSchema client = createClientInstallationSchema(clientPath);
-		InstallationSchema server = createStaticServerSchema(serverPath);
+		TestConfig client = createClientConfig(clientPath);
+		TestConfig server = createServerConfig(serverPath);
 		manager.startWatching();
-		manager.registerSchema(client.schema());
-		manager.registerSchema(server.schema());
+		manager.registerSchema(client.definition());
+		manager.registerSchema(server.definition());
 		AtomicReference<Thread> reloadListenerThread = new AtomicReference<>();
 		server.enabled().addListener(ignored -> reloadListenerThread.set(Thread.currentThread()));
 
@@ -84,13 +89,13 @@ public class ConfigManagerTest {
 		// Setup: a caller snapshots the manager's initially empty schema collection.
 		ConfigManager manager = createDisabledConfigManager();
 		List<?> beforeRegistration = List.copyOf(manager.getSchemas());
-		ConfigSchema schema = createServerSchema(
+		ConfigSchemaDefinition definition = createServerDefinition(
 			new ServerConfigKey("late_test_mod", "server.ini"),
 			() -> Optional.empty()
 		);
 
 		// Operation: register a schema after the earlier snapshot was taken.
-		manager.registerSchema(schema);
+		ConfigSchema schema = manager.registerSchema(definition);
 
 		// Assertions: the old snapshot stays immutable while a fresh view contains the schema.
 		assertEquals(List.of(), beforeRegistration);
@@ -102,21 +107,21 @@ public class ConfigManagerTest {
 		// Setup: two server schemas share a key, and resolving the duplicate path has an observable side effect.
 		ConfigManager manager = createDisabledConfigManager();
 		ServerConfigKey key = new ServerConfigKey("test_mod", "server.ini");
-		ConfigSchema original = createServerSchema(key, () -> Optional.empty());
+		ConfigSchemaDefinition originalDefinition = createServerDefinition(key, () -> Optional.empty());
 		AtomicInteger duplicatePathResolutions = new AtomicInteger();
-		ConfigSchema duplicate = createServerSchema(key, () -> {
+		ConfigSchemaDefinition duplicateDefinition = createServerDefinition(key, () -> {
 			duplicatePathResolutions.incrementAndGet();
 			return Optional.empty();
 		});
 
 		// Operation: register the original and then attempt to register its duplicate.
-		manager.registerSchema(original);
-		assertThrows(IllegalArgumentException.class, () -> manager.registerSchema(duplicate));
+		ConfigSchema schema = manager.registerSchema(originalDefinition);
+		assertThrows(IllegalArgumentException.class, () -> manager.registerSchema(duplicateDefinition));
 
 		// Assertions: the duplicate is rejected before initialization and the original remains registered.
 		assertEquals(0, duplicatePathResolutions.get());
-		assertSame(original, manager.getServerSchema(key).orElseThrow());
-		assertEquals(List.of(original), List.copyOf(manager.getSchemas()));
+		assertSame(schema, manager.getServerSynchronization(key).orElseThrow().getSchema());
+		assertEquals(List.of(schema), List.copyOf(manager.getSchemas()));
 	}
 
 	@Test
@@ -125,17 +130,17 @@ public class ConfigManagerTest {
 		ConfigManager manager = createDisabledConfigManager();
 		Path path = tempDir.resolve("client.ini");
 		Files.createDirectory(path);
-		ConfigSchema schema = createInstallationSchema(path);
+		ConfigSchemaDefinition definition = createClientDefinition(path);
 
 		// Operation: attempt registration while the path is invalid.
-		assertThrows(UncheckedIOException.class, () -> manager.registerSchema(schema));
+		assertThrows(UncheckedIOException.class, () -> manager.registerSchema(definition));
 
 		// Assertions: failed registration publishes no schema state.
 		assertEquals(List.of(), List.copyOf(manager.getSchemas()));
 
 		// Operation: remove the obstruction and retry the same schema.
 		Files.delete(path);
-		manager.registerSchema(schema);
+		ConfigSchema schema = manager.registerSchema(definition);
 
 		// Assertions: retry succeeds and initializes the file normally.
 		assertEquals(List.of(schema), List.copyOf(manager.getSchemas()));
@@ -166,14 +171,14 @@ public class ConfigManagerTest {
 		ConfigManager manager = createDisabledConfigManager();
 		Path path = tempDir.resolve("shared.ini");
 		manager.createSortingConfig(path, Comparator.naturalOrder(), true);
-		ConfigSchema schema = createInstallationSchema(path);
+		ConfigSchemaDefinition definition = createClientDefinition(path);
 
 		// Operation: try to register the colliding schema.
-		assertThrows(IllegalArgumentException.class, () -> manager.registerSchema(schema));
+		assertThrows(IllegalArgumentException.class, () -> manager.registerSchema(definition));
 
 		// Assertions: collision detection precedes file creation and schema publication.
 		assertFalse(Files.exists(path));
-		assertFalse(manager.getSchemas().contains(schema));
+		assertTrue(manager.getSchemas().isEmpty());
 	}
 
 	@Test
@@ -181,8 +186,8 @@ public class ConfigManagerTest {
 		// Setup: an initialized schema reserves a path and writes its default file.
 		ConfigManager manager = createDisabledConfigManager();
 		Path path = tempDir.resolve("shared.ini");
-		ConfigSchema schema = createInstallationSchema(path);
-		manager.registerSchema(schema);
+		ConfigSchemaDefinition definition = createClientDefinition(path);
+		manager.registerSchema(definition);
 		String originalContents = Files.readString(path);
 
 		// Operation: try to create a sorting config at the schema's path.
@@ -201,25 +206,25 @@ public class ConfigManagerTest {
 		ConfigManager manager = createDisabledConfigManager();
 		Path path = tempDir.resolve("shared.ini");
 		Path equivalentPath = tempDir.resolve("unused").resolve("..").resolve("shared.ini");
-		ConfigSchema clientSchema = createInstallationSchema(equivalentPath);
-		ConfigSchema serverSchema = createStaticServerSchema(path).schema();
-		manager.registerSchema(clientSchema);
+		ConfigSchemaDefinition clientDefinition = createClientDefinition(equivalentPath);
+		ConfigSchemaDefinition serverDefinition = createServerConfig(path).definition();
+		ConfigSchema clientSchema = manager.registerSchema(clientDefinition);
 		String originalContents = Files.readString(path);
 
 		// Operation: register the server schema after the equivalent client path is reserved.
-		assertThrows(IllegalArgumentException.class, () -> manager.registerSchema(serverSchema));
+		assertThrows(IllegalArgumentException.class, () -> manager.registerSchema(serverDefinition));
 
 		// Assertions: normalized absolute identity catches the collision without modifying or publishing it.
 		assertEquals(originalContents, Files.readString(path));
-		assertFalse(manager.getSchemas().contains(serverSchema));
+		assertEquals(List.of(clientSchema), List.copyOf(manager.getSchemas()));
 	}
 
 	@Test
 	public void unchangedWorldContextKeepsUnsavedEdits(@TempDir Path tempDir) throws IOException {
 		ConfigManager manager = createDisabledConfigManager();
 		Path path = tempDir.resolve("client.ini");
-		InstallationSchema config = createClientInstallationSchema(path);
-		manager.registerSchema(config.schema());
+		TestConfig config = createClientConfig(path);
+		manager.registerSchema(config.definition());
 		assertTrue(config.enabled().set(false));
 		assertTrue(Files.readString(path).contains("enabled = true"));
 
@@ -229,19 +234,80 @@ public class ConfigManagerTest {
 	}
 
 	@Test
+	public void valuesKeepDefaultsUntilInitialLoadingFinishes(@TempDir Path tempDir) throws IOException {
+		ConfigManager manager = createDisabledConfigManager();
+		Path path = tempDir.resolve("initializing.ini");
+		Files.writeString(path, "[general]\nenabled = false\nobserve = true\n");
+		ConfigCategoryBuilder category = new ConfigCategoryBuilder("test.config", "general");
+		ConfigValue<Boolean> enabled = category.addBoolean("enabled", true).build();
+		AtomicReference<List<Boolean>> valuesReadDuringLoading = new AtomicReference<>();
+		IConfigValueSerializer<Boolean> observer = new IConfigValueSerializer<>() {
+			@Override
+			public String serialize(Boolean value) {
+				return BooleanSerializer.INSTANCE.serialize(value);
+			}
+
+			@Override
+			public IDeserializeResult<Boolean> deserialize(String text) {
+				valuesReadDuringLoading.set(List.of(enabled.get(), enabled.getPendingValue()));
+				return BooleanSerializer.INSTANCE.deserialize(text);
+			}
+
+			@Override
+			public boolean isValid(Boolean value) {
+				return BooleanSerializer.INSTANCE.isValid(value);
+			}
+
+			@Override
+			public String getValidValuesDescription() {
+				return BooleanSerializer.INSTANCE.getValidValuesDescription();
+			}
+		};
+		category.addValue("observe", false, observer).build();
+		ConfigSchemaDefinition definition = new ConfigSchemaDefinition(
+			"test.ini",
+			"mezz_config",
+			new StaticConfigSchemaPathResolver(path),
+			List.of(category),
+			List.of(category),
+			manager.getSaveScheduler(),
+			ConfigSchemaType.CLIENT,
+			null,
+			null
+		);
+		valuesReadDuringLoading.set(null);
+
+		ConfigSchema schema = manager.registerSchema(definition);
+
+		assertEquals(List.of(true, true), valuesReadDuringLoading.get());
+		assertFalse(enabled.get());
+		assertFalse(enabled.getPendingValue());
+		assertEquals(Optional.of(path), schema.getPath());
+	}
+
+	@Test
 	public void readsBeforeRegistrationKeepDefaultsUntilTheFileIsReserved(@TempDir Path tempDir) throws IOException {
 		ConfigManager manager = createDisabledConfigManager();
 		Path path = tempDir.resolve("shared.ini");
 		Files.writeString(path, "[general]\nenabled = false\n");
 		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = category.addBoolean("enabled", true).build();
-		ConfigSchema schema = new ConfigSchema(path, List.of(category), manager.getSaveScheduler());
+		ConfigSchemaDefinition definition = new ConfigSchemaDefinition(
+			"test.ini",
+			"mezz_config",
+			new StaticConfigSchemaPathResolver(path),
+			List.of(category),
+			List.of(category),
+			manager.getSaveScheduler(),
+			ConfigSchemaType.CLIENT,
+			null,
+			null
+		);
 		assertTrue(enabled.get());
 		assertTrue(enabled.getPendingValue());
-		assertTrue(schema.getPath().isEmpty());
 		assertThrows(IllegalStateException.class, () -> enabled.set(false));
 
-		manager.registerSchema(schema);
+		manager.registerSchema(definition);
 		assertThrows(IllegalArgumentException.class, () -> manager.createSortingConfig(path, Comparator.naturalOrder(), true));
 		assertFalse(enabled.get());
 		assertFalse(enabled.getPendingValue());
@@ -265,8 +331,8 @@ public class ConfigManagerTest {
 				return Optional.of(tempDir.resolve("world/default.ini"));
 			}
 		};
-		ConfigSchema schema = createClientWorldSchema(pathResolver);
-		manager.registerSchema(schema);
+		ConfigSchemaDefinition definition = createClientWorldDefinition(pathResolver);
+		manager.registerSchema(definition);
 
 		activePath.set(Optional.of(tempDir.resolve("unused").resolve("..").resolve("sorting.ini")));
 
@@ -283,8 +349,8 @@ public class ConfigManagerTest {
 		Path occupied = tempDir.resolve("occupied.ini");
 		Path next = tempDir.resolve("next.ini");
 		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.of(first));
-		ConfigSchema schema = createServerSchema(new ServerConfigKey("path_test", "server.ini"), activePath::get);
-		manager.registerSchema(schema);
+		ConfigSchemaDefinition definition = createServerDefinition(new ServerConfigKey("path_test", "server.ini"), activePath::get);
+		ConfigSchema schema = manager.registerSchema(definition);
 		manager.createSortingConfig(occupied, Comparator.naturalOrder(), true);
 
 		activePath.set(Optional.of(occupied));
@@ -314,32 +380,36 @@ public class ConfigManagerTest {
 		assertFalse(Files.exists(path));
 	}
 
-	private static ConfigSchema createServerSchema(ServerConfigKey key, ConfigSchemaPathResolver pathResolver) {
+	private static ConfigSchemaDefinition createServerDefinition(ServerConfigKey key, ConfigSchemaPathResolver pathResolver) {
 		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		category.addBoolean("enabled", true)
 			.build();
-		return new ConfigSchema(
+		return new ConfigSchemaDefinition(
+			key.configFileName(),
 			key.modId(),
 			pathResolver,
 			List.of(category),
 			List.of(category),
 			(command, delay) -> CompletableFuture.completedFuture(null),
 			ConfigSchemaType.SERVER,
-			key
+			key,
+			null
 		);
 	}
 
-	private static ConfigSchema createClientWorldSchema(ConfigSchemaPathResolver pathResolver) {
+	private static ConfigSchemaDefinition createClientWorldDefinition(ConfigSchemaPathResolver pathResolver) {
 		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		category.addBoolean("enabled", true)
 			.build();
-		return new ConfigSchema(
+		return new ConfigSchemaDefinition(
+			"test.ini",
 			"client_world_test_mod",
 			pathResolver,
 			List.of(category),
 			List.of(category),
 			(command, delay) -> CompletableFuture.completedFuture(null),
 			ConfigSchemaType.CLIENT_PER_WORLD,
+			null,
 			null
 		);
 	}
@@ -352,41 +422,45 @@ public class ConfigManagerTest {
 		);
 	}
 
-	private static ConfigSchema createInstallationSchema(Path path) {
-		return createClientInstallationSchema(path).schema();
+	private static ConfigSchemaDefinition createClientDefinition(Path path) {
+		return createClientConfig(path).definition();
 	}
 
-	private static InstallationSchema createClientInstallationSchema(Path path) {
+	private static TestConfig createClientConfig(Path path) {
 		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = category.addBoolean("enabled", true)
 			.build();
-		ConfigSchema schema = new ConfigSchema(
+		ConfigSchemaDefinition definition = new ConfigSchemaDefinition(
+			"test.ini",
 			"test_mod",
 			() -> Optional.of(path),
 			List.of(category),
 			List.of(category),
 			(command, delay) -> CompletableFuture.completedFuture(null),
 			ConfigSchemaType.CLIENT,
+			null,
 			null
 		);
-		return new InstallationSchema(schema, enabled);
+		return new TestConfig(definition, enabled);
 	}
 
-	private static InstallationSchema createStaticServerSchema(Path path) {
+	private static TestConfig createServerConfig(Path path) {
 		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = category.addBoolean("enabled", true)
 			.build();
 		ServerConfigKey key = new ServerConfigKey("test_mod", path.getFileName().toString());
-		ConfigSchema schema = new ConfigSchema(
+		ConfigSchemaDefinition definition = new ConfigSchemaDefinition(
+			key.configFileName(),
 			key.modId(),
 			() -> Optional.of(path),
 			List.of(category),
 			List.of(category),
 			(command, delay) -> CompletableFuture.completedFuture(null),
 			ConfigSchemaType.SERVER,
-			key
+			key,
+			null
 		);
-		return new InstallationSchema(schema, enabled);
+		return new TestConfig(definition, enabled);
 	}
 
 	private static <T> void awaitValue(ConfigValue<T> value, T expected) {
@@ -405,5 +479,5 @@ public class ConfigManagerTest {
 		throw new AssertionError("Config value was not reloaded with: " + expected);
 	}
 
-	private record InstallationSchema(ConfigSchema schema, ConfigValue<Boolean> enabled) {}
+	private record TestConfig(ConfigSchemaDefinition definition, ConfigValue<Boolean> enabled) {}
 }

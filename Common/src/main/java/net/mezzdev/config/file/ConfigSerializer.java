@@ -59,6 +59,9 @@ public final class ConfigSerializer {
 		}
 	);
 	public static final Settings DEFAULT_SETTINGS = new Settings(true, List.of());
+	public static final Settings INSTALLATION_SETTINGS = Settings.withLiteralComments(List.of(
+		"Config for this game installation."
+	));
 
 	private ConfigSerializer() {}
 

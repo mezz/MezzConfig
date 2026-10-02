@@ -2,7 +2,7 @@ package net.mezzdev.config.server;
 
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.registration.ConfigProvider;
-import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchema.ServerSynchronization;
 import net.mezzdev.config.util.ErrorUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -18,7 +18,7 @@ import java.util.UUID;
 
 public final class ServerConfigRuntime {
 	private static final Logger LOGGER = LogManager.getLogger();
-	private static final Map<ConfigSchema, Long> SERVER_SCHEMA_VERSIONS = new IdentityHashMap<>();
+	private static final Map<ServerSynchronization, Long> SERVER_SCHEMA_VERSIONS = new IdentityHashMap<>();
 	private static final ServerConfigClientConnection CLIENT_CONNECTION = new ServerConfigClientConnection(
 		ServerConfigRuntime::getConfigManager
 	);
@@ -75,9 +75,9 @@ public final class ServerConfigRuntime {
 		SERVER_SCHEMA_VERSIONS.clear();
 		ConfigManager manager = getConfigManager();
 		manager.onWorldStarted();
-		for (ConfigSchema schema : manager.getServerSchemas()) {
-			schema.loadIfNeeded();
-			SERVER_SCHEMA_VERSIONS.put(schema, schema.getChangeVersion());
+		for (ServerSynchronization synchronization : manager.getServerSynchronizations()) {
+			synchronization.getSchema().loadIfNeeded();
+			SERVER_SCHEMA_VERSIONS.put(synchronization, synchronization.getSchema().getChangeVersion());
 		}
 	}
 
@@ -93,15 +93,12 @@ public final class ServerConfigRuntime {
 		getConfigManager().onServerStopped();
 	}
 
-	public static void onServerSchemaRegistered(ConfigSchema schema) {
-		synchronizeServerSchema(schema);
+	public static void onServerSchemaRegistered(ServerSynchronization synchronization) {
+		synchronization.addChangeListener(() -> synchronizeServerSchema(synchronization));
+		synchronizeServerSchema(synchronization);
 	}
 
-	public static void onServerSchemaChanged(ConfigSchema schema) {
-		synchronizeServerSchema(schema);
-	}
-
-	private static void synchronizeServerSchema(ConfigSchema schema) {
+	private static void synchronizeServerSchema(ServerSynchronization synchronization) {
 		Server server = activeServer;
 		if (server == null) {
 			return;
@@ -110,11 +107,11 @@ public final class ServerConfigRuntime {
 			if (activeServer != server) {
 				return;
 			}
-			schema.loadIfNeeded();
-			long version = schema.getChangeVersion();
-			Long previousVersion = SERVER_SCHEMA_VERSIONS.put(schema, version);
+			synchronization.getSchema().loadIfNeeded();
+			long version = synchronization.getSchema().getChangeVersion();
+			Long previousVersion = SERVER_SCHEMA_VERSIONS.put(synchronization, version);
 			if (previousVersion == null || previousVersion != version) {
-				broadcastSchema(server, schema);
+				broadcastSchema(server, synchronization);
 			}
 		});
 	}
@@ -124,28 +121,28 @@ public final class ServerConfigRuntime {
 		if (serverId != null) {
 			ServerConfigNetworking.sendToPlayer(player, new ServerIdentityPayload(serverId));
 		}
-		getConfigManager().getServerSchemas().forEach(schema -> sendSchema(player, schema));
+		getConfigManager().getServerSynchronizations().forEach(synchronization -> sendSchema(player, synchronization));
 	}
 
 	public static void handleServerIdentity(ServerIdentityPayload payload) {
 		CLIENT_CONNECTION.handleServerIdentity(payload);
 	}
 
-	private static void broadcastSchema(Server server, ConfigSchema schema) {
+	private static void broadcastSchema(Server server, ServerSynchronization synchronization) {
 		for (Player player : server.getPlayers()) {
-			sendSchema(player, schema);
+			sendSchema(player, synchronization);
 		}
 	}
 
-	private static void sendSchema(Player player, ConfigSchema schema) {
+	private static void sendSchema(Player player, ServerSynchronization synchronization) {
 		try {
 			ServerConfigSyncPayload payload = new ServerConfigSyncPayload(
-				schema.getServerKey(),
-				schema.serializeValues()
+				synchronization.getKey(),
+				synchronization.serializeValues()
 			);
 			ServerConfigNetworking.sendToPlayer(player, payload);
 		} catch (RuntimeException e) {
-			LOGGER.error("Failed to create synchronized server config payload for {}.", schema.getServerKey(), e);
+			LOGGER.error("Failed to create synchronized server config payload for {}.", synchronization.getKey(), e);
 		}
 	}
 

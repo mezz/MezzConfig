@@ -1,10 +1,12 @@
 package net.mezzdev.config.file;
 
+import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchemaDefinition;
 import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
 import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.serializers.BooleanSerializer;
@@ -173,14 +175,20 @@ public class ConfigSerializerRecoveryTest {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true).build();
 		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10).build();
-		ConfigSchema schema = new ConfigSchema(
+		ConfigSchemaDefinition definition = new ConfigSchemaDefinition(
+			"test.ini",
+			"mezz_config",
 			new LayeredConfigSchemaPathResolver(defaultPath, new StaticConfigSchemaPathResolver(playerPath)),
 			List.of(builder),
-			(command, delay) -> CompletableFuture.completedFuture(null)
+			List.of(builder),
+			(command, delay) -> CompletableFuture.completedFuture(null),
+			ConfigSchemaType.CLIENT,
+			null,
+			null
 		);
 
 		// Operation: load the layered schema and recover the player overlay.
-		schema.register(null, false);
+		ConfigSchema schema = definition.initialize(null, false);
 
 		// Assertions: player data takes precedence where valid, fallback comes from the pack, and only the overlay changes.
 		assertTrue(enabled.get());

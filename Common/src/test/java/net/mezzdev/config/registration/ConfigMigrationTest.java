@@ -67,11 +67,11 @@ public class ConfigMigrationTest {
 		assertFalse(Files.exists(ConfigFileUtil.getBackupPath(legacyPath, 1)));
 		if (type == ConfigSchemaType.SERVER) {
 			// Operation: temporarily activate a server schema from a remote snapshot.
-			schema.applyRemoteSnapshot(List.of(new ServerConfigValueData("general", "count", "7")));
+			schema.getServerSynchronization().orElseThrow().applyRemoteSnapshot(List.of(new ServerConfigValueData("general", "count", "7")));
 
 			// Assertions: remote activity does not consume the pending local migration.
 			assertEquals(7, count.get());
-			schema.clearRemoteSnapshot();
+			schema.getServerSynchronization().orElseThrow().clearRemoteSnapshot();
 			assertEquals(0, migrator.completionCount);
 		}
 

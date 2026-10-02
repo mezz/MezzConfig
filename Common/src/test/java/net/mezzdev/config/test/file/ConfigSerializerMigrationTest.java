@@ -1,11 +1,13 @@
 package net.mezzdev.config.test.file;
 
+import net.mezzdev.config.api.schema.ConfigSchemaType;
+import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.api.value.change.IAppliedConfigValueChange;
 import net.mezzdev.config.file.ConfigFileReader;
 import net.mezzdev.config.file.ConfigSerializer;
 import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
-import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchemaDefinition;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.IntegerSerializer;
 import net.mezzdev.config.serializers.ListSerializer;
@@ -395,12 +397,18 @@ public class ConfigSerializerMigrationTest {
 	}
 
 	private static ConfigCategory buildCategory(Path path, ConfigCategoryBuilder categoryBuilder) {
-		ConfigSchema schema = new ConfigSchema(
-			path,
+		ConfigSchemaDefinition definition = new ConfigSchemaDefinition(
+			"test.ini",
+			"mezz_config",
+			new StaticConfigSchemaPathResolver(path),
 			List.of(categoryBuilder),
-			(command, delay) -> CompletableFuture.completedFuture(null)
+			List.of(categoryBuilder),
+			(command, delay) -> CompletableFuture.completedFuture(null),
+			ConfigSchemaType.CLIENT,
+			null,
+			null
 		);
-		return schema.getCategories()
+		return definition.getCategories()
 			.getFirst();
 	}
 

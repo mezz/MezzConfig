@@ -81,7 +81,7 @@ public class ConfigValuePerformanceTest {
 		assertEquals(inactiveResolutions, resolutions.get(), "Inactive reads must not resolve paths.");
 
 		if (type == ConfigSchemaType.SERVER) {
-			schema.applyRemoteSnapshot(List.of(new ServerConfigValueData("general", "enabled", "false")));
+			schema.getServerSynchronization().orElseThrow().applyRemoteSnapshot(List.of(new ServerConfigValueData("general", "enabled", "false")));
 			assertCachedReads(enabled, false);
 			assertEquals(inactiveResolutions, resolutions.get(), "Remote reads must not resolve paths.");
 		}

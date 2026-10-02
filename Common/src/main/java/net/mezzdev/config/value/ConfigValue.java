@@ -13,7 +13,6 @@ import net.mezzdev.config.api.schema.category.IConfigEditorCategory;
 import net.mezzdev.config.file.ConfigFileValueAdapter;
 import net.mezzdev.config.schema.ConfigEditorCategory;
 import net.mezzdev.config.schema.ConfigEditorCategoryBuilder;
-import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.util.ConfigNameUtil;
 import net.mezzdev.config.util.ErrorUtil;
 import net.mezzdev.config.util.ListenerList;
@@ -47,7 +46,7 @@ public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T
 	private volatile T effectiveValue;
 	private volatile T pendingValue;
 	@Nullable
-	private ConfigSchema schema;
+	private volatile ConfigValueOwner owner;
 
 	public ConfigValue(
 		String localizationPath,
@@ -123,8 +122,8 @@ public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T
 		return List.copyOf(categoryBuilders);
 	}
 
-	public void setSchema(ConfigSchema schema) {
-		this.schema = schema;
+	public void setOwner(ConfigValueOwner owner) {
+		this.owner = owner;
 	}
 
 	public void resolveEditorCategories(
@@ -190,16 +189,18 @@ public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T
 
 	@Override
 	public T get() {
-		if (schema != null) {
-			return schema.getEffectiveValue(this);
+		ConfigValueOwner owner = this.owner;
+		if (owner != null) {
+			return owner.getEffectiveValue(this);
 		}
 		return getEffectiveValueWithoutLoading();
 	}
 
 	@Override
 	public T getPendingValue() {
-		if (schema != null) {
-			return schema.getPendingValue(this);
+		ConfigValueOwner owner = this.owner;
+		if (owner != null) {
+			return owner.getPendingValue(this);
 		}
 		return getPendingValueWithoutLoading();
 	}
@@ -235,9 +236,9 @@ public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T
 
 	@Override
 	public boolean set(T value) {
-		if (schema != null) {
-			return !schema.batchUpdate(updater -> updater.set(this, value))
-				.isEmpty();
+		ConfigValueOwner owner = this.owner;
+		if (owner != null) {
+			return owner.setValue(this, value);
 		}
 		T previousEffectiveValue = effectiveValue;
 		AppliedConfigValueChange<T> change = setWithoutNotifying(value);
@@ -474,8 +475,9 @@ public class ConfigValue<T> implements IConfigValue<T>, IConfigValueEditorInfo<T
 	}
 
 	void markDirty() {
-		if (schema != null) {
-			schema.markDirty();
+		ConfigValueOwner owner = this.owner;
+		if (owner != null) {
+			owner.markDirty();
 		}
 	}
 

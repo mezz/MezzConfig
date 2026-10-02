@@ -226,7 +226,7 @@ public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implement
 		return builder;
 	}
 
-	public ConfigCategory build(ConfigSchema schema) {
+	public ConfigCategory build() {
 		checkNotBuilt();
 		if (valueBuilders.isEmpty()) {
 			throw new IllegalStateException("Config category must have at least one config value: " + getName());
@@ -239,9 +239,6 @@ public class ConfigCategoryBuilder extends ConfigEditorCategoryBuilder implement
 			throw new IllegalStateException("Config values have not been built: " + String.join(", ", unbuiltValueNames));
 		}
 		this.built = true;
-		for (ConfigValue<?> value : values) {
-			value.setSchema(schema);
-		}
 		return new ConfigCategory(getLocalizationKey(), getName(), values, movedValueMigrations);
 	}
 

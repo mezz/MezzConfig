@@ -22,11 +22,11 @@ import net.mezzdev.config.server.ServerConfigValueData;
 import net.mezzdev.config.util.ErrorUtil;
 import net.mezzdev.config.util.ListenerList;
 import net.mezzdev.config.value.ConfigValue;
+import net.mezzdev.config.value.ConfigValueOwner;
 import net.mezzdev.config.value.AppliedConfigValueChange;
 import net.mezzdev.config.value.ConfigValueUpdate;
 import net.mezzdev.config.sorting.SortingConfig;
 import net.mezzdev.deduplicatingrunner.DeduplicatingRunner;
-import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
 import net.mezzdev.filewatcher.FileWatcher;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -51,260 +51,107 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
-public class ConfigSchema implements IConfigSchema {
+public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 	private static final Logger LOGGER = LogManager.getLogger();
-	static final String DEFAULT_MOD_ID = "mezz_config";
 	private static final Duration SAVE_DELAY_TIME = Duration.ofSeconds(2);
 	private static final int LOCALIZATION_SAVE_RETRY_LIMIT = 30;
-	private static final Consumer<? super Collection<Path>> NO_PATH_RESERVATION = ignored -> {};
 
-	private final String id;
-	private final String modId;
+	private final ConfigSchemaDefinition definition;
 	private final ConfigSchemaPathResolver pathResolver;
-	private final ConfigSchemaType type;
-	private final ConfigSchemaMode mode;
-	private final @Nullable ServerConfigKey serverKey;
-	private final List<ConfigCategory> categories;
-	private final List<ConfigEditorCategory> editorCategories;
-	private final @Nullable ConfigMigrationSpec migrationSpec;
 	private final EnumSet<PendingLoad> pendingLoad = EnumSet.allOf(PendingLoad.class);
 	private final AtomicLong changeVersion = new AtomicLong();
 	private final DeduplicatingRunner delayedSave;
-	private @Nullable FileWatcher fileWatcher;
-	private @Nullable Path activeDefaultPath;
-	private @Nullable Path activePath;
+	private final @Nullable FileWatcher fileWatcher;
+	private ActiveFiles activeFiles = ActiveFiles.NONE;
 	private @Nullable Path pendingSavePath;
 	private final Set<Path> pendingFileChanges = new HashSet<>();
-	private @Nullable Runnable removeDefaultFileWatcherCallback;
-	private @Nullable Runnable removeFileWatcherCallback;
-	private final ListenerList<IConfigValueBatchChangeListener> batchListeners = new ListenerList<>();
-	private final ListenerList<IConfigValueBatchChangeListener> pendingBatchListeners = new ListenerList<>();
-	private boolean registered;
-	private boolean registrationInProgress;
+	private final @Nullable ServerSynchronization serverSynchronization;
 	private boolean restartValuesInitialized;
-	private boolean logUntranslatedKeys;
+	private final boolean logUntranslatedKeys;
 	private boolean translationKeysChecked;
 	private volatile boolean remotelyActive;
 	private boolean migrationCompleted;
-	private Consumer<? super Collection<Path>> pathReservation = NO_PATH_RESERVATION;
+	private final Consumer<? super Collection<Path>> pathReservation;
 
-	public ConfigSchema(
-		Path path,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		DelayedTaskScheduler scheduler
-	) {
-		this(DEFAULT_MOD_ID, path, categoryBuilders, List.copyOf(categoryBuilders), scheduler);
-	}
-
-	public ConfigSchema(
+	private ConfigSchema(
+		ConfigSchemaDefinition definition,
 		ConfigSchemaPathResolver pathResolver,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		DelayedTaskScheduler scheduler
+		@Nullable FileWatcher fileWatcher,
+		boolean logUntranslatedKeys,
+		Consumer<? super Collection<Path>> pathReservation
 	) {
-		this(DEFAULT_MOD_ID, pathResolver, categoryBuilders, List.copyOf(categoryBuilders), scheduler);
-	}
-
-	public ConfigSchema(
-		String modId,
-		Path path,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		DelayedTaskScheduler scheduler
-	) {
-		this(modId, path, categoryBuilders, List.copyOf(categoryBuilders), scheduler);
-	}
-
-	public ConfigSchema(
-		String modId,
-		ConfigSchemaPathResolver pathResolver,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		DelayedTaskScheduler scheduler
-	) {
-		this(modId, pathResolver, categoryBuilders, List.copyOf(categoryBuilders), scheduler);
-	}
-
-	public ConfigSchema(
-		Path path,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
-		DelayedTaskScheduler scheduler
-	) {
-		this(DEFAULT_MOD_ID, new StaticConfigSchemaPathResolver(path), categoryBuilders, editorCategoryBuilders, scheduler);
-	}
-
-	public ConfigSchema(
-		ConfigSchemaPathResolver pathResolver,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
-		DelayedTaskScheduler scheduler
-	) {
-		this(DEFAULT_MOD_ID, pathResolver, categoryBuilders, editorCategoryBuilders, scheduler);
-	}
-
-	public ConfigSchema(
-		String modId,
-		Path path,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
-		DelayedTaskScheduler scheduler
-	) {
-		this(modId, new StaticConfigSchemaPathResolver(path), categoryBuilders, editorCategoryBuilders, scheduler);
-	}
-
-	public ConfigSchema(
-		String modId,
-		ConfigSchemaPathResolver pathResolver,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
-		DelayedTaskScheduler scheduler
-	) {
-		this(
-			modId,
-			pathResolver,
-			categoryBuilders,
-			editorCategoryBuilders,
-			scheduler,
-			ConfigSchemaType.CLIENT,
-			null
-		);
-	}
-
-	public ConfigSchema(
-		String modId,
-		ConfigSchemaPathResolver pathResolver,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
-		DelayedTaskScheduler scheduler,
-		ConfigSchemaType type,
-		@Nullable ServerConfigKey serverKey
-	) {
-		this(
-			getDefaultId(modId, pathResolver, serverKey),
-			modId,
-			pathResolver,
-			categoryBuilders,
-			editorCategoryBuilders,
-			scheduler,
-			type,
-			serverKey
-		);
-	}
-
-	public ConfigSchema(
-		String id,
-		String modId,
-		ConfigSchemaPathResolver pathResolver,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
-		DelayedTaskScheduler scheduler,
-		ConfigSchemaType type,
-		@Nullable ServerConfigKey serverKey
-	) {
-		this(
-			id,
-			modId,
-			pathResolver,
-			categoryBuilders,
-			editorCategoryBuilders,
-			scheduler,
-			type,
-			serverKey,
-			null
-		);
-	}
-
-	public ConfigSchema(
-		String id,
-		String modId,
-		ConfigSchemaPathResolver pathResolver,
-		List<ConfigCategoryBuilder> categoryBuilders,
-		List<ConfigEditorCategoryBuilder> editorCategoryBuilders,
-		DelayedTaskScheduler scheduler,
-		ConfigSchemaType type,
-		@Nullable ServerConfigKey serverKey,
-		@Nullable ConfigMigrationSpec migrationSpec
-	) {
-		this.id = validateId(id);
-		this.modId = validateModId(modId);
-		this.pathResolver = ErrorUtil.checkNotNull(pathResolver, "pathResolver");
-		this.type = ErrorUtil.checkNotNull(type, "type");
-		this.mode = ConfigSchemaMode.forSchema(type);
-		this.serverKey = serverKey;
-		this.migrationSpec = migrationSpec;
-		validateServerKey(type, serverKey);
-		if (categoryBuilders.isEmpty()) {
-			throw new IllegalStateException("Config schema must have at least one storage category.");
+		this.definition = definition;
+		this.pathResolver = pathResolver;
+		this.fileWatcher = fileWatcher;
+		this.logUntranslatedKeys = logUntranslatedKeys;
+		this.pathReservation = pathReservation;
+		this.delayedSave = new DeduplicatingRunner(SAVE_DELAY_TIME, definition.scheduler);
+		if (definition.serverKey == null) {
+			this.serverSynchronization = null;
+		} else {
+			this.serverSynchronization = new ServerSynchronization(definition.serverKey);
 		}
-		Map<ConfigCategoryBuilder, ConfigCategory> categoryMap = new IdentityHashMap<>();
-		Map<ConfigEditorCategoryBuilder, ConfigEditorCategory> editorCategoryMap = new IdentityHashMap<>();
-		List<ConfigCategory> categories = new ArrayList<>();
-		for (ConfigCategoryBuilder categoryBuilder : categoryBuilders) {
-			ConfigCategory category = categoryBuilder.build(this);
-			categoryMap.put(categoryBuilder, category);
-			editorCategoryMap.put(categoryBuilder, category);
-			categories.add(category);
-		}
-		List<ConfigEditorCategory> editorCategories = new ArrayList<>();
-		for (ConfigEditorCategoryBuilder editorCategoryBuilder : editorCategoryBuilders) {
-			ConfigEditorCategory category = editorCategoryMap.get(editorCategoryBuilder);
-			if (category == null) {
-				category = editorCategoryBuilder.build();
-				editorCategoryMap.put(editorCategoryBuilder, category);
+	}
+
+	static ConfigSchema create(
+		ConfigSchemaDefinition definition,
+		@Nullable FileWatcher fileWatcher,
+		boolean logUntranslatedKeys,
+		Consumer<? super Collection<Path>> pathReservation,
+		Consumer<ConfigSchema> publish
+	) {
+		ErrorUtil.checkNotNull(pathReservation, "pathReservation");
+		ErrorUtil.checkNotNull(publish, "publish");
+		ConfigSchema schema = new ConfigSchema(definition, definition.pathResolver, fileWatcher, logUntranslatedKeys, pathReservation);
+		synchronized (schema) {
+			try {
+				pathReservation.accept(definition.pathResolver.getPersistentReservationPaths());
+				schema.loadInitialValues();
+				publish.accept(schema);
+				return schema;
+			} catch (RuntimeException | Error e) {
+				schema.closeFailedInitialization(e);
+				definition.resetValues();
+				throw e;
 			}
-			editorCategories.add(category);
 		}
-		categoryBuilders.forEach(categoryBuilder -> categoryBuilder.resolveEditorCategories(editorCategoryBuilders, editorCategoryMap));
-		this.categories = List.copyOf(categories);
-		this.editorCategories = List.copyOf(editorCategories);
-		ConfigSerializer.validatePendingSave(this.categories, mode.serializationSettings(), Map.of());
-		this.delayedSave = new DeduplicatingRunner(SAVE_DELAY_TIME, scheduler);
 	}
 
-	private static String getDefaultId(
-		String modId,
-		ConfigSchemaPathResolver pathResolver,
-		@Nullable ServerConfigKey serverKey
-	) {
-		if (serverKey != null) {
-			return serverKey.configFileName();
-		}
-		return pathResolver.resolvePath()
-			.map(path -> path.toAbsolutePath().normalize().toString())
-			.orElse(modId);
-	}
-
-	private static String validateId(String id) {
-		id = ErrorUtil.checkNotNull(id, "id");
-		if (id.isBlank()) {
-			throw new IllegalArgumentException("id must not be blank.");
-		}
-		return id;
-	}
-
-	public static String validateModId(String modId) {
-		modId = ErrorUtil.checkNotNull(modId, "modId");
-		if (modId.isBlank()) {
-			throw new IllegalArgumentException("modId must not be blank.");
-		}
-		return modId;
-	}
-
-	static void validateServerKey(ConfigSchemaType type, @Nullable ServerConfigKey serverKey) {
-		if ((type == ConfigSchemaType.SERVER) != (serverKey != null)) {
-			throw new IllegalArgumentException("Server config schemas must have exactly one server key.");
-		}
+	static ConfigSchema createInactive(ConfigSchemaDefinition definition) {
+		ConfigSchema schema = new ConfigSchema(definition, Optional::empty, null, false, paths -> {});
+		schema.pendingLoad.clear();
+		definition.bindValues(schema);
+		schema.completeInactiveMigration();
+		return schema;
 	}
 
 	public synchronized void loadIfNeeded() {
-		if (pendingLoad.isEmpty() || !registered) {
+		if (pendingLoad.isEmpty()) {
 			return;
 		}
-		LoadResult loadResult = loadIfNeededWithoutNotifying();
-		if (loadResult == LoadResult.UNCHANGED) {
-			return;
-		}
+		loadFiles().ifPresent(loaded -> finishLoad(validateReload(loaded)));
+	}
+
+	private void loadInitialValues() {
+		loadFiles().ifPresent(loaded -> {
+			if (isSynchronizedServerSchema()) {
+				validateCurrentServerSnapshot();
+			}
+			LoadResult result = createLoadResult(loaded.previousState(), loaded.initialSaves());
+			saveInitialFiles(result.initialSaves());
+			definition.bindValues(this);
+			notifyChanges(result.effectiveChanges(), result.pendingChanges());
+		});
+	}
+
+	private void finishLoad(LoadResult loadResult) {
 		notifyChanges(loadResult.effectiveChanges(), loadResult.pendingChanges());
-		for (InitialSave initialSave : loadResult.initialSaves()) {
-			if (mode.synchronousFileAccess()) {
+		saveInitialFiles(loadResult.initialSaves());
+	}
+
+	private void saveInitialFiles(List<InitialSave> initialSaves) {
+		for (InitialSave initialSave : initialSaves) {
+			if (definition.mode.synchronousFileAccess()) {
 				saveInitialFile(initialSave);
 			} else {
 				saveInitialFileAfterLocalizationLoads(initialSave, 0);
@@ -312,9 +159,9 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
-	private LoadResult loadIfNeededWithoutNotifying() {
-		Path previousDefaultPath = activeDefaultPath;
-		Path previousPath = activePath;
+	private Optional<FileLoadResult> loadFiles() {
+		Path previousDefaultPath = activeFiles.defaultPath();
+		Path previousPath = activeFiles.path();
 		Path defaultPath = previousDefaultPath;
 		Path path = previousPath;
 		if (pendingLoad.contains(PendingLoad.CHECK_PATHS)) {
@@ -327,7 +174,7 @@ public class ConfigSchema implements IConfigSchema {
 		boolean switchingFromRemoteValues = remotelyActive && path != null;
 		if (!reloadValues && !switchingFromRemoteValues) {
 			pendingLoad.clear();
-			return LoadResult.UNCHANGED;
+			return Optional.empty();
 		}
 
 		LoadState previousState = new LoadState(
@@ -339,7 +186,7 @@ public class ConfigSchema implements IConfigSchema {
 		pendingLoad.clear();
 		if (isSynchronizedServerSchema() && remotelyActive && path == null) {
 			pendingFileChanges.clear();
-			return createLoadResult(previousState, List.of());
+			return Optional.of(new FileLoadResult(previousState, List.of()));
 		}
 		if (path != null) {
 			remotelyActive = false;
@@ -351,11 +198,11 @@ public class ConfigSchema implements IConfigSchema {
 			if (previousPath != null) {
 				resetValuesToDefaults();
 			}
-			return completeServerLoad(previousState, initialSaves);
+			return Optional.of(new FileLoadResult(previousState, initialSaves));
 		}
 
 		if (!reloadValues) {
-			return createLoadResult(previousState, List.of());
+			return Optional.of(new FileLoadResult(previousState, List.of()));
 		}
 		Map<Path, ConfigFileReader.Contents> preparedFileLoads = new LinkedHashMap<>();
 		if (!pendingFileChanges.isEmpty()) {
@@ -372,7 +219,7 @@ public class ConfigSchema implements IConfigSchema {
 			}
 			pendingFileChanges.clear();
 			if (allFilesUnchanged) {
-				return createLoadResult(previousState, List.of());
+				return Optional.of(new FileLoadResult(previousState, List.of()));
 			}
 		}
 
@@ -387,7 +234,7 @@ public class ConfigSchema implements IConfigSchema {
 			promotePendingValuesWithoutNotifying(ConfigValueRestartRequirement.GAME_RESTART);
 			restartValuesInitialized = true;
 		}
-		return completeServerLoad(
+		return Optional.of(new FileLoadResult(
 			previousState,
 			getInitialSaves(
 				defaultPath,
@@ -397,7 +244,7 @@ public class ConfigSchema implements IConfigSchema {
 				migrationAttempt != MigrationAttempt.FAILED,
 				loadedFingerprint
 			)
-		);
+		));
 	}
 
 	/**
@@ -409,7 +256,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private MigrationAttempt attemptMigration(Path destinationPath) {
-		ConfigMigrationSpec migrationSpec = this.migrationSpec;
+		ConfigMigrationSpec migrationSpec = definition.migrationSpec;
 		if (migrationSpec == null || migrationCompleted) {
 			return MigrationAttempt.NOT_ATTEMPTED;
 		}
@@ -423,7 +270,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private ConfigMigrationResult runMigration(Path destinationPath) {
-		ConfigMigrationSpec migrationSpec = this.migrationSpec;
+		ConfigMigrationSpec migrationSpec = definition.migrationSpec;
 		if (migrationSpec == null) {
 			throw new IllegalStateException("Config schema has no registered legacy source or migration.");
 		}
@@ -461,7 +308,7 @@ public class ConfigSchema implements IConfigSchema {
 			context = new ConfigMigrationContext(this);
 			try {
 				if (migrationSpec.loadsAlternateSource()) {
-					context.addParseResult(ConfigSerializer.parseMigrationUpdates(legacyPath, categories));
+					context.addParseResult(ConfigSerializer.parseMigrationUpdates(legacyPath, definition.categories));
 				} else {
 					migrationSpec.migrate(legacyPath, context);
 				}
@@ -517,9 +364,9 @@ public class ConfigSchema implements IConfigSchema {
 	private void completeMigration(ConfigMigrationResult result) {
 		migrationCompleted = true;
 		try {
-			migrationSpec.onMigrationComplete(result);
+			definition.migrationSpec.onMigrationComplete(result);
 		} catch (RuntimeException callbackFailure) {
-			LOGGER.error("Failed to handle the completed legacy config migration for '{}'.", id, callbackFailure);
+			LOGGER.error("Failed to handle the completed legacy config migration for '{}'.", definition.id, callbackFailure);
 		}
 	}
 
@@ -532,8 +379,8 @@ public class ConfigSchema implements IConfigSchema {
 		validateUpdates(valueUpdates);
 		Map<ConfigValue<?>, Object> updatedValues = getUpdatedValues(valueUpdates);
 		List<String> serializedSchema = ConfigSerializer.serializePendingSave(
-			categories,
-			mode.serializationSettings(),
+			definition.categories,
+			definition.mode.serializationSettings(),
 			updatedValues
 		);
 		validateProspectiveServerSnapshot(updatedValues);
@@ -544,7 +391,7 @@ public class ConfigSchema implements IConfigSchema {
 		for (SortingConfig.MigrationUpdate<?> sortingUpdate : sortingUpdates) {
 			putMigrationOutput(outputs, sortingUpdate.path(), sortingUpdate.serialized());
 		}
-		for (Path legacyPath : migrationSpec.legacyPaths()) {
+		for (Path legacyPath : definition.migrationSpec.legacyPaths()) {
 			if (outputs.containsKey(legacyPath)) {
 				throw new IllegalArgumentException("Migration updates must not overwrite a registered legacy file: " + legacyPath);
 			}
@@ -594,8 +441,8 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
-	void completeInactiveMigration() {
-		if (migrationSpec != null && !migrationCompleted) {
+	private void completeInactiveMigration() {
+		if (definition.migrationSpec != null && !migrationCompleted) {
 			completeMigration(new ConfigMigrationResult(
 				ConfigMigrationStatus.SKIPPED_INACTIVE,
 				null,
@@ -606,10 +453,9 @@ public class ConfigSchema implements IConfigSchema {
 		}
 	}
 
-	private LoadResult completeServerLoad(
-		LoadState previousState,
-		List<InitialSave> initialSaves
-	) {
+	private LoadResult validateReload(FileLoadResult loaded) {
+		LoadState previousState = loaded.previousState();
+		List<InitialSave> initialSaves = loaded.initialSaves();
 		if (!isSynchronizedServerSchema()) {
 			return createLoadResult(previousState, initialSaves);
 		}
@@ -620,12 +466,9 @@ public class ConfigSchema implements IConfigSchema {
 			restoreValues(previousState.effectiveValues(), previousState.pendingValues());
 			restartValuesInitialized = previousState.restartValuesInitialized();
 			remotelyActive = previousState.remotelyActive();
-			if (!registered || registrationInProgress) {
-				throw e;
-			}
 			LOGGER.error(
 				"Rejected unsynchronizable server config file state for '{}'; keeping the previous authoritative values.",
-				activePath,
+				activeFiles.path(),
 				e
 			);
 			return createLoadResult(previousState, List.of());
@@ -650,9 +493,9 @@ public class ConfigSchema implements IConfigSchema {
 		try {
 			ConfigFileReader.Contents contents = preparedFileLoads.get(path);
 			if (contents == null) {
-				return ConfigSerializer.loadWithoutNotifyingAndGetFingerprint(path, categories, mode.serializationSettings());
+				return ConfigSerializer.loadWithoutNotifyingAndGetFingerprint(path, definition.categories, definition.mode.serializationSettings());
 			}
-			ConfigSerializer.applyContentsWithoutNotifying(path, categories, mode.serializationSettings(), contents);
+			ConfigSerializer.applyContentsWithoutNotifying(path, definition.categories, definition.mode.serializationSettings(), contents);
 			return contents.fingerprint();
 		} catch (IOException e) {
 			handleFileError("load", path, e);
@@ -662,7 +505,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	private static List<InitialSave> getInitialSaves(
 		@Nullable Path defaultPath,
-		@Nullable Path activePath,
+		@Nullable Path path,
 		boolean activePathChanged,
 		boolean createActiveFileOnActivation,
 		boolean allowActiveInitialSave,
@@ -672,10 +515,10 @@ public class ConfigSchema implements IConfigSchema {
 		if (defaultPath != null && !Files.exists(defaultPath)) {
 			initialSaves.add(new InitialSave(defaultPath, true, null));
 		}
-		if (allowActiveInitialSave && activePath != null && !activePath.equals(defaultPath) && activePathChanged &&
-			(createActiveFileOnActivation || defaultPath == null || Files.exists(activePath))
+		if (allowActiveInitialSave && path != null && !path.equals(defaultPath) && activePathChanged &&
+			(createActiveFileOnActivation || defaultPath == null || Files.exists(path))
 		) {
-			initialSaves.add(new InitialSave(activePath, false, loadedFingerprint));
+			initialSaves.add(new InitialSave(path, false, loadedFingerprint));
 		}
 		return List.copyOf(initialSaves);
 	}
@@ -727,7 +570,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private Collection<ConfigValue<?>> getConfigValues() {
-		return categories.stream()
+		return definition.categories.stream()
 			.flatMap(category -> category.getConfigValues().stream())
 			.toList();
 	}
@@ -780,7 +623,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	public synchronized void promotePendingValuesAfterWorldRestart() {
 		loadIfNeeded();
-		if (activePath == null) {
+		if (activeFiles.path() == null) {
 			return;
 		}
 		ConfigValueRestartRequirement boundary = ConfigValueRestartRequirement.WORLD_RESTART;
@@ -813,19 +656,41 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private void setActivePaths(@Nullable Path defaultPath, @Nullable Path path) {
-		if (Objects.equals(activeDefaultPath, defaultPath) && Objects.equals(activePath, path)) {
+		if (Objects.equals(activeFiles.defaultPath(), defaultPath) && Objects.equals(activeFiles.path(), path)) {
 			return;
 		}
 		flushPendingSaveIfNeeded();
-		removeFileWatcherCallbacks();
-		pendingFileChanges.clear();
-		activeDefaultPath = defaultPath;
-		activePath = path;
-		if (defaultPath != null && fileWatcher != null) {
-			removeDefaultFileWatcherCallback = fileWatcher.addCallback(defaultPath, () -> onFileChanged(defaultPath));
+		ActiveFiles nextFiles = watchFiles(defaultPath, path);
+		try {
+			activeFiles.close();
+		} catch (RuntimeException | Error e) {
+			nextFiles.closeAfterFailure(e);
+			throw e;
 		}
-		if (path != null && !path.equals(defaultPath) && fileWatcher != null) {
-			removeFileWatcherCallback = fileWatcher.addCallback(path, () -> onFileChanged(path));
+		pendingFileChanges.clear();
+		activeFiles = nextFiles;
+	}
+
+	private ActiveFiles watchFiles(@Nullable Path defaultPath, @Nullable Path path) {
+		Runnable removeDefaultCallback = null;
+		if (fileWatcher != null && defaultPath != null) {
+			removeDefaultCallback = fileWatcher.addCallback(defaultPath, () -> onFileChanged(defaultPath));
+		}
+		try {
+			Runnable removeCallback = null;
+			if (fileWatcher != null && path != null && !path.equals(defaultPath)) {
+				removeCallback = fileWatcher.addCallback(path, () -> onFileChanged(path));
+			}
+			return new ActiveFiles(defaultPath, path, removeDefaultCallback, removeCallback);
+		} catch (RuntimeException | Error e) {
+			if (removeDefaultCallback != null) {
+				try {
+					removeDefaultCallback.run();
+				} catch (RuntimeException | Error cleanupFailure) {
+					e.addSuppressed(cleanupFailure);
+				}
+			}
+			throw e;
 		}
 	}
 
@@ -876,112 +741,39 @@ public class ConfigSchema implements IConfigSchema {
 
 	private void flushPendingSaveIfNeeded() {
 		Path pendingPath = pendingSavePath;
-		if (pendingPath != null && Objects.equals(activePath, pendingPath)) {
+		if (pendingPath != null && Objects.equals(activeFiles.path(), pendingPath)) {
 			save(pendingPath);
 		}
 	}
 
 	private synchronized void onFileChanged(Path changedPath) {
-		if (!Objects.equals(changedPath, activeDefaultPath) && !Objects.equals(changedPath, activePath)) {
+		if (!Objects.equals(changedPath, activeFiles.defaultPath()) && !Objects.equals(changedPath, activeFiles.path())) {
 			return;
 		}
 		pendingFileChanges.add(changedPath);
 		pendingLoad.add(PendingLoad.RELOAD_VALUES);
-		if (isSynchronizedServerSchema()) {
-			ServerConfigRuntime.onServerSchemaChanged(this);
+		if (serverSynchronization != null) {
+			serverSynchronization.notifyChanged();
 		}
 	}
 
-	public synchronized void register(@Nullable FileWatcher fileWatcher, boolean logUntranslatedKeys) {
-		register(fileWatcher, logUntranslatedKeys, NO_PATH_RESERVATION);
-	}
-
-	public synchronized void register(
-		@Nullable FileWatcher fileWatcher,
-		boolean logUntranslatedKeys,
-		Consumer<? super Collection<Path>> pathReservation
-	) {
-		if (registered) {
-			throw new IllegalStateException("Config schema is already registered.");
-		}
-		this.fileWatcher = fileWatcher;
-		this.logUntranslatedKeys = logUntranslatedKeys;
-		this.pathReservation = ErrorUtil.checkNotNull(pathReservation, "pathReservation");
-		this.registered = true;
-		this.registrationInProgress = true;
-		try {
-			pathReservation.accept(pathResolver.getPersistentReservationPaths());
-			loadIfNeeded();
-		} catch (RuntimeException | Error e) {
-			rollbackRegistration(e);
-			throw e;
-		} finally {
-			registrationInProgress = false;
-		}
-	}
-
-	public synchronized void rollbackRegistration(Throwable failure) {
-		registered = false;
-		registrationInProgress = false;
-		fileWatcher = null;
-		logUntranslatedKeys = false;
-		try {
-			removeFileWatcherCallbacks();
-		} catch (RuntimeException | Error rollbackFailure) {
-			failure.addSuppressed(rollbackFailure);
-		}
+	private void closeFailedInitialization(Throwable failure) {
+		ActiveFiles files = activeFiles;
+		activeFiles = ActiveFiles.NONE;
+		files.closeAfterFailure(failure);
 		try {
 			pathReservation.accept(List.of());
 		} catch (RuntimeException | Error rollbackFailure) {
 			failure.addSuppressed(rollbackFailure);
 		}
-		pathReservation = NO_PATH_RESERVATION;
-		activeDefaultPath = null;
-		activePath = null;
 		pendingSavePath = null;
-		pendingFileChanges.clear();
-		pendingLoad.add(PendingLoad.CHECK_PATHS);
-		pendingLoad.add(PendingLoad.RELOAD_VALUES);
-		changeVersion.set(0);
-		restartValuesInitialized = false;
-		translationKeysChecked = false;
-		remotelyActive = false;
-		resetAllValuesToDefaults();
-	}
-
-	private void removeFileWatcherCallbacks() {
-		Runnable removeDefaultCallback = removeDefaultFileWatcherCallback;
-		Runnable removeCallback = removeFileWatcherCallback;
-		removeDefaultFileWatcherCallback = null;
-		removeFileWatcherCallback = null;
-		if (removeDefaultCallback == null) {
-			if (removeCallback != null) {
-				removeCallback.run();
-			}
-			return;
-		}
-		try {
-			removeDefaultCallback.run();
-		} catch (RuntimeException | Error e) {
-			if (removeCallback != null) {
-				try {
-					removeCallback.run();
-				} catch (RuntimeException | Error secondFailure) {
-					e.addSuppressed(secondFailure);
-				}
-			}
-			throw e;
-		}
-		if (removeCallback != null) {
-			removeCallback.run();
-		}
 	}
 
 	private synchronized void saveAfterLocalizationLoads(Path path, int attempt) {
-		if (!Objects.equals(path, activePath) && !Objects.equals(path, pendingSavePath)) {
+		if (!Objects.equals(path, activeFiles.path()) && !Objects.equals(path, pendingSavePath)) {
 			return;
 		}
-		if (!mode.waitForLocalization() || ConfigSerializer.canLocalizeComments()) {
+		if (!definition.mode.waitForLocalization() || ConfigSerializer.canLocalizeComments()) {
 			save(path);
 			return;
 		}
@@ -999,13 +791,13 @@ public class ConfigSchema implements IConfigSchema {
 	private synchronized void saveInitialFileAfterLocalizationLoads(InitialSave initialSave, int attempt) {
 		Path path = initialSave.path();
 		if (initialSave.defaults()) {
-			if (!Objects.equals(path, activeDefaultPath) || Files.exists(path)) {
+			if (!Objects.equals(path, activeFiles.defaultPath()) || Files.exists(path)) {
 				return;
 			}
-		} else if (!Objects.equals(path, activePath)) {
+		} else if (!Objects.equals(path, activeFiles.path())) {
 			return;
 		}
-		if (!mode.waitForLocalization() || ConfigSerializer.canLocalizeComments()) {
+		if (!definition.mode.waitForLocalization() || ConfigSerializer.canLocalizeComments()) {
 			saveInitialFile(initialSave);
 			return;
 		}
@@ -1049,17 +841,17 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private void write(Path path, @Nullable String loadedFingerprint) throws IOException {
-		Path defaultPath = activeDefaultPath;
+		Path defaultPath = activeFiles.defaultPath();
 		if (defaultPath != null) {
 			saveDefaultIfMissing(defaultPath);
 		}
-		if (mode.serializationSettings().localizeComments()) {
+		if (definition.mode.serializationSettings().localizeComments()) {
 			logUntranslatedKeysIfNeeded(path);
 		}
 		try {
-			ConfigSerializer.save(path, categories, mode.serializationSettings(), loadedFingerprint);
+			ConfigSerializer.save(path, definition.categories, definition.mode.serializationSettings(), loadedFingerprint);
 		} catch (IOException e) {
-			if (type != ConfigSchemaType.CLIENT || loadedFingerprint == null) {
+			if (definition.type != ConfigSchemaType.CLIENT || loadedFingerprint == null) {
 				throw e;
 			}
 			LOGGER.warn(
@@ -1071,7 +863,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private void handleFileError(String action, Path path, IOException error) {
-		if (mode.synchronousFileAccess()) {
+		if (definition.mode.synchronousFileAccess()) {
 			throw new UncheckedIOException("Failed to %s config schema: %s".formatted(action, path), error);
 		}
 		LOGGER.error("Failed to {} config file: '{}'", action, path, error);
@@ -1079,7 +871,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	private void saveDefaultIfMissing(Path path) throws IOException {
 		if (!Files.exists(path)) {
-			ConfigSerializer.saveDefaults(path, categories, mode.serializationSettings());
+			ConfigSerializer.saveDefaults(path, definition.categories, definition.mode.serializationSettings());
 		}
 	}
 
@@ -1088,13 +880,13 @@ public class ConfigSchema implements IConfigSchema {
 			return;
 		}
 		translationKeysChecked = true;
-		ConfigTranslationChecker.logUntranslatedKeys(path, editorCategories, categories);
+		ConfigTranslationChecker.logUntranslatedKeys(path, definition.editorCategories, definition.categories);
 	}
 
 	public synchronized void logUntranslatedKeysIfReady() {
-		Path path = activePath;
+		Path path = activeFiles.path();
 		if (path == null) {
-			path = activeDefaultPath;
+			path = activeFiles.defaultPath();
 		}
 		if (path != null) {
 			logUntranslatedKeysIfNeeded(path);
@@ -1102,12 +894,17 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	public synchronized void markDirty() {
-		Path path = activePath;
+		Path path = activeFiles.path();
 		if (path == null) {
 			return;
 		}
 		pendingSavePath = path;
 		delayedSave.run(() -> saveAfterLocalizationLoads(path, 0));
+	}
+
+	@Override
+	public <T> boolean setValue(ConfigValue<T> value, T newValue) {
+		return !batchUpdate(updater -> updater.set(value, newValue)).isEmpty();
 	}
 
 	@Override
@@ -1133,13 +930,13 @@ public class ConfigSchema implements IConfigSchema {
 			return List.of();
 		}
 
+		validateUpdates(updates);
 		loadIfNeeded();
-		if (activePath == null) {
+		if (activeFiles.path() == null) {
 			throw new IllegalStateException("Config schema has no active backing file.");
 		}
-		validateUpdates(updates);
 		Map<ConfigValue<?>, Object> updatedValues = getUpdatedValues(updates);
-		ConfigSerializer.validatePendingSave(categories, mode.serializationSettings(), updatedValues);
+		ConfigSerializer.validatePendingSave(definition.categories, definition.mode.serializationSettings(), updatedValues);
 		validateProspectiveServerSnapshot(updatedValues);
 
 		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
@@ -1201,7 +998,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	boolean containsConfigValue(ConfigValue<?> configValue) {
-		return categories.stream()
+		return definition.categories.stream()
 			.flatMap(category -> category.getConfigValues().stream())
 			.anyMatch(value -> value == configValue);
 	}
@@ -1214,14 +1011,12 @@ public class ConfigSchema implements IConfigSchema {
 
 	@Override
 	public Runnable addBatchListener(IConfigValueBatchChangeListener listener) {
-		ErrorUtil.checkNotNull(listener, "listener");
-		return this.batchListeners.add(listener);
+		return definition.addBatchListener(listener);
 	}
 
 	@Override
 	public Runnable addPendingBatchListener(IConfigValueBatchChangeListener listener) {
-		ErrorUtil.checkNotNull(listener, "listener");
-		return this.pendingBatchListeners.add(listener);
+		return definition.addPendingBatchListener(listener);
 	}
 
 	private void notifyChanges(
@@ -1236,8 +1031,8 @@ public class ConfigSchema implements IConfigSchema {
 		List<AppliedConfigValueChange<?>> immutableEffectiveChanges = List.copyOf(effectiveChanges);
 		Runnable pendingNotifications = ConfigValue.snapshotChangedValueNotifications(immutablePendingChanges, true);
 		Runnable effectiveNotifications = ConfigValue.snapshotChangedValueNotifications(immutableEffectiveChanges, false);
-		List<IConfigValueBatchChangeListener> pendingSchemaListeners = pendingBatchListeners.snapshot();
-		List<IConfigValueBatchChangeListener> effectiveSchemaListeners = batchListeners.snapshot();
+		List<IConfigValueBatchChangeListener> pendingSchemaListeners = definition.pendingBatchListeners.snapshot();
+		List<IConfigValueBatchChangeListener> effectiveSchemaListeners = definition.batchListeners.snapshot();
 		if (!immutablePendingChanges.isEmpty()) {
 			pendingNotifications.run();
 			notifyListeners(immutablePendingChanges, pendingSchemaListeners, "pending config schema");
@@ -1245,8 +1040,8 @@ public class ConfigSchema implements IConfigSchema {
 		if (!immutableEffectiveChanges.isEmpty()) {
 			effectiveNotifications.run();
 			notifyListeners(immutableEffectiveChanges, effectiveSchemaListeners, "config schema");
-			if (registered && isSynchronizedServerSchema()) {
-				ServerConfigRuntime.onServerSchemaChanged(this);
+			if (serverSynchronization != null) {
+				serverSynchronization.notifyChanged();
 			}
 		}
 	}
@@ -1260,67 +1055,50 @@ public class ConfigSchema implements IConfigSchema {
 			try {
 				listener.onConfigValuesChanged(changes);
 			} catch (RuntimeException e) {
-				LOGGER.error("{} listener failed for '{}'.", description, activePath, e);
+				LOGGER.error("{} listener failed for '{}'.", description, activeFiles.path(), e);
 			}
 		}
 	}
 
 	@Override
 	public List<ConfigCategory> getCategories() {
-		return categories;
+		return definition.categories;
 	}
 
 	@Override
 	public List<ConfigEditorCategory> getEditorCategories() {
-		return editorCategories;
+		return definition.editorCategories;
 	}
 
 	@Override
 	public String getId() {
-		return id;
+		return definition.id;
 	}
 
 	@Override
 	public String getModId() {
-		return modId;
+		return definition.modId;
 	}
 
 	@Override
 	public ConfigSchemaType getType() {
-		return type;
+		return definition.type;
 	}
 
 	private boolean isSynchronizedServerSchema() {
-		return type == ConfigSchemaType.SERVER;
+		return definition.type == ConfigSchemaType.SERVER;
 	}
 
 	@Override
 	public synchronized boolean isActive() {
 		loadIfNeeded();
-		return activePath != null || (isSynchronizedServerSchema() && remotelyActive);
+		return activeFiles.path() != null || (isSynchronizedServerSchema() && remotelyActive);
 	}
 
 	@Override
 	public synchronized Optional<Path> getPath() {
 		loadIfNeeded();
-		return Optional.ofNullable(activePath);
-	}
-
-	public synchronized Optional<Path> getRegistrationPath() {
-		return pathResolver.resolvePath()
-			.map(Path::normalize);
-	}
-
-	public synchronized Optional<Path> getDefaultPath() {
-		return pathResolver.resolveDefaultPath()
-			.map(Path::normalize);
-	}
-
-	public ServerConfigKey getServerKey() {
-		if (serverKey == null) {
-			throw new IllegalStateException("Config schema is not a server schema.");
-		}
-		return serverKey;
+		return Optional.ofNullable(activeFiles.path());
 	}
 
 	public long getChangeVersion() {
@@ -1344,7 +1122,7 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	private boolean usesDeclaredDefaults() {
-		return type != ConfigSchemaType.CLIENT && activePath == null && !remotelyActive;
+		return definition.type != ConfigSchemaType.CLIENT && activeFiles.path() == null && !remotelyActive;
 	}
 
 	public synchronized List<ServerConfigValueData> serializeValues() {
@@ -1354,7 +1132,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	private List<ServerConfigValueData> serializeCurrentValues() {
 		List<ServerConfigValueData> values = new ArrayList<>();
-		for (ConfigCategory category : categories) {
+		for (ConfigCategory category : definition.categories) {
 			for (ConfigValue<?> value : category.getConfigValues()) {
 				values.add(serializeValue(category.getName(), value));
 			}
@@ -1375,7 +1153,7 @@ public class ConfigSchema implements IConfigSchema {
 
 	private void validateServerSnapshots(Map<ConfigValue<?>, Object> updatedValues) {
 		ServerConfigRuntime.validateSnapshot(
-			getServerKey(),
+			definition.getServerKey(),
 			serializeProspectiveValues(updatedValues, ServerSnapshotState.CURRENT)
 		);
 		boolean hasWorldRestartValue = getConfigValues().stream()
@@ -1384,13 +1162,13 @@ public class ConfigSchema implements IConfigSchema {
 			.anyMatch(value -> value.getRestartRequirement() == ConfigValueRestartRequirement.GAME_RESTART);
 		if (hasWorldRestartValue) {
 			ServerConfigRuntime.validateSnapshot(
-				getServerKey(),
+				definition.getServerKey(),
 				serializeProspectiveValues(updatedValues, ServerSnapshotState.AFTER_WORLD_RESTART)
 			);
 		}
 		if (hasGameRestartValue) {
 			ServerConfigRuntime.validateSnapshot(
-				getServerKey(),
+				definition.getServerKey(),
 				serializeProspectiveValues(updatedValues, ServerSnapshotState.AFTER_GAME_RESTART)
 			);
 		}
@@ -1401,7 +1179,7 @@ public class ConfigSchema implements IConfigSchema {
 		ServerSnapshotState state
 	) {
 		List<ServerConfigValueData> values = new ArrayList<>();
-		for (ConfigCategory category : categories) {
+		for (ConfigCategory category : definition.categories) {
 			for (ConfigValue<?> value : category.getConfigValues()) {
 				values.add(serializeProspectiveValue(category.getName(), value, updatedValues, state));
 			}
@@ -1451,7 +1229,7 @@ public class ConfigSchema implements IConfigSchema {
 		Set<ConfigValue<?>> resolvedValues = new HashSet<>();
 		List<ResolvedServerConfigValue> results = new ArrayList<>();
 		for (ServerConfigValueData data : values) {
-			Optional<ConfigCategory> optionalCategory = categories.stream()
+			Optional<ConfigCategory> optionalCategory = definition.categories.stream()
 				.filter(candidate -> candidate.getName().equals(data.categoryName()))
 				.findFirst();
 			if (optionalCategory.isEmpty()) {
@@ -1494,16 +1272,13 @@ public class ConfigSchema implements IConfigSchema {
 		return result.getResult().orElseThrow();
 	}
 
-	public synchronized void applyRemoteSnapshot(List<ServerConfigValueData> values) {
-		if (!isSynchronizedServerSchema()) {
-			throw new IllegalStateException("Config schema is not server-owned.");
-		}
+	private synchronized void applyRemoteSnapshot(List<ServerConfigValueData> values) {
 		List<SynchronizedConfigValue<?>> synchronizedValues = new ArrayList<>();
 		for (ResolvedServerConfigValue value : resolveServerValues(values, true)) {
 			synchronizedValues.add(deserializeSynchronizedValue(value));
 		}
 		loadIfNeeded();
-		if (activePath != null) {
+		if (activeFiles.path() != null) {
 			return;
 		}
 		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
@@ -1525,10 +1300,7 @@ public class ConfigSchema implements IConfigSchema {
 		return new SynchronizedConfigValue<>(configValue, synchronizedValue);
 	}
 
-	public synchronized void clearRemoteSnapshot() {
-		if (!isSynchronizedServerSchema()) {
-			return;
-		}
+	private synchronized void clearRemoteSnapshot() {
 		if (!remotelyActive) {
 			return;
 		}
@@ -1540,6 +1312,89 @@ public class ConfigSchema implements IConfigSchema {
 		List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
 		List<AppliedConfigValueChange<?>> pendingChanges = getPendingChanges(previousPendingValues);
 		notifyChanges(effectiveChanges, pendingChanges);
+	}
+
+	public Optional<ServerSynchronization> getServerSynchronization() {
+		return Optional.ofNullable(serverSynchronization);
+	}
+
+	/** Server synchronization operations for an initialized server schema. */
+	public final class ServerSynchronization {
+		private final ServerConfigKey key;
+		private final ListenerList<Runnable> changeListeners = new ListenerList<>();
+
+		private ServerSynchronization(ServerConfigKey key) {
+			this.key = key;
+		}
+
+		public ConfigSchema getSchema() {
+			return ConfigSchema.this;
+		}
+
+		public ServerConfigKey getKey() {
+			return key;
+		}
+
+		public Runnable addChangeListener(Runnable listener) {
+			return changeListeners.add(listener);
+		}
+
+		private void notifyChanged() {
+			changeListeners.snapshot().forEach(Runnable::run);
+		}
+
+		public List<ServerConfigValueData> serializeValues() {
+			return ConfigSchema.this.serializeValues();
+		}
+
+		public void applyRemoteSnapshot(List<ServerConfigValueData> values) {
+			ConfigSchema.this.applyRemoteSnapshot(values);
+		}
+
+		public void clearRemoteSnapshot() {
+			ConfigSchema.this.clearRemoteSnapshot();
+		}
+	}
+
+	private record ActiveFiles(
+		@Nullable Path defaultPath,
+		@Nullable Path path,
+		@Nullable Runnable removeDefaultCallback,
+		@Nullable Runnable removeCallback
+	) {
+		private static final ActiveFiles NONE = new ActiveFiles(null, null, null, null);
+
+		private void close() {
+			if (removeDefaultCallback == null) {
+				if (removeCallback != null) {
+					removeCallback.run();
+				}
+				return;
+			}
+			try {
+				removeDefaultCallback.run();
+			} catch (RuntimeException | Error e) {
+				if (removeCallback != null) {
+					try {
+						removeCallback.run();
+					} catch (RuntimeException | Error secondFailure) {
+						e.addSuppressed(secondFailure);
+					}
+				}
+				throw e;
+			}
+			if (removeCallback != null) {
+				removeCallback.run();
+			}
+		}
+
+		private void closeAfterFailure(Throwable failure) {
+			try {
+				close();
+			} catch (RuntimeException | Error cleanupFailure) {
+				failure.addSuppressed(cleanupFailure);
+			}
+		}
 	}
 
 	private enum PendingLoad {
@@ -1555,13 +1410,16 @@ public class ConfigSchema implements IConfigSchema {
 		boolean usesDeclaredDefaults
 	) {}
 
+	private record FileLoadResult(
+		LoadState previousState,
+		List<InitialSave> initialSaves
+	) {}
+
 	private record LoadResult(
 		List<AppliedConfigValueChange<?>> effectiveChanges,
 		List<AppliedConfigValueChange<?>> pendingChanges,
 		List<InitialSave> initialSaves
-	) {
-		private static final LoadResult UNCHANGED = new LoadResult(List.of(), List.of(), List.of());
-	}
+	) {}
 
 	private record ResolvedServerConfigValue(
 		ConfigValue<?> configValue,

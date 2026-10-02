@@ -15,4 +15,13 @@ public final class ErrorUtil {
 		}
 		return value;
 	}
+
+	@Contract("null, _ -> fail; !null, _ -> param1")
+	public static String checkNotBlank(@Nullable String value, String name) {
+		value = checkNotNull(value, name);
+		if (value.isBlank()) {
+			throw new IllegalArgumentException(name + " must not be blank.");
+		}
+		return value;
+	}
 }

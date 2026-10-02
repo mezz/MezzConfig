@@ -1,7 +1,7 @@
 package net.mezzdev.config.server;
 
 import net.mezzdev.config.file.ConfigManager;
-import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchema.ServerSynchronization;
 import net.mezzdev.config.util.ErrorUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -50,8 +50,8 @@ final class ServerConfigClientConnection {
 
 	void handleSync(ServerConfigSyncPayload payload) {
 		try {
-			getConfigManager().getServerSchema(payload.key())
-				.ifPresent(schema -> schema.applyRemoteSnapshot(payload.values()));
+			getConfigManager().getServerSynchronization(payload.key())
+				.ifPresent(synchronization -> synchronization.applyRemoteSnapshot(payload.values()));
 		} catch (RuntimeException e) {
 			LOGGER.error("Failed to apply synchronized server config schema: {}", payload.key(), e);
 		}
@@ -82,7 +82,7 @@ final class ServerConfigClientConnection {
 			manager.onClientWorldStopped();
 		} finally {
 			// Clear the server's values even if saving the client's settings fails.
-			manager.getServerSchemas().forEach(ConfigSchema::clearRemoteSnapshot);
+			manager.getServerSynchronizations().forEach(ServerSynchronization::clearRemoteSnapshot);
 		}
 	}
 

@@ -3,8 +3,6 @@ package net.mezzdev.config.schema;
 import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.file.ConfigSerializer;
 
-import java.util.List;
-
 record ConfigSchemaMode(
 	ConfigSerializer.Settings serializationSettings,
 	boolean waitForLocalization,
@@ -27,11 +25,8 @@ record ConfigSchemaMode(
 	}
 
 	private static ConfigSchemaMode installation() {
-		ConfigSerializer.Settings settings = ConfigSerializer.Settings.withLiteralComments(List.of(
-			"Config for this game installation."
-		));
 		return new ConfigSchemaMode(
-			settings,
+			ConfigSerializer.INSTALLATION_SETTINGS,
 			false,
 			true
 		);

@@ -12,7 +12,6 @@ import net.mezzdev.config.file.ConfigFileWatcherSettings;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.file.MezzConfigSettings;
 import net.mezzdev.config.schema.ClientWorldConfigSchemaPathResolver;
-import net.mezzdev.config.schema.ConfigSchema;
 import net.mezzdev.config.schema.ConfigSchemaBuilder;
 import net.mezzdev.config.schema.ConfigSchemaPathResolver;
 import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
@@ -63,7 +62,7 @@ public final class ConfigProvider implements Configs.IConfigProvider {
 	}
 
 	private static String validateModDirectory(String modId) {
-		modId = ConfigSchema.validateModId(modId);
+		modId = ErrorUtil.checkNotBlank(modId, "modId");
 		Path relativeModDirectory = Path.of(modId).normalize();
 		if (relativeModDirectory.isAbsolute() ||
 			relativeModDirectory.startsWith("..") ||
@@ -261,10 +260,7 @@ public final class ConfigProvider implements Configs.IConfigProvider {
 	}
 
 	private static Path getRelativeConfigFile(String configFileName) {
-		configFileName = ErrorUtil.checkNotNull(configFileName, "configFileName");
-		if (configFileName.isBlank()) {
-			throw new IllegalArgumentException("configFileName must not be blank.");
-		}
+		configFileName = ErrorUtil.checkNotBlank(configFileName, "configFileName");
 		Path relativeConfigFile = Path.of(configFileName).normalize();
 		if (relativeConfigFile.isAbsolute() ||
 			relativeConfigFile.startsWith("..") ||

@@ -49,10 +49,7 @@ final class ConfigMigrationContext implements IConfigMigrationContext {
 	@Override
 	public ConfigMigrationContext rejectValue(String diagnostic) {
 		checkOpen();
-		diagnostic = ErrorUtil.checkNotNull(diagnostic, "diagnostic");
-		if (diagnostic.isBlank()) {
-			throw new IllegalArgumentException("diagnostic must not be blank.");
-		}
+		diagnostic = ErrorUtil.checkNotBlank(diagnostic, "diagnostic");
 		rejectedValueCount++;
 		addDiagnostic(diagnostic);
 		return this;

@@ -4,6 +4,7 @@ import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.schema.IConfigSchema;
 import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchemaDefinition;
 import net.mezzdev.config.server.ServerConfigKey;
 import net.mezzdev.config.server.ServerConfigRuntime;
 import net.mezzdev.config.serializers.StringSerializer;
@@ -113,32 +114,29 @@ public class ConfigManager {
 		return saveExecutor;
 	}
 
-	public void registerSchema(ConfigSchema schema) {
-		RegistrationKey key = reserve(schema);
-		boolean initialized = false;
+	public ConfigSchema registerSchema(ConfigSchemaDefinition definition) {
+		RegistrationKey key = reserve(definition);
+		ConfigSchema schema;
 		try {
-			FileWatcher fileWatcher = getFileWatcher(schema.getType());
-			schema.register(
+			FileWatcher fileWatcher = getFileWatcher(definition.getType());
+			schema = definition.initialize(
 				fileWatcher,
 				logUntranslatedKeys,
-				paths -> pathReservations.replace(schema, getSchemaDescription(schema), paths)
+				paths -> pathReservations.replace(definition, getSchemaDescription(definition), paths),
+				initializedSchema -> publish(key, initializedSchema)
 			);
-			initialized = true;
-			publish(key, schema);
 		} catch (RuntimeException | Error e) {
 			cancelReservation(key);
-			if (initialized) {
-				schema.rollbackRegistration(e);
-			}
 			throw e;
 		}
-		if (schema.getType() == ConfigSchemaType.SERVER) {
+		schema.getServerSynchronization().ifPresent(synchronization -> {
 			try {
-				ServerConfigRuntime.onServerSchemaRegistered(schema);
+				ServerConfigRuntime.onServerSchemaRegistered(synchronization);
 			} catch (RuntimeException e) {
-				LOGGER.error("Failed to synchronize newly registered server config schema: {}", schema.getServerKey(), e);
+				LOGGER.error("Failed to synchronize newly registered server config schema: {}", synchronization.getKey(), e);
 			}
-		}
+		});
+		return schema;
 	}
 
 	public <T> SortingConfig<T> createSortingConfig(
@@ -175,10 +173,10 @@ public class ConfigManager {
 		return createInMemorySortingConfig(StringSerializer.INSTANCE, defaultSortOrder, allowsRemovingValues);
 	}
 
-	private static String getSchemaDescription(ConfigSchema schema) {
+	private static String getSchemaDescription(ConfigSchemaDefinition definition) {
 		return "a %s config schema for mod '%s'".formatted(
-			schema.getType().name().toLowerCase(Locale.ROOT),
-			schema.getModId()
+			definition.getType().name().toLowerCase(Locale.ROOT),
+			definition.getModId()
 		);
 	}
 
@@ -189,8 +187,8 @@ public class ConfigManager {
 		return clientFileWatcher.getOrCreate();
 	}
 
-	private synchronized RegistrationKey reserve(ConfigSchema schema) {
-		RegistrationKey key = getRegistrationKey(schema);
+	private synchronized RegistrationKey reserve(ConfigSchemaDefinition definition) {
+		RegistrationKey key = getRegistrationKey(definition);
 		if (schemasByKey.containsKey(key) || !reservedKeys.add(key)) {
 			throw new IllegalArgumentException("There is already a config schema registered for: " + key);
 		}
@@ -211,25 +209,25 @@ public class ConfigManager {
 		schemas.add(schema);
 	}
 
-	private static RegistrationKey getRegistrationKey(ConfigSchema schema) {
-		if (schema.getType() == ConfigSchemaType.SERVER) {
-			return new RegistrationKey(schema.getType(), schema.getServerKey());
+	private static RegistrationKey getRegistrationKey(ConfigSchemaDefinition definition) {
+		if (definition.getType() == ConfigSchemaType.SERVER) {
+			return new RegistrationKey(definition.getType(), definition.getServerKey());
 		}
-		if (schema.getType() == ConfigSchemaType.CLIENT) {
-			Path path = schema.getRegistrationPath()
+		if (definition.getType() == ConfigSchemaType.CLIENT) {
+			Path path = definition.getRegistrationPath()
 				.orElseThrow(() -> new IllegalArgumentException("Client schemas must have a backing file."))
 				.toAbsolutePath()
 				.normalize();
-			return new RegistrationKey(schema.getType(), path);
+			return new RegistrationKey(definition.getType(), path);
 		}
-		if (schema.getType() == ConfigSchemaType.CLIENT_PER_WORLD) {
-			Path path = schema.getDefaultPath()
+		if (definition.getType() == ConfigSchemaType.CLIENT_PER_WORLD) {
+			Path path = definition.getDefaultPath()
 				.orElseThrow(() -> new IllegalArgumentException("Client-world schemas must have a default file."))
 				.toAbsolutePath()
 				.normalize();
-			return new RegistrationKey(schema.getType(), path);
+			return new RegistrationKey(definition.getType(), path);
 		}
-		throw new IllegalArgumentException("Unsupported config schema type: " + schema.getType());
+		throw new IllegalArgumentException("Unsupported config schema type: " + definition.getType());
 	}
 
 	public void startWatching() {
@@ -258,11 +256,11 @@ public class ConfigManager {
 	}
 
 	public void onServerStopped() {
-		Collection<ConfigSchema> schemas = getServerSchemas();
-		schemas.forEach(ConfigSchema::invalidatePaths);
-		schemas.forEach(schema -> {
-			schema.clearRemoteSnapshot();
-			schema.loadIfNeeded();
+		Collection<ConfigSchema.ServerSynchronization> synchronizations = getServerSynchronizations();
+		synchronizations.forEach(synchronization -> synchronization.getSchema().invalidatePaths());
+		synchronizations.forEach(synchronization -> {
+			synchronization.clearRemoteSnapshot();
+			synchronization.getSchema().loadIfNeeded();
 		});
 	}
 
@@ -276,9 +274,9 @@ public class ConfigManager {
 		return getConfigSchemaSnapshot();
 	}
 
-	public Collection<ConfigSchema> getServerSchemas() {
+	public Collection<ConfigSchema.ServerSynchronization> getServerSynchronizations() {
 		return getConfigSchemaSnapshot().stream()
-			.filter(schema -> schema.getType() == ConfigSchemaType.SERVER)
+			.flatMap(schema -> schema.getServerSynchronization().stream())
 			.toList();
 	}
 
@@ -288,9 +286,13 @@ public class ConfigManager {
 			.toList();
 	}
 
-	public synchronized Optional<ConfigSchema> getServerSchema(ServerConfigKey key) {
+	public Optional<ConfigSchema.ServerSynchronization> getServerSynchronization(ServerConfigKey key) {
 		RegistrationKey registrationKey = new RegistrationKey(ConfigSchemaType.SERVER, key);
-		return Optional.ofNullable(schemasByKey.get(registrationKey));
+		ConfigSchema schema;
+		synchronized (this) {
+			schema = schemasByKey.get(registrationKey);
+		}
+		return Optional.ofNullable(schema).flatMap(ConfigSchema::getServerSynchronization);
 	}
 
 	private synchronized List<ConfigSchema> getConfigSchemaSnapshot() {

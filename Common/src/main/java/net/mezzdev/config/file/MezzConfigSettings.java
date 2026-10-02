@@ -2,8 +2,9 @@ package net.mezzdev.config.file;
 
 import net.mezzdev.config.api.schema.ConfigSchemaType;
 import net.mezzdev.config.api.value.editor.ConfigValueRestartRequirement;
+import net.mezzdev.config.schema.ConfigCategory;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
-import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchemaDefinition;
 import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
 import net.mezzdev.config.schema.StaticConfigSchemaPathResolver;
 import net.mezzdev.config.util.ErrorUtil;
@@ -12,6 +13,9 @@ import net.mezzdev.deduplicatingrunner.DelayedExecutor;
 import net.mezzdev.deduplicatingrunner.DelayedTaskScheduler;
 import org.jetbrains.annotations.ApiStatus;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -34,9 +38,8 @@ public final class MezzConfigSettings {
 		configRootDir = ErrorUtil.checkNotNull(configRootDir, "configRootDir")
 			.toAbsolutePath()
 			.normalize();
+		StartupSettings startupSettings = readStartupSettings(configRootDir, developmentEnvironment);
 		DelayedExecutor saveExecutor = ConfigManager.createSaveExecutor();
-		SchemaData startupSettings = createSchema(configRootDir, developmentEnvironment, saveExecutor);
-		startupSettings.schema().register(null, false);
 		ConfigManager configManager = new ConfigManager(
 			fileWatcherThreadName,
 			startupSettings.fileWatcherSettings(),
@@ -44,17 +47,57 @@ public final class MezzConfigSettings {
 			startupSettings.logUntranslatedKeys(),
 			saveExecutor
 		);
-		ConfigSchema schema = createSchema(configRootDir, developmentEnvironment, saveExecutor).schema();
-		configManager.registerSchema(schema);
+		ConfigSchemaDefinition definition = createDefinition(configRootDir, developmentEnvironment, saveExecutor);
+		configManager.registerSchema(definition);
 		return configManager;
 	}
 
-	private static SchemaData createSchema(
+	static StartupSettings readStartupSettings(Path configRootDir, boolean developmentEnvironment) {
+		SettingsValues values = createValues(developmentEnvironment);
+		List<ConfigCategory> categories = values.categoryBuilders().stream()
+			.map(ConfigCategoryBuilder::build)
+			.toList();
+		Path clientConfigDirectory = configRootDir.resolve(MOD_ID).resolve("client");
+		loadSettingsFile(clientConfigDirectory.resolve("default").resolve(CONFIG_FILE_NAME), categories);
+		loadSettingsFile(clientConfigDirectory.resolve(CONFIG_FILE_NAME), categories);
+		return values.startupSettings();
+	}
+
+	private static void loadSettingsFile(Path path, List<ConfigCategory> categories) {
+		if (Files.exists(path)) {
+			try {
+				ConfigSerializer.loadWithoutNotifyingUnconditionally(path, categories, ConfigSerializer.INSTALLATION_SETTINGS);
+			} catch (IOException e) {
+				throw new UncheckedIOException("Failed to load startup settings: " + path, e);
+			}
+		}
+	}
+
+	private static ConfigSchemaDefinition createDefinition(
 		Path configRootDir,
 		boolean developmentEnvironment,
 		DelayedTaskScheduler saveScheduler
 	) {
 		saveScheduler = ErrorUtil.checkNotNull(saveScheduler, "saveScheduler");
+		SettingsValues values = createValues(developmentEnvironment);
+		Path clientConfigDirectory = configRootDir.resolve(MOD_ID).resolve("client");
+		return new ConfigSchemaDefinition(
+			CONFIG_FILE_NAME,
+			MOD_ID,
+			new LayeredConfigSchemaPathResolver(
+				clientConfigDirectory.resolve("default").resolve(CONFIG_FILE_NAME),
+				new StaticConfigSchemaPathResolver(clientConfigDirectory.resolve(CONFIG_FILE_NAME))
+			),
+			values.categoryBuilders(),
+			List.copyOf(values.categoryBuilders()),
+			saveScheduler,
+			ConfigSchemaType.CLIENT,
+			null,
+			null
+		);
+	}
+
+	private static SettingsValues createValues(boolean developmentEnvironment) {
 		ConfigFileWatcherSettings defaults = ConfigFileWatcherSettings.clientDefaults();
 		ConfigCategoryBuilder fileWatcher = new ConfigCategoryBuilder(LOCALIZATION_PATH, "fileWatcher");
 		ConfigValue<Boolean> enabled = fileWatcher.addBoolean("enabled", defaults.enabled())
@@ -81,22 +124,8 @@ public final class MezzConfigSettings {
 			.setRestartRequirement(ConfigValueRestartRequirement.GAME_RESTART)
 			.build();
 
-		Path clientConfigDirectory = configRootDir.resolve(MOD_ID).resolve("client");
-		ConfigSchema schema = new ConfigSchema(
-			CONFIG_FILE_NAME,
-			MOD_ID,
-			new LayeredConfigSchemaPathResolver(
-				clientConfigDirectory.resolve("default").resolve(CONFIG_FILE_NAME),
-				new StaticConfigSchemaPathResolver(clientConfigDirectory.resolve(CONFIG_FILE_NAME))
-			),
+		return new SettingsValues(
 			List.of(fileWatcher, logging),
-			List.of(fileWatcher, logging),
-			saveScheduler,
-			ConfigSchemaType.CLIENT,
-			null
-		);
-		return new SchemaData(
-			schema,
 			enabled,
 			settlingDelay,
 			retryInterval,
@@ -104,23 +133,24 @@ public final class MezzConfigSettings {
 		);
 	}
 
-	private record SchemaData(
-		ConfigSchema schema,
+	record StartupSettings(ConfigFileWatcherSettings fileWatcherSettings, boolean logUntranslatedKeys) {}
+
+	private record SettingsValues(
+		List<ConfigCategoryBuilder> categoryBuilders,
 		ConfigValue<Boolean> enabled,
 		ConfigValue<Long> settlingDelay,
 		ConfigValue<Long> retryInterval,
 		ConfigValue<Boolean> logUntranslatedKeysValue
 	) {
-		private ConfigFileWatcherSettings fileWatcherSettings() {
-			return new ConfigFileWatcherSettings(
-				enabled.get(),
-				Duration.ofMillis(settlingDelay.get()),
-				Duration.ofMillis(retryInterval.get())
+		private StartupSettings startupSettings() {
+			return new StartupSettings(
+				new ConfigFileWatcherSettings(
+					enabled.getPendingValue(),
+					Duration.ofMillis(settlingDelay.getPendingValue()),
+					Duration.ofMillis(retryInterval.getPendingValue())
+				),
+				logUntranslatedKeysValue.getPendingValue()
 			);
-		}
-
-		private boolean logUntranslatedKeys() {
-			return logUntranslatedKeysValue.get();
 		}
 	}
 }
