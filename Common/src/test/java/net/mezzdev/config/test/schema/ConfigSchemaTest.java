@@ -37,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -67,6 +68,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigSchemaTest {
+	@TempDir
+	private Path tempDir;
+
 	@Test
 	public void startupRefreshReusesLoadedFingerprintOnlyForThatSave(@TempDir Path tempDir) throws IOException {
 		// Setup: generate a canonical client file whose saved setting differs from its declared default.
@@ -74,7 +78,7 @@ public class ConfigSchemaTest {
 		Files.writeString(path, "[general]\nenabled = false\n");
 		ConfigCategoryBuilder originalBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
 		originalBuilder.addBoolean("enabled", true).build();
-		createSchema(path, List.of(originalBuilder), List.of(originalBuilder)).register(null, false);
+		createSchema(path, List.of(originalBuilder), List.of(originalBuilder));
 		String loadedContents = Files.readString(path);
 		String externalEdit = "[general]\nenabled = true\n";
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "general");
@@ -909,22 +913,21 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
-	public void oversizedProspectiveFileIsRejectedBeforeMutation(@TempDir Path tempDir) {
-		// Setup: a file-backed schema contains one small string and has not saved its file yet.
+	public void oversizedProspectiveFileIsRejectedBeforeMutation(@TempDir Path tempDir) throws IOException {
 		Path path = tempDir.resolve("test.ini");
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<String> text = builder.addString("text", "small")
 			.build();
 		createSchema(path, builder);
+		String originalContents = Files.readString(path);
 		String oversized = "x".repeat(ConfigFileReader.MAX_FILE_BYTES);
 
 		// Operation: try to set text that would make the prospective config file exceed its limit.
 		assertThrows(IllegalArgumentException.class, () -> text.set(oversized));
 
-		// Assertions: effective and pending state remain unchanged and no file is written.
 		assertEquals("small", text.get());
 		assertEquals("small", text.getEditorInfo().getPendingValue());
-		assertFalse(Files.exists(path));
+		assertEquals(originalContents, Files.readString(path));
 	}
 
 	@Test
@@ -1058,6 +1061,7 @@ public class ConfigSchemaTest {
 				return new CompletableFuture<>();
 			}
 		);
+		schema.register(null, false);
 		AtomicInteger laterNotifications = new AtomicInteger();
 		schema.addBatchListener(ignored -> {
 			assertEquals(1, scheduledSaves.get());
@@ -1103,10 +1107,12 @@ public class ConfigSchemaTest {
 			(command, delay) -> CompletableFuture.completedFuture(null), type,
 			serverKey
 		);
+		schema.register(null, false);
 
 		// Operation and assertions: neither active nor inactive reads scan unrelated values.
 		for (Optional<Path> context : List.of(activePath.get(), Optional.<Path>empty())) {
 			activePath.set(context);
+			schema.invalidatePaths();
 			schema.loadIfNeeded();
 			categoryVisits.set(0);
 			for (int read = 0; read < 10; read++) {
@@ -1128,45 +1134,50 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
-	public void unchangedReadsStillNoticeDefaultPathChanges(@TempDir Path tempDir) throws IOException {
+	public void invalidatingPathsLoadsChangedDefaults(@TempDir Path tempDir) throws IOException {
 		// Setup: the player path stays fixed while its inherited defaults change.
 		Path first = tempDir.resolve("first.ini");
 		Path second = tempDir.resolve("second.ini");
 		Files.write(first, List.of("[category]", "enabled = false"));
 		Files.write(second, List.of("[category]", "enabled = true"));
 		AtomicReference<Path> defaultPath = new AtomicReference<>(first);
+		AtomicInteger defaultPathResolutions = new AtomicInteger();
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true).build();
-		createSchema(new ConfigSchemaPathResolver() {
+		ConfigSchema schema = createSchema(new ConfigSchemaPathResolver() {
 			@Override
 			public Optional<Path> resolvePath() {
 				return Optional.of(tempDir.resolve("player.ini"));
 			}
 			@Override
 			public Optional<Path> resolveDefaultPath() {
+				defaultPathResolutions.incrementAndGet();
 				return Optional.of(defaultPath.get());
 			}
 		}, builder);
 		assertFalse(enabled.get());
+		int loadedResolutions = defaultPathResolutions.get();
 		assertFalse(enabled.get());
+		assertFalse(enabled.getPendingValue());
+		assertEquals(loadedResolutions, defaultPathResolutions.get(), "Unchanged reads must not resolve default paths.");
 		AtomicInteger changes = new AtomicInteger();
 		enabled.addListener(ignored -> changes.incrementAndGet());
 
-		// Operation and assertions: a read notices the new defaults and emits one change.
 		defaultPath.set(second);
+		schema.invalidatePaths();
 		assertTrue(enabled.get());
 		assertTrue(enabled.getPendingValue());
 		assertEquals(1, changes.get());
 	}
 
-	@Test
-	public void unchangedReadsStillReloadExternalFileChanges(@TempDir Path tempDir) throws Exception {
-		// Setup: warm the unchanged-read path while a watcher observes the active file.
+	@ParameterizedTest
+	@ValueSource(booleans = {false, true})
+	public void unchangedReadsStillReloadExternalFileChanges(boolean invalidatePaths, @TempDir Path tempDir) throws Exception {
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of("[category]", "enabled = true"));
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true).build();
-		ConfigSchema schema = createSchema(path, builder);
+		ConfigSchema schema = new ConfigSchema(path, List.of(builder), (command, delay) -> CompletableFuture.completedFuture(null));
 		try (FileWatcher watcher = new FileWatcher("Config Read Test", Duration.ofMillis(25), Duration.ofSeconds(1))) {
 			schema.register(watcher, false);
 			CountDownLatch fileChanged = new CountDownLatch(1);
@@ -1177,9 +1188,12 @@ public class ConfigSchemaTest {
 			AtomicInteger changes = new AtomicInteger();
 			enabled.addListener(ignored -> changes.incrementAndGet());
 
-			// Operation and assertions: the watcher invalidates the fast path and the next read reloads.
 			Files.write(path, List.of("[category]", "enabled = false"));
 			awaitLatch(fileChanged);
+			if (invalidatePaths) {
+				// The file still needs to reload even if we also check its path.
+				schema.invalidatePaths();
+			}
 			assertFalse(enabled.get());
 			assertFalse(enabled.getPendingValue());
 			assertEquals(1, changes.get());
@@ -1187,7 +1201,7 @@ public class ConfigSchemaTest {
 	}
 
 	@Test
-	public void loadIfNeededNotifiesSchemaBatchListenersAfterAllValuesUpdate(@TempDir Path tempDir) throws IOException {
+	public void registrationNotifiesSchemaBatchListenersAfterAllValuesUpdate(@TempDir Path tempDir) throws IOException {
 		// Setup: a config file changes two values before the schema is loaded.
 		Path path = tempDir.resolve("test.ini");
 		Files.write(path, List.of(
@@ -1200,12 +1214,11 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigValue<Integer> count = builder.addInteger("count", 1, 0, 10)
 			.build();
-		ConfigSchema schema = createSchema(path, builder);
+		ConfigSchema schema = new ConfigSchema(path, List.of(builder), (command, delay) -> CompletableFuture.completedFuture(null));
 		List<String> schemaBatches = new ArrayList<>();
 		schema.addBatchListener(changes -> schemaBatches.add(formatBatch(changes, enabled.get(), count.get())));
 
-		// Operation: load the file through the schema.
-		schema.loadIfNeeded();
+		schema.register(null, false);
 
 		// Assertions: file loading also notifies after all changed values have been applied.
 		assertFalse(enabled.get());
@@ -1234,6 +1247,7 @@ public class ConfigSchemaTest {
 				return CompletableFuture.completedFuture(null);
 			}
 		);
+		schema.register(null, false);
 		assertFalse(enabled.get());
 		assertFalse(enabled.getEditorInfo().getPendingValue());
 		AtomicInteger notifications = new AtomicInteger();
@@ -1352,6 +1366,7 @@ public class ConfigSchemaTest {
 
 		// Operation: switch the active world path and reload its file.
 		resolvedPath.set(Optional.of(secondPath));
+		schema.invalidatePaths();
 		schema.loadIfNeeded();
 
 		// Assertions: pending state and listeners update without changing effective state or notifying effective listeners.
@@ -1388,7 +1403,7 @@ public class ConfigSchemaTest {
 			(command, delay) -> CompletableFuture.completedFuture(null), type,
 			serverKey
 		);
-		schema.loadIfNeeded();
+		schema.register(null, false);
 		List<String> effectiveChanges = new ArrayList<>();
 		List<String> pendingChanges = new ArrayList<>();
 		List<Boolean> gameChanges = new ArrayList<>();
@@ -1401,6 +1416,7 @@ public class ConfigSchemaTest {
 
 		// Operation: leave the first local world.
 		activePath.set(Optional.empty());
+		schema.invalidatePaths();
 
 		// Assertions: every visible value resets to defaults through one effective and pending batch.
 		assertFalse(game.get());
@@ -1412,6 +1428,7 @@ public class ConfigSchemaTest {
 
 		// Operation: reactivate the first world.
 		activePath.set(Optional.of(firstPath));
+		schema.invalidatePaths();
 
 		// Assertions: all stored values return and listener history records the complete transition.
 		assertTrue(game.get());
@@ -1426,8 +1443,10 @@ public class ConfigSchemaTest {
 
 		// Operation: leave again, load the second world, and promote values eligible after a world restart.
 		activePath.set(Optional.empty());
+		schema.invalidatePaths();
 		schema.loadIfNeeded();
 		activePath.set(Optional.of(secondPath));
+		schema.invalidatePaths();
 		schema.promotePendingValuesAfterWorldRestart();
 
 		// Assertions: immediate and world values use the second file while the game-restart value retains effective state.
@@ -1452,8 +1471,10 @@ public class ConfigSchemaTest {
 			(command, delay) -> CompletableFuture.completedFuture(null), ConfigSchemaType.SERVER,
 			new ServerConfigKey("test_mod", "server.ini")
 		);
+		schema.register(null, false);
 		assertTrue(enabled.get());
 		activePath.set(Optional.empty());
+		schema.invalidatePaths();
 		assertFalse(enabled.get());
 		List<String> changes = new ArrayList<>();
 		schema.addBatchListener(batch -> changes.add(formatChanges(batch)));
@@ -1605,6 +1626,7 @@ public class ConfigSchemaTest {
 
 		// Operation: the client enters a world and the schema can now resolve its active path.
 		resolvedPath.set(Optional.of(activePath));
+		schema.invalidatePaths();
 
 		// Assertions: the schema is now editable and reports the active backing file.
 		assertTrue(schema.isActive());
@@ -1867,6 +1889,7 @@ public class ConfigSchemaTest {
 
 		// Operation: starting a world activates its serverconfig path.
 		activePath.set(Optional.of(worldPath));
+		schema.invalidatePaths();
 		assertTrue(schema.isActive());
 		assertEquals(Optional.of(worldPath), schema.getPath());
 		runScheduledTasks(scheduledTasks);
@@ -1899,13 +1922,13 @@ public class ConfigSchemaTest {
 		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
 		ConfigValue<Boolean> enabled = builder.addBoolean("enabled", true)
 			.build();
-		ConfigSchema schema = createSchema(resolvedPath::get, builder);
+		ConfigSchema schema = new ConfigSchema(resolvedPath::get, List.of(builder), (command, delay) -> CompletableFuture.completedFuture(null));
 		List<String> valueChanges = new ArrayList<>();
 		List<String> schemaBatches = new ArrayList<>();
 		enabled.addListener(change -> valueChanges.add("%s -> %s".formatted(change.oldValue(), change.newValue())));
 		schema.addBatchListener(changes -> schemaBatches.add(formatChanges(changes)));
 
-		// Operation: load the first world-specific config file.
+		schema.register(null, false);
 		assertFalse(enabled.get());
 
 		// Assertions: the value loads from the active file and listeners receive one applied batch.
@@ -1915,6 +1938,7 @@ public class ConfigSchemaTest {
 
 		// Operation: switch context and load the second world-specific config file.
 		resolvedPath.set(Optional.of(secondPath));
+		schema.invalidatePaths();
 		assertTrue(enabled.get());
 
 		// Assertions: switching paths resets and loads before notifying, so listeners see old world value -> new world value.
@@ -1938,10 +1962,12 @@ public class ConfigSchemaTest {
 			List.of(builder),
 			(command, delay) -> new CompletableFuture<>()
 		);
+		schema.register(null, false);
 
 		// Operation: update the first world, then switch to the second world before the delayed save can run.
 		assertTrue(enabled.set(false));
 		resolvedPath.set(Optional.of(secondPath));
+		schema.invalidatePaths();
 		assertTrue(enabled.get());
 
 		// Assertions: switching paths flushes the first world's pending save before values reset for the second world.
@@ -2081,19 +2107,19 @@ public class ConfigSchemaTest {
 		}
 	}
 
-	private static ConfigSchema createSchema(ConfigCategoryBuilder... builders) {
-		return createSchema(Path.of("test.ini"), builders);
+	private ConfigSchema createSchema(ConfigCategoryBuilder... builders) {
+		return createSchema(tempDir.resolve("test.ini"), builders);
 	}
 
 	private static ConfigSchema createSchema(Path path, ConfigCategoryBuilder... builders) {
 		return createSchema(path, List.of(builders), List.of(builders));
 	}
 
-	private static ConfigSchema createSchema(
+	private ConfigSchema createSchema(
 		List<ConfigCategoryBuilder> builders,
 		List<ConfigEditorCategoryBuilder> editorCategoryBuilders
 	) {
-		return createSchema(Path.of("test.ini"), builders, editorCategoryBuilders);
+		return createSchema(tempDir.resolve("test.ini"), builders, editorCategoryBuilders);
 	}
 
 	private static ConfigSchema createSchema(
@@ -2101,28 +2127,32 @@ public class ConfigSchemaTest {
 		List<ConfigCategoryBuilder> builders,
 		List<ConfigEditorCategoryBuilder> editorCategoryBuilders
 	) {
-		return new ConfigSchema(
+		ConfigSchema schema = new ConfigSchema(
 			path,
 			builders,
 			editorCategoryBuilders,
 			(command, delay) -> CompletableFuture.completedFuture(null)
 		);
+		schema.register(null, false);
+		return schema;
 	}
 
 	private static ConfigSchema createSchema(ConfigSchemaPathResolver pathResolver, ConfigCategoryBuilder... builders) {
-		return new ConfigSchema(
+		ConfigSchema schema = new ConfigSchema(
 			pathResolver,
 			List.of(builders),
 			List.of(builders),
 			(command, delay) -> CompletableFuture.completedFuture(null)
 		);
+		schema.register(null, false);
+		return schema;
 	}
 
 	private static ConfigSchema createClientPerWorldSchema(
 		ConfigSchemaPathResolver pathResolver,
 		ConfigCategoryBuilder... builders
 	) {
-		return new ConfigSchema(
+		ConfigSchema schema = new ConfigSchema(
 			"mezz_config",
 			pathResolver,
 			List.of(builders),
@@ -2131,10 +2161,12 @@ public class ConfigSchemaTest {
 			ConfigSchemaType.CLIENT_PER_WORLD,
 			null
 		);
+		schema.register(null, false);
+		return schema;
 	}
 
 	private static ConfigSchema createRemoteServerSchema(ConfigCategoryBuilder... builders) {
-		return new ConfigSchema(
+		ConfigSchema schema = new ConfigSchema(
 			"test_mod",
 			Optional::empty,
 			List.of(builders),
@@ -2143,6 +2175,8 @@ public class ConfigSchemaTest {
 			ConfigSchemaType.SERVER,
 			new ServerConfigKey("test_mod", "server.ini")
 		);
+		schema.register(null, false);
+		return schema;
 	}
 
 	private static void runScheduledTasks(Deque<Runnable> scheduledTasks) {

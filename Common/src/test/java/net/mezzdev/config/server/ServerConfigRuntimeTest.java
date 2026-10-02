@@ -1,12 +1,15 @@
 package net.mezzdev.config.server;
 
 import net.mezzdev.config.api.schema.ConfigSchemaType;
+import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.editor.ConfigValueRestartRequirement;
 import net.mezzdev.config.file.ConfigFileWatcherSettings;
 import net.mezzdev.config.file.ConfigManager;
 import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.schema.ConfigSchema;
+import net.mezzdev.config.schema.ConfigSchemaBuilder;
 import net.mezzdev.config.schema.ConfigSchemaPathResolver;
+import net.mezzdev.config.schema.LayeredConfigSchemaPathResolver;
 import net.mezzdev.config.value.ConfigValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,6 +18,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,6 +32,99 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ServerConfigRuntimeTest {
+	@Test
+	public void clientLifecycleInvalidatesAllSchemasBeforeNotifyingListeners(@TempDir Path tempDir) throws IOException {
+		ConfigManager manager = createConfigManager();
+		ServerConfigClientConnection connection = new ServerConfigClientConnection(() -> manager);
+		Path fallback = Files.createDirectories(tempDir.resolve("fallback"));
+		Path identified = Files.createDirectories(tempDir.resolve("identified"));
+		List<IConfigValue<Integer>> values = new ArrayList<>();
+		List<ConfigSchema> schemas = new ArrayList<>();
+		for (String file : List.of("first.ini", "second.ini")) {
+			Files.writeString(fallback.resolve(file), "[general]\nvalue = 11\n");
+			Files.writeString(identified.resolve(file), "[general]\nvalue = 22\n");
+			ConfigSchemaPathResolver resolver = new LayeredConfigSchemaPathResolver(
+				tempDir.resolve("default").resolve(file),
+				() -> {
+					if (!connection.isWorldActive()) {
+						return Optional.empty();
+					}
+					Path directory = fallback;
+					if (connection.getRemoteServerId().isPresent()) {
+						directory = identified;
+					}
+					return Optional.of(directory.resolve(file));
+				}
+			);
+			ConfigSchemaBuilder builder = new ConfigSchemaBuilder(
+				"lifecycle_test", resolver, "lifecycle_test.config", manager, ConfigSchemaType.CLIENT_PER_WORLD, null
+			);
+			values.add(builder.addCategory("general").addInteger("value", 0).build());
+			schemas.add(builder.build());
+		}
+		List<Integer> otherSchemaValues = new ArrayList<>();
+		values.getFirst().addListener(ignored -> otherSchemaValues.add(values.getLast().get()));
+
+		connection.onWorldStarted();
+		assertEquals(11, values.getFirst().get());
+		connection.handleServerIdentity(new ServerIdentityPayload(UUID.randomUUID()));
+		assertEquals(22, values.getFirst().get());
+		connection.onDisconnect();
+
+		assertEquals(List.of(11, 22, 0), otherSchemaValues);
+		assertEquals(0, values.getFirst().get());
+		assertTrue(schemas.stream().noneMatch(ConfigSchema::isActive));
+		assertTrue(schemas.stream().allMatch(schema -> schema.getPath().isEmpty()));
+	}
+
+	@Test
+	public void serverLifecycleFlushesTheOldWorldAndLoadsTheNext(@TempDir Path tempDir) throws IOException {
+		ConfigManager manager = createConfigManager();
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.empty());
+		TestStringSchema config = createStringServerSchema(
+			new ServerConfigKey("server_lifecycle_test", "server.ini"), activePath::get, 1, "default"
+		);
+		manager.registerSchema(config.schema());
+		Path first = tempDir.resolve("first.ini");
+		Path second = tempDir.resolve("second.ini");
+		Files.writeString(first, "[general]\nvalue_0 = first\n");
+		Files.writeString(second, "[general]\nvalue_0 = second\n");
+
+		activePath.set(Optional.of(first));
+		manager.onWorldStarted();
+		assertEquals("first", config.values().getFirst().get());
+		config.values().getFirst().set("pending-first");
+		activePath.set(Optional.empty());
+		manager.onServerStopped();
+		assertFalse(config.schema().isActive());
+		assertEquals("default", config.values().getFirst().get());
+		assertTrue(Files.readString(first).contains("pending-first"));
+
+		activePath.set(Optional.of(second));
+		manager.onWorldStarted();
+		assertEquals("second", config.values().getFirst().get());
+	}
+
+	@Test
+	public void failedLocalPathActivationKeepsRemoteSnapshot(@TempDir Path tempDir) {
+		ConfigManager manager = createConfigManager();
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.empty());
+		TestStringSchema config = createStringServerSchema(
+			new ServerConfigKey("path_collision_test", "server.ini"), activePath::get, 1, "default"
+		);
+		manager.registerSchema(config.schema());
+		config.schema().applyRemoteSnapshot(List.of(new ServerConfigValueData("general", "value_0", "\"remote\"")));
+		Path occupied = tempDir.resolve("occupied.ini");
+		manager.createSortingConfig(occupied, Comparator.naturalOrder(), true);
+
+		activePath.set(Optional.of(occupied));
+		assertThrows(IllegalArgumentException.class, manager::onWorldStarted);
+
+		activePath.set(Optional.empty());
+		assertEquals("remote", config.values().getFirst().get());
+		assertTrue(config.schema().isActive());
+	}
+
 	@Test
 	public void remoteClientConnectionAppliesChunkedSnapshotAndClearsItOnDisconnect(@TempDir Path tempDir) {
 		// Setup: a server has a large authoritative value while a remote client starts with its local default.
@@ -279,6 +376,7 @@ public class ServerConfigRuntimeTest {
 
 		// Operation: switch the active resolver to the oversized file.
 		activePath.set(Optional.of(oversizedPath));
+		testSchema.schema().invalidatePaths();
 
 		// Assertions: the path changes, but the prior snapshot remains and listeners are not notified.
 		assertEquals(Optional.of(oversizedPath), testSchema.schema().getPath());

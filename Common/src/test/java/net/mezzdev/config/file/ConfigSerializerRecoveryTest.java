@@ -180,7 +180,7 @@ public class ConfigSerializerRecoveryTest {
 		);
 
 		// Operation: load the layered schema and recover the player overlay.
-		schema.loadIfNeeded();
+		schema.register(null, false);
 
 		// Assertions: player data takes precedence where valid, fallback comes from the pack, and only the overlay changes.
 		assertTrue(enabled.get());

@@ -238,13 +238,32 @@ public class ConfigManager {
 	}
 
 	public void onWorldStarted() {
-		getConfigSchemaSnapshot().forEach(ConfigSchema::promotePendingValuesAfterWorldRestart);
+		List<ConfigSchema> schemas = getConfigSchemaSnapshot();
+		// Loading one schema can notify a listener that reads another schema.
+		// Mark all paths dirty first so those reads use the new world's files.
+		schemas.forEach(ConfigSchema::invalidatePaths);
+		schemas.forEach(ConfigSchema::promotePendingValuesAfterWorldRestart);
 	}
 
 	public void onClientServerIdentityReceived() {
-		getConfigSchemaSnapshot().stream()
-			.filter(schema -> schema.getType() == ConfigSchemaType.CLIENT_PER_WORLD)
-			.forEach(ConfigSchema::promotePendingValuesAfterWorldRestart);
+		List<ConfigSchema> schemas = getClientWorldSchemas();
+		schemas.forEach(ConfigSchema::invalidatePaths);
+		schemas.forEach(ConfigSchema::promotePendingValuesAfterWorldRestart);
+	}
+
+	public void onClientWorldStopped() {
+		List<ConfigSchema> schemas = getClientWorldSchemas();
+		schemas.forEach(ConfigSchema::invalidatePaths);
+		schemas.forEach(ConfigSchema::loadIfNeeded);
+	}
+
+	public void onServerStopped() {
+		Collection<ConfigSchema> schemas = getServerSchemas();
+		schemas.forEach(ConfigSchema::invalidatePaths);
+		schemas.forEach(schema -> {
+			schema.clearRemoteSnapshot();
+			schema.loadIfNeeded();
+		});
 	}
 
 	public void logUntranslatedKeysIfReady() {
@@ -260,6 +279,12 @@ public class ConfigManager {
 	public Collection<ConfigSchema> getServerSchemas() {
 		return getConfigSchemaSnapshot().stream()
 			.filter(schema -> schema.getType() == ConfigSchemaType.SERVER)
+			.toList();
+	}
+
+	private List<ConfigSchema> getClientWorldSchemas() {
+		return getConfigSchemaSnapshot().stream()
+			.filter(schema -> schema.getType() == ConfigSchemaType.CLIENT_PER_WORLD)
 			.toList();
 	}
 

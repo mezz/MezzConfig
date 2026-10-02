@@ -39,6 +39,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.IdentityHashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -47,7 +48,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -67,7 +67,7 @@ public class ConfigSchema implements IConfigSchema {
 	private final List<ConfigCategory> categories;
 	private final List<ConfigEditorCategory> editorCategories;
 	private final @Nullable ConfigMigrationSpec migrationSpec;
-	private final AtomicBoolean needsLoad = new AtomicBoolean(true);
+	private final EnumSet<PendingLoad> pendingLoad = EnumSet.allOf(PendingLoad.class);
 	private final AtomicLong changeVersion = new AtomicLong();
 	private final DeduplicatingRunner delayedSave;
 	private @Nullable FileWatcher fileWatcher;
@@ -295,79 +295,66 @@ public class ConfigSchema implements IConfigSchema {
 	}
 
 	public synchronized void loadIfNeeded() {
+		if (pendingLoad.isEmpty() || !registered) {
+			return;
+		}
 		LoadResult loadResult = loadIfNeededWithoutNotifying();
+		if (loadResult == LoadResult.UNCHANGED) {
+			return;
+		}
 		notifyChanges(loadResult.effectiveChanges(), loadResult.pendingChanges());
-		if (registered) {
-			for (InitialSave initialSave : loadResult.initialSaves()) {
-				if (mode.synchronousFileAccess()) {
-					saveInitialFile(initialSave);
-				} else {
-					saveInitialFileAfterLocalizationLoads(initialSave, 0);
-				}
+		for (InitialSave initialSave : loadResult.initialSaves()) {
+			if (mode.synchronousFileAccess()) {
+				saveInitialFile(initialSave);
+			} else {
+				saveInitialFileAfterLocalizationLoads(initialSave, 0);
 			}
 		}
 	}
 
-	private synchronized LoadResult loadIfNeededWithoutNotifying() {
+	private LoadResult loadIfNeededWithoutNotifying() {
 		Path previousDefaultPath = activeDefaultPath;
 		Path previousPath = activePath;
-		updatePathReservations(previousDefaultPath, previousPath);
-		Path defaultPath = pathResolver.resolveDefaultPath()
-			.map(Path::normalize)
-			.orElse(null);
-		Optional<Path> resolvedPath = pathResolver.resolvePath()
-			.map(Path::normalize);
-		Path path = resolvedPath.orElse(null);
-		updatePathReservations(defaultPath, path, previousDefaultPath, previousPath);
-		boolean defaultPathChanged = !Objects.equals(defaultPath, previousDefaultPath);
+		Path defaultPath = previousDefaultPath;
+		Path path = previousPath;
+		if (pendingLoad.contains(PendingLoad.CHECK_PATHS)) {
+			defaultPath = pathResolver.resolveDefaultPath().map(Path::normalize).orElse(null);
+			path = pathResolver.resolvePath().map(Path::normalize).orElse(null);
+		}
 		boolean activePathChanged = !Objects.equals(path, previousPath);
-		boolean pathsChanged = defaultPathChanged || activePathChanged;
+		boolean pathsChanged = activePathChanged || !Objects.equals(defaultPath, previousDefaultPath);
+		boolean reloadValues = pathsChanged || pendingLoad.contains(PendingLoad.RELOAD_VALUES);
 		boolean switchingFromRemoteValues = remotelyActive && path != null;
-		if (!pathsChanged && !needsLoad.get() && !switchingFromRemoteValues) {
+		if (!reloadValues && !switchingFromRemoteValues) {
+			pendingLoad.clear();
 			return LoadResult.UNCHANGED;
 		}
 
 		LoadState previousState = new LoadState(
 			getEffectiveValues(), getPendingValues(), restartValuesInitialized, remotelyActive, usesDeclaredDefaults()
 		);
+		if (pathsChanged) {
+			transitionActivePaths(defaultPath, path, previousDefaultPath, previousPath);
+		}
+		pendingLoad.clear();
 		if (isSynchronizedServerSchema() && remotelyActive && path == null) {
-			transitionActivePaths(defaultPath, null, previousDefaultPath, previousPath);
 			pendingFileChanges.clear();
-			needsLoad.set(false);
 			return createLoadResult(previousState, List.of());
 		}
 		if (path != null) {
 			remotelyActive = false;
 		}
-		if (pathsChanged) {
-			transitionActivePaths(defaultPath, path, previousDefaultPath, previousPath);
-			needsLoad.set(true);
-		}
 
-		if (resolvedPath.isEmpty()) {
-			boolean shouldInitializeDefault = needsLoad.getAndSet(false);
+		if (path == null) {
 			pendingFileChanges.clear();
-			List<InitialSave> initialSaves = List.of();
-			if (shouldInitializeDefault) {
-				initialSaves = getInitialSaves(defaultPath, null, activePathChanged, false, true, null);
-			}
+			List<InitialSave> initialSaves = getInitialSaves(defaultPath, null, activePathChanged, false, true, null);
 			if (previousPath != null) {
 				resetValuesToDefaults();
-				return completeServerLoad(
-					previousState,
-					initialSaves
-				);
 			}
-			if (shouldInitializeDefault) {
-				return completeServerLoad(
-					previousState,
-					initialSaves
-				);
-			}
-			return createLoadResult(previousState, initialSaves);
+			return completeServerLoad(previousState, initialSaves);
 		}
 
-		if (!needsLoad.compareAndSet(true, false)) {
+		if (!reloadValues) {
 			return createLoadResult(previousState, List.of());
 		}
 		Map<Path, ConfigFileReader.Contents> preparedFileLoads = new LinkedHashMap<>();
@@ -411,6 +398,14 @@ public class ConfigSchema implements IConfigSchema {
 				loadedFingerprint
 			)
 		);
+	}
+
+	/**
+	 * Call this when the config file paths may have changed, such as after joining or leaving a world.
+	 * If the paths are unchanged, checking them does not reload the files or discard unsaved edits.
+	 */
+	public synchronized void invalidatePaths() {
+		pendingLoad.add(PendingLoad.CHECK_PATHS);
 	}
 
 	private MigrationAttempt attemptMigration(Path destinationPath) {
@@ -864,6 +859,8 @@ public class ConfigSchema implements IConfigSchema {
 		@Nullable Path previousDefaultPath,
 		@Nullable Path previousPath
 	) {
+		// Another config must not use the old files until we finish saving changes to them.
+		updatePathReservations(defaultPath, path, previousDefaultPath, previousPath);
 		try {
 			setActivePaths(defaultPath, path);
 		} catch (RuntimeException | Error e) {
@@ -889,7 +886,7 @@ public class ConfigSchema implements IConfigSchema {
 			return;
 		}
 		pendingFileChanges.add(changedPath);
-		needsLoad.set(true);
+		pendingLoad.add(PendingLoad.RELOAD_VALUES);
 		if (isSynchronizedServerSchema()) {
 			ServerConfigRuntime.onServerSchemaChanged(this);
 		}
@@ -913,6 +910,7 @@ public class ConfigSchema implements IConfigSchema {
 		this.registered = true;
 		this.registrationInProgress = true;
 		try {
+			pathReservation.accept(pathResolver.getPersistentReservationPaths());
 			loadIfNeeded();
 		} catch (RuntimeException | Error e) {
 			rollbackRegistration(e);
@@ -942,7 +940,8 @@ public class ConfigSchema implements IConfigSchema {
 		activePath = null;
 		pendingSavePath = null;
 		pendingFileChanges.clear();
-		needsLoad.set(true);
+		pendingLoad.add(PendingLoad.CHECK_PATHS);
+		pendingLoad.add(PendingLoad.RELOAD_VALUES);
 		changeVersion.set(0);
 		restartValuesInitialized = false;
 		translationKeysChecked = false;
@@ -1513,7 +1512,7 @@ public class ConfigSchema implements IConfigSchema {
 		resetAllValuesToDefaults();
 		synchronizedValues.forEach(SynchronizedConfigValue::apply);
 		remotelyActive = true;
-		needsLoad.set(false);
+		pendingLoad.remove(PendingLoad.RELOAD_VALUES);
 		List<AppliedConfigValueChange<?>> effectiveChanges = getChanges(previousEffectiveValues, false, previouslyUsedDeclaredDefaults);
 		List<AppliedConfigValueChange<?>> pendingChanges = getChanges(previousPendingValues, true, previouslyUsedDeclaredDefaults);
 		notifyChanges(effectiveChanges, pendingChanges);
@@ -1537,10 +1536,15 @@ public class ConfigSchema implements IConfigSchema {
 		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
 		remotelyActive = false;
 		resetAllValuesToDefaults();
-		needsLoad.set(true);
+		pendingLoad.add(PendingLoad.RELOAD_VALUES);
 		List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
 		List<AppliedConfigValueChange<?>> pendingChanges = getPendingChanges(previousPendingValues);
 		notifyChanges(effectiveChanges, pendingChanges);
+	}
+
+	private enum PendingLoad {
+		CHECK_PATHS,
+		RELOAD_VALUES
 	}
 
 	private record LoadState(

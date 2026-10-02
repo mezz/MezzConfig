@@ -16,6 +16,10 @@ final class MinecraftClientWorldPath {
 	private MinecraftClientWorldPath() {}
 
 	static Optional<Path> getWorldPath(Path configDirectory) {
+		// Disconnect events can run before Minecraft clears its connection.
+		if (!ServerConfigRuntime.isClientWorldActive()) {
+			return Optional.empty();
+		}
 		Minecraft minecraft = Minecraft.getInstance();
 		return Optional.ofNullable(minecraft.getConnection())
 			.flatMap(listener -> {

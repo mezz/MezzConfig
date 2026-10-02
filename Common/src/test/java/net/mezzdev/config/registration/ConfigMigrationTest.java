@@ -77,6 +77,7 @@ public class ConfigMigrationTest {
 
 		// Operation: activate and load the first local world path.
 		activePath.set(Optional.of(firstPath));
+		schema.invalidatePaths();
 		schema.loadIfNeeded();
 
 		// Assertions: migration applies once, records its destination, and backs up the selected legacy file.
@@ -88,8 +89,10 @@ public class ConfigMigrationTest {
 
 		// Operation: leave the world and activate a second local world path.
 		activePath.set(Optional.empty());
+		schema.invalidatePaths();
 		schema.loadIfNeeded();
 		activePath.set(Optional.of(configRoot.resolve("worlds/second.ini")));
+		schema.invalidatePaths();
 		schema.loadIfNeeded();
 
 		// Assertions: later worlds use defaults because migration already completed exactly once.
@@ -118,6 +121,7 @@ public class ConfigMigrationTest {
 		// Operation: activate the first local world and load the schema.
 		Path destinationPath = configRoot.resolve("worlds/first.ini");
 		activePath.set(Optional.of(destinationPath));
+		schema.invalidatePaths();
 		schema.loadIfNeeded();
 
 		// Assertions: the declared legacy name migrates into the new file and the source is backed up.

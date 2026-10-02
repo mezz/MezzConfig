@@ -17,6 +17,7 @@ final class ServerConfigClientConnection {
 	private final Supplier<ConfigManager> configManagerSupplier;
 	private final ServerConfigPayloadReassembler syncReassembler = new ServerConfigPayloadReassembler();
 	private final AtomicReference<UUID> remoteServerId = new AtomicReference<>();
+	private volatile boolean worldActive;
 
 	ServerConfigClientConnection(Supplier<ConfigManager> configManagerSupplier) {
 		this.configManagerSupplier = ErrorUtil.checkNotNull(configManagerSupplier, "configManagerSupplier");
@@ -27,7 +28,12 @@ final class ServerConfigClientConnection {
 	}
 
 	void onWorldStarted() {
+		worldActive = true;
 		getConfigManager().onWorldStarted();
+	}
+
+	boolean isWorldActive() {
+		return worldActive;
 	}
 
 	void handleServerIdentity(ServerIdentityPayload payload) {
@@ -68,9 +74,16 @@ final class ServerConfigClientConnection {
 	}
 
 	void onDisconnect() {
+		worldActive = false;
 		syncReassembler.clear();
 		remoteServerId.set(null);
-		getConfigManager().getServerSchemas().forEach(ConfigSchema::clearRemoteSnapshot);
+		ConfigManager manager = getConfigManager();
+		try {
+			manager.onClientWorldStopped();
+		} finally {
+			// Clear the server's values even if saving the client's settings fails.
+			manager.getServerSchemas().forEach(ConfigSchema::clearRemoteSnapshot);
+		}
 	}
 
 	private ConfigManager getConfigManager() {

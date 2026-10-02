@@ -5,6 +5,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * ConfigSchema caches the paths returned here. Call {@link ConfigSchema#invalidatePaths()}
+ * when either path may have changed.
+ */
 public interface ConfigSchemaPathResolver {
 	Optional<Path> resolvePath();
 

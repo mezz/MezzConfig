@@ -215,6 +215,39 @@ public class ConfigManagerTest {
 	}
 
 	@Test
+	public void unchangedWorldContextKeepsUnsavedEdits(@TempDir Path tempDir) throws IOException {
+		ConfigManager manager = createDisabledConfigManager();
+		Path path = tempDir.resolve("client.ini");
+		InstallationSchema config = createClientInstallationSchema(path);
+		manager.registerSchema(config.schema());
+		assertTrue(config.enabled().set(false));
+		assertTrue(Files.readString(path).contains("enabled = true"));
+
+		manager.onWorldStarted();
+		assertFalse(config.enabled().get());
+		assertFalse(config.enabled().getPendingValue());
+	}
+
+	@Test
+	public void readsBeforeRegistrationKeepDefaultsUntilTheFileIsReserved(@TempDir Path tempDir) throws IOException {
+		ConfigManager manager = createDisabledConfigManager();
+		Path path = tempDir.resolve("shared.ini");
+		Files.writeString(path, "[general]\nenabled = false\n");
+		ConfigCategoryBuilder category = new ConfigCategoryBuilder("mezz_config.config.test", "general");
+		ConfigValue<Boolean> enabled = category.addBoolean("enabled", true).build();
+		ConfigSchema schema = new ConfigSchema(path, List.of(category), manager.getSaveScheduler());
+		assertTrue(enabled.get());
+		assertTrue(enabled.getPendingValue());
+		assertTrue(schema.getPath().isEmpty());
+		assertThrows(IllegalStateException.class, () -> enabled.set(false));
+
+		manager.registerSchema(schema);
+		assertThrows(IllegalArgumentException.class, () -> manager.createSortingConfig(path, Comparator.naturalOrder(), true));
+		assertFalse(enabled.get());
+		assertFalse(enabled.getPendingValue());
+	}
+
+	@Test
 	public void dynamicSchemaPathCollisionIsRejectedBeforeActivation(@TempDir Path tempDir) {
 		// Setup: an inactive world schema later resolves to a path already reserved by a sorting config.
 		ConfigManager manager = createDisabledConfigManager();
@@ -237,11 +270,33 @@ public class ConfigManagerTest {
 
 		activePath.set(Optional.of(tempDir.resolve("unused").resolve("..").resolve("sorting.ini")));
 
-		// Operation: resolve the newly active schema path.
-		assertThrows(IllegalArgumentException.class, schema::getPath);
+		assertThrows(IllegalArgumentException.class, manager::onWorldStarted);
 
 		// Assertions: activation stops before the reserved sorting file is created.
 		assertFalse(Files.exists(sortingPath));
+	}
+
+	@Test
+	public void failedPathTransitionKeepsOwnershipAndCanRetry(@TempDir Path tempDir) {
+		ConfigManager manager = createDisabledConfigManager();
+		Path first = tempDir.resolve("first.ini");
+		Path occupied = tempDir.resolve("occupied.ini");
+		Path next = tempDir.resolve("next.ini");
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.of(first));
+		ConfigSchema schema = createServerSchema(new ServerConfigKey("path_test", "server.ini"), activePath::get);
+		manager.registerSchema(schema);
+		manager.createSortingConfig(occupied, Comparator.naturalOrder(), true);
+
+		activePath.set(Optional.of(occupied));
+		assertThrows(IllegalArgumentException.class, manager::onWorldStarted);
+		assertFalse(Files.exists(occupied));
+		assertThrows(IllegalArgumentException.class, () -> manager.createSortingConfig(first, Comparator.naturalOrder(), true));
+
+		// The failed load should retry on the next read without another call to onWorldStarted().
+		activePath.set(Optional.of(next));
+		assertEquals(Optional.of(next), schema.getPath());
+		assertThrows(IllegalArgumentException.class, () -> manager.createSortingConfig(next, Comparator.naturalOrder(), true));
+		manager.createSortingConfig(first, Comparator.naturalOrder(), true);
 	}
 
 	@Test

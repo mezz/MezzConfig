@@ -36,7 +36,7 @@ public final class MezzConfigSettings {
 			.normalize();
 		DelayedExecutor saveExecutor = ConfigManager.createSaveExecutor();
 		SchemaData startupSettings = createSchema(configRootDir, developmentEnvironment, saveExecutor);
-		startupSettings.schema().loadIfNeeded();
+		startupSettings.schema().register(null, false);
 		ConfigManager configManager = new ConfigManager(
 			fileWatcherThreadName,
 			startupSettings.fileWatcherSettings(),

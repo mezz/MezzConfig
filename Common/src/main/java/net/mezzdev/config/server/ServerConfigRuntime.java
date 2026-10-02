@@ -50,6 +50,10 @@ public final class ServerConfigRuntime {
 		return CLIENT_CONNECTION.getRemoteServerId();
 	}
 
+	public static boolean isClientWorldActive() {
+		return CLIENT_CONNECTION.isWorldActive();
+	}
+
 	public static void validateSnapshot(ServerConfigKey key, List<ServerConfigValueData> values) {
 		try {
 			ServerConfigSyncPayload payload = new ServerConfigSyncPayload(key, values);
@@ -86,10 +90,7 @@ public final class ServerConfigRuntime {
 		activeServerId = null;
 		worldConfigRoot = null;
 		SERVER_SCHEMA_VERSIONS.clear();
-		getConfigManager().getServerSchemas().forEach(schema -> {
-			schema.clearRemoteSnapshot();
-			schema.loadIfNeeded();
-		});
+		getConfigManager().onServerStopped();
 	}
 
 	public static void onServerSchemaRegistered(ConfigSchema schema) {
