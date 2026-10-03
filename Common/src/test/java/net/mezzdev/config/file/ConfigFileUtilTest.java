@@ -38,17 +38,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ConfigFileUtilTest {
 	@ParameterizedTest
 	@ValueSource(booleans = {false, true})
+	@EnabledOnOs({OS.LINUX, OS.MAC})
 	public void replacementPreservesOpenReadersAfterAnotherProvidersFallback(boolean useFallbackFirst, @TempDir Path tempDir) throws Exception {
 		if (useFallbackFirst) {
-			// A real move between providers requires the non-atomic copy/delete fallback.
-			try (var archive = FileSystems.newFileSystem(tempDir.resolve("archive.zip"), Map.of("create", "true"))) {
-				Path archivedSource = archive.getPath("/source.ini");
-				Files.writeString(archivedSource, "archived");
-				Path extracted = tempDir.resolve("extracted.ini");
-				ConfigFileUtil.moveAtomicReplace(archivedSource, extracted);
-				assertEquals("archived", Files.readString(extracted));
-				assertFalse(Files.exists(archivedSource));
-			}
+			moveFromZipFileSystem(tempDir);
 		}
 
 		Path source = tempDir.resolve("staged.ini");
@@ -56,11 +49,46 @@ public class ConfigFileUtilTest {
 		Files.writeString(source, "new");
 		Files.writeString(target, "old");
 		try (var reader = Files.newInputStream(target)) {
-			// Readers sharing deletion retain the old file while new readers see the complete replacement.
+			// Unix rename keeps existing readers on the old file after replacement.
 			ConfigFileUtil.moveAtomicReplace(source, target);
 			assertEquals("old", new String(reader.readAllBytes(), StandardCharsets.UTF_8));
 			assertEquals("new", Files.readString(target));
 			assertFalse(Files.exists(source));
+		}
+	}
+
+	@ParameterizedTest
+	@ValueSource(booleans = {false, true})
+	@EnabledOnOs(OS.WINDOWS)
+	@Timeout(10)
+	public void replacementPreservesFilesUntilTargetReaderCloses(boolean useFallbackFirst, @TempDir Path tempDir) throws Exception {
+		if (useFallbackFirst) {
+			moveFromZipFileSystem(tempDir);
+		}
+		Path source = Files.writeString(tempDir.resolve("staged.ini"), "new");
+		Path target = Files.writeString(tempDir.resolve("config.ini"), "old");
+		try (var reader = Files.newInputStream(target)) {
+			// Windows can reject replacement even when the reader permits delete sharing.
+			assertThrows(FileSystemException.class, () -> ConfigFileUtil.moveAtomicReplace(source, target));
+			assertEquals("old", new String(reader.readAllBytes(), StandardCharsets.UTF_8));
+			assertEquals("old", Files.readString(target));
+			assertEquals("new", Files.readString(source));
+		}
+
+		ConfigFileUtil.moveAtomicReplace(source, target);
+		assertEquals("new", Files.readString(target));
+		assertFalse(Files.exists(source));
+	}
+
+	private static void moveFromZipFileSystem(Path tempDir) throws IOException {
+		// A real move between providers requires the non-atomic copy/delete fallback.
+		try (var archive = FileSystems.newFileSystem(tempDir.resolve("archive.zip"), Map.of("create", "true"))) {
+			Path archivedSource = archive.getPath("/source.ini");
+			Files.writeString(archivedSource, "archived");
+			Path extracted = tempDir.resolve("extracted.ini");
+			ConfigFileUtil.moveAtomicReplace(archivedSource, extracted);
+			assertEquals("archived", Files.readString(extracted));
+			assertFalse(Files.exists(archivedSource));
 		}
 	}
 

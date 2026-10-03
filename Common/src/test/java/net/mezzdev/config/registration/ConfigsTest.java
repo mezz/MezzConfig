@@ -14,7 +14,10 @@ import net.mezzdev.config.file.ConfigFileUtil;
 import net.mezzdev.config.file.ConfigFileWriteProtection;
 import net.mezzdev.config.file.ConfigManager;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.AnnotatedElementContext;
+import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.io.TempDirFactory;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -387,7 +390,9 @@ public class ConfigsTest {
 	}
 
 	@Test
-	public void relativeExplicitLocationIsCapturedAsNormalizedAbsolutePath(@TempDir Path tempDir) {
+	public void relativeExplicitLocationIsCapturedAsNormalizedAbsolutePath(
+		@TempDir(factory = WorkingDirectoryTempDirFactory.class) Path tempDir
+	) {
 		// Setup: an explicit relative path resolves to a nested location outside the automatic config root.
 		Path absolutePath = tempDir.resolve("nested/settings.ini").toAbsolutePath().normalize();
 		Path relativePath = Path.of("").toAbsolutePath().normalize().relativize(absolutePath);
@@ -618,6 +623,14 @@ public class ConfigsTest {
 			}
 		}
 		throw new AssertionError("Config value was not reloaded with: " + expected);
+	}
+
+	static class WorkingDirectoryTempDirFactory implements TempDirFactory {
+		@Override
+		public Path createTempDirectory(AnnotatedElementContext elementContext, ExtensionContext extensionContext) throws IOException {
+			// Relative paths require the temporary directory and working directory to share a drive on Windows.
+			return Files.createTempDirectory(Path.of("").toAbsolutePath(), "junit-");
+		}
 	}
 
 	private record TestSchema(
