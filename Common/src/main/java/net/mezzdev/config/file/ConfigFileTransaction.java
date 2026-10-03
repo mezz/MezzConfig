@@ -3,12 +3,9 @@ package net.mezzdev.config.file;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -77,39 +74,26 @@ public final class ConfigFileTransaction {
 		Path stagedOutput = Files.createTempFile(parent, ".mezz-config-transaction-", ".tmp");
 		Path rollbackFile = null;
 		try {
-			Files.write(stagedOutput, contents);
-			force(stagedOutput);
+			ConfigFileUtil.writeTempFile(stagedOutput, contents);
 			if (Files.exists(target)) {
 				rollbackFile = Files.createTempFile(parent, ".mezz-config-rollback-", ".tmp");
-				Files.copy(
-					target,
-					rollbackFile,
-					StandardCopyOption.REPLACE_EXISTING,
-					StandardCopyOption.COPY_ATTRIBUTES
-				);
-				force(rollbackFile);
+				ConfigFileUtil.copyToTempFile(target, rollbackFile);
 			}
 			return new StagedFile(target, stagedOutput, rollbackFile, requiredAbsent);
 		} catch (IOException | RuntimeException | Error failure) {
 			try {
-				Files.deleteIfExists(stagedOutput);
+				ConfigFileUtil.deleteIfExists(stagedOutput);
 			} catch (IOException cleanupFailure) {
 				failure.addSuppressed(cleanupFailure);
 			}
 			if (rollbackFile != null) {
 				try {
-					Files.deleteIfExists(rollbackFile);
+					ConfigFileUtil.deleteIfExists(rollbackFile);
 				} catch (IOException cleanupFailure) {
 					failure.addSuppressed(cleanupFailure);
 				}
 			}
 			throw failure;
-		}
-	}
-
-	private static void force(Path path) throws IOException {
-		try (FileChannel channel = FileChannel.open(path, StandardOpenOption.WRITE)) {
-			channel.force(true);
 		}
 	}
 
@@ -133,7 +117,7 @@ public final class ConfigFileTransaction {
 			return;
 		}
 		try {
-			Files.deleteIfExists(path);
+			ConfigFileUtil.deleteIfExists(path);
 		} catch (IOException ignored) {}
 	}
 
@@ -157,7 +141,7 @@ public final class ConfigFileTransaction {
 			if (rollbackFile != null) {
 				ConfigFileUtil.moveAtomicReplace(rollbackFile, target);
 			} else {
-				Files.deleteIfExists(target);
+				ConfigFileUtil.deleteIfExists(target);
 			}
 		}
 
