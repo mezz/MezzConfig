@@ -50,6 +50,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 	private static final Logger LOGGER = LogManager.getLogger();
@@ -72,6 +73,7 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 	private volatile boolean remotelyActive;
 	private boolean migrationCompleted;
 	private final Consumer<? super Collection<Path>> pathReservation;
+	private @Nullable List<Runnable> pendingNotifications;
 
 	private ConfigSchema(
 		ConfigSchemaDefinition definition,
@@ -103,33 +105,77 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 		ErrorUtil.checkNotNull(pathReservation, "pathReservation");
 		ErrorUtil.checkNotNull(publish, "publish");
 		ConfigSchema schema = new ConfigSchema(definition, definition.pathResolver, fileWatcher, logUntranslatedKeys, pathReservation);
-		synchronized (schema) {
-			try {
+		try {
+			schema.withLock(() -> {
 				pathReservation.accept(definition.pathResolver.getPersistentReservationPaths());
 				schema.loadInitialValues();
-				publish.accept(schema);
-				return schema;
-			} catch (RuntimeException | Error e) {
+			});
+			publish.accept(schema);
+			return schema;
+		} catch (RuntimeException | Error e) {
+			schema.withLock(() -> {
 				schema.closeFailedInitialization(e);
 				definition.resetValues();
-				throw e;
-			}
+				schema.pendingNotifications = null;
+			});
+			throw e;
 		}
 	}
 
 	static ConfigSchema createInactive(ConfigSchemaDefinition definition) {
 		ConfigSchema schema = new ConfigSchema(definition, Optional::empty, null, false, paths -> {});
-		schema.pendingLoad.clear();
-		definition.bindValues(schema);
-		schema.completeInactiveMigration();
+		schema.withLock(() -> {
+			schema.pendingLoad.clear();
+			definition.bindValues(schema);
+			schema.completeInactiveMigration();
+		});
 		return schema;
 	}
 
-	public synchronized void loadIfNeeded() {
-		if (pendingLoad.isEmpty()) {
-			return;
+	private void withLock(Runnable action) {
+		withLock(() -> {
+			action.run();
+			return null;
+		});
+	}
+
+	private <T> T withLock(Supplier<T> action) {
+		if (Thread.holdsLock(this)) {
+			return action.get();
 		}
-		loadFiles().ifPresent(loaded -> finishLoad(validateReload(loaded)));
+		List<Runnable> notifications = null;
+		try {
+			synchronized (this) {
+				try {
+					return action.get();
+				} finally {
+					notifications = pendingNotifications;
+					pendingNotifications = null;
+				}
+			}
+		} finally {
+			// Callbacks can access other schemas. Never retain this schema's lock while invoking them.
+			// A callback's reentrant operation gets its own notifications and finishes them synchronously.
+			if (notifications != null) {
+				notifications.forEach(Runnable::run);
+			}
+		}
+	}
+
+	private void queueNotification(Runnable notification) {
+		if (pendingNotifications == null) {
+			pendingNotifications = new ArrayList<>();
+		}
+		pendingNotifications.add(notification);
+	}
+
+	public void loadIfNeeded() {
+		withLock(() -> {
+			if (pendingLoad.isEmpty()) {
+				return;
+			}
+			loadFiles().ifPresent(loaded -> finishLoad(validateReload(loaded)));
+		});
 	}
 
 	private void loadInitialValues() {
@@ -251,8 +297,10 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 	 * Call this when the config file paths may have changed, such as after joining or leaving a world.
 	 * If the paths are unchanged, checking them does not reload the files or discard unsaved edits.
 	 */
-	public synchronized void invalidatePaths() {
-		pendingLoad.add(PendingLoad.CHECK_PATHS);
+	public void invalidatePaths() {
+		withLock(() -> {
+			pendingLoad.add(PendingLoad.CHECK_PATHS);
+		});
 	}
 
 	private MigrationAttempt attemptMigration(Path destinationPath) {
@@ -363,11 +411,13 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 
 	private void completeMigration(ConfigMigrationResult result) {
 		migrationCompleted = true;
-		try {
-			definition.migrationSpec.onMigrationComplete(result);
-		} catch (RuntimeException callbackFailure) {
-			LOGGER.error("Failed to handle the completed legacy config migration for '{}'.", definition.id, callbackFailure);
-		}
+		queueNotification(() -> {
+			try {
+				definition.migrationSpec.onMigrationComplete(result);
+			} catch (RuntimeException callbackFailure) {
+				LOGGER.error("Failed to handle the completed legacy config migration for '{}'.", definition.id, callbackFailure);
+			}
+		});
 	}
 
 	private void commitMigration(
@@ -430,7 +480,7 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 		}
 
 		for (SortingConfig.MigrationUpdate<?> sortingUpdate : sortingUpdates) {
-			sortingUpdate.notifyIfChanged();
+			queueNotification(sortingUpdate::notifyIfChanged);
 		}
 	}
 
@@ -621,18 +671,20 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 		configValue.setSynchronizedValuesWithoutNotifying(typedEffectiveValue, typedPendingValue);
 	}
 
-	public synchronized void promotePendingValuesAfterWorldRestart() {
-		loadIfNeeded();
-		if (activeFiles.path() == null) {
-			return;
-		}
-		ConfigValueRestartRequirement boundary = ConfigValueRestartRequirement.WORLD_RESTART;
-		if (!restartValuesInitialized) {
-			boundary = ConfigValueRestartRequirement.GAME_RESTART;
-		}
-		List<AppliedConfigValueChange<?>> changes = promotePendingValuesWithoutNotifying(boundary);
-		restartValuesInitialized = true;
-		notifyChanges(changes, List.of());
+	public void promotePendingValuesAfterWorldRestart() {
+		withLock(() -> {
+			loadIfNeeded();
+			if (activeFiles.path() == null) {
+				return;
+			}
+			ConfigValueRestartRequirement boundary = ConfigValueRestartRequirement.WORLD_RESTART;
+			if (!restartValuesInitialized) {
+				boundary = ConfigValueRestartRequirement.GAME_RESTART;
+			}
+			List<AppliedConfigValueChange<?>> changes = promotePendingValuesWithoutNotifying(boundary);
+			restartValuesInitialized = true;
+			notifyChanges(changes, List.of());
+		});
 	}
 
 	private List<AppliedConfigValueChange<?>> promotePendingValuesWithoutNotifying(
@@ -746,15 +798,17 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 		}
 	}
 
-	private synchronized void onFileChanged(Path changedPath) {
-		if (!Objects.equals(changedPath, activeFiles.defaultPath()) && !Objects.equals(changedPath, activeFiles.path())) {
-			return;
-		}
-		pendingFileChanges.add(changedPath);
-		pendingLoad.add(PendingLoad.RELOAD_VALUES);
-		if (serverSynchronization != null) {
-			serverSynchronization.notifyChanged();
-		}
+	private void onFileChanged(Path changedPath) {
+		withLock(() -> {
+			if (!Objects.equals(changedPath, activeFiles.defaultPath()) && !Objects.equals(changedPath, activeFiles.path())) {
+				return;
+			}
+			pendingFileChanges.add(changedPath);
+			pendingLoad.add(PendingLoad.RELOAD_VALUES);
+			if (serverSynchronization != null) {
+				queueNotification(serverSynchronization.snapshotNotifications());
+			}
+		});
 	}
 
 	private void closeFailedInitialization(Throwable failure) {
@@ -769,71 +823,79 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 		pendingSavePath = null;
 	}
 
-	private synchronized void saveAfterLocalizationLoads(Path path, int attempt) {
-		if (!Objects.equals(path, activeFiles.path()) && !Objects.equals(path, pendingSavePath)) {
-			return;
-		}
-		if (!definition.mode.waitForLocalization() || ConfigSerializer.canLocalizeComments()) {
-			save(path);
-			return;
-		}
-		if (attempt == 0) {
-			LOGGER.debug("Localization has not loaded yet, waiting to save the config file: {}", path);
-		}
-		if (attempt >= LOCALIZATION_SAVE_RETRY_LIMIT) {
-			LOGGER.debug("Localization did not load before the config save retry limit, saving with translation keys: {}", path);
-			save(path);
-			return;
-		}
-		delayedSave.run(() -> saveAfterLocalizationLoads(path, attempt + 1));
-	}
-
-	private synchronized void saveInitialFileAfterLocalizationLoads(InitialSave initialSave, int attempt) {
-		Path path = initialSave.path();
-		if (initialSave.defaults()) {
-			if (!Objects.equals(path, activeFiles.defaultPath()) || Files.exists(path)) {
+	private void saveAfterLocalizationLoads(Path path, int attempt) {
+		withLock(() -> {
+			if (!Objects.equals(path, activeFiles.path()) && !Objects.equals(path, pendingSavePath)) {
 				return;
 			}
-		} else if (!Objects.equals(path, activeFiles.path())) {
-			return;
-		}
-		if (!definition.mode.waitForLocalization() || ConfigSerializer.canLocalizeComments()) {
-			saveInitialFile(initialSave);
-			return;
-		}
-		if (attempt == 0) {
-			LOGGER.debug("Localization has not loaded yet, waiting to save the config file: {}", path);
-		}
-		if (attempt >= LOCALIZATION_SAVE_RETRY_LIMIT) {
-			LOGGER.debug("Localization did not load before the config save retry limit, saving with translation keys: {}", path);
-			saveInitialFile(initialSave);
-			return;
-		}
-		delayedSave.run(() -> saveInitialFileAfterLocalizationLoads(initialSave, attempt + 1));
+			if (!definition.mode.waitForLocalization() || ConfigSerializer.canLocalizeComments()) {
+				save(path);
+				return;
+			}
+			if (attempt == 0) {
+				LOGGER.debug("Localization has not loaded yet, waiting to save the config file: {}", path);
+			}
+			if (attempt >= LOCALIZATION_SAVE_RETRY_LIMIT) {
+				LOGGER.debug("Localization did not load before the config save retry limit, saving with translation keys: {}", path);
+				save(path);
+				return;
+			}
+			delayedSave.run(() -> saveAfterLocalizationLoads(path, attempt + 1));
+		});
 	}
 
-	private synchronized void saveInitialFile(InitialSave initialSave) {
-		try {
+	private void saveInitialFileAfterLocalizationLoads(InitialSave initialSave, int attempt) {
+		withLock(() -> {
+			Path path = initialSave.path();
 			if (initialSave.defaults()) {
-				saveDefaultIfMissing(initialSave.path());
-			} else {
-				write(initialSave.path(), initialSave.loadedFingerprint());
+				if (!Objects.equals(path, activeFiles.defaultPath()) || Files.exists(path)) {
+					return;
+				}
+			} else if (!Objects.equals(path, activeFiles.path())) {
+				return;
 			}
-		} catch (IOException e) {
-			handleFileError("save", initialSave.path(), e);
-		}
+			if (!definition.mode.waitForLocalization() || ConfigSerializer.canLocalizeComments()) {
+				saveInitialFile(initialSave);
+				return;
+			}
+			if (attempt == 0) {
+				LOGGER.debug("Localization has not loaded yet, waiting to save the config file: {}", path);
+			}
+			if (attempt >= LOCALIZATION_SAVE_RETRY_LIMIT) {
+				LOGGER.debug("Localization did not load before the config save retry limit, saving with translation keys: {}", path);
+				saveInitialFile(initialSave);
+				return;
+			}
+			delayedSave.run(() -> saveInitialFileAfterLocalizationLoads(initialSave, attempt + 1));
+		});
 	}
 
-	private synchronized void save(Path path) {
-		try {
-			write(path);
-		} catch (IOException e) {
-			handleFileError("save", path, e);
-		} finally {
-			if (Objects.equals(pendingSavePath, path)) {
-				pendingSavePath = null;
+	private void saveInitialFile(InitialSave initialSave) {
+		withLock(() -> {
+			try {
+				if (initialSave.defaults()) {
+					saveDefaultIfMissing(initialSave.path());
+				} else {
+					write(initialSave.path(), initialSave.loadedFingerprint());
+				}
+			} catch (IOException e) {
+				handleFileError("save", initialSave.path(), e);
 			}
-		}
+		});
+	}
+
+	private void save(Path path) {
+		withLock(() -> {
+			try {
+				write(path);
+			} catch (IOException e) {
+				handleFileError("save", path, e);
+			} finally {
+				if (Objects.equals(pendingSavePath, path)) {
+					pendingSavePath = null;
+				}
+			}
+		});
 	}
 
 	private void write(Path path) throws IOException {
@@ -883,23 +945,27 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 		ConfigTranslationChecker.logUntranslatedKeys(path, definition.editorCategories, definition.categories);
 	}
 
-	public synchronized void logUntranslatedKeysIfReady() {
-		Path path = activeFiles.path();
-		if (path == null) {
-			path = activeFiles.defaultPath();
-		}
-		if (path != null) {
-			logUntranslatedKeysIfNeeded(path);
-		}
+	public void logUntranslatedKeysIfReady() {
+		withLock(() -> {
+			Path path = activeFiles.path();
+			if (path == null) {
+				path = activeFiles.defaultPath();
+			}
+			if (path != null) {
+				logUntranslatedKeysIfNeeded(path);
+			}
+		});
 	}
 
-	public synchronized void markDirty() {
-		Path path = activeFiles.path();
-		if (path == null) {
-			return;
-		}
-		pendingSavePath = path;
-		delayedSave.run(() -> saveAfterLocalizationLoads(path, 0));
+	public void markDirty() {
+		withLock(() -> {
+			Path path = activeFiles.path();
+			if (path == null) {
+				return;
+			}
+			pendingSavePath = path;
+			delayedSave.run(() -> saveAfterLocalizationLoads(path, 0));
+		});
 	}
 
 	@Override
@@ -908,7 +974,7 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 	}
 
 	@Override
-	public synchronized List<? extends IAppliedConfigValueChange<?>> batchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
+	public List<? extends IAppliedConfigValueChange<?>> batchUpdate(Consumer<IConfigBatchUpdater> updateBatch) {
 		ConfigBatchUpdater updater = createBatchUpdater(updateBatch);
 		return applyBatchUpdates(updater.getUpdates());
 	}
@@ -924,31 +990,33 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 		return updater;
 	}
 
-	synchronized List<AppliedConfigValueChange<?>> applyBatchUpdates(List<? extends ConfigValueUpdate<?>> updates) {
-		ErrorUtil.checkNotNull(updates, "updates");
-		if (updates.isEmpty()) {
-			return List.of();
-		}
+	List<AppliedConfigValueChange<?>> applyBatchUpdates(List<? extends ConfigValueUpdate<?>> updates) {
+		return withLock(() -> {
+			ErrorUtil.checkNotNull(updates, "updates");
+			if (updates.isEmpty()) {
+				return List.of();
+			}
 
-		validateUpdates(updates);
-		loadIfNeeded();
-		if (activeFiles.path() == null) {
-			throw new IllegalStateException("Config schema has no active backing file.");
-		}
-		Map<ConfigValue<?>, Object> updatedValues = getUpdatedValues(updates);
-		ConfigSerializer.validatePendingSave(definition.categories, definition.mode.serializationSettings(), updatedValues);
-		validateProspectiveServerSnapshot(updatedValues);
+			validateUpdates(updates);
+			loadIfNeeded();
+			if (activeFiles.path() == null) {
+				throw new IllegalStateException("Config schema has no active backing file.");
+			}
+			Map<ConfigValue<?>, Object> updatedValues = getUpdatedValues(updates);
+			ConfigSerializer.validatePendingSave(definition.categories, definition.mode.serializationSettings(), updatedValues);
+			validateProspectiveServerSnapshot(updatedValues);
 
-		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
-		List<AppliedConfigValueChange<?>> pendingChanges = applyUpdatesAtomically(updates);
-		if (pendingChanges.isEmpty()) {
-			return List.of();
-		}
+			Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
+			List<AppliedConfigValueChange<?>> pendingChanges = applyUpdatesAtomically(updates);
+			if (pendingChanges.isEmpty()) {
+				return List.of();
+			}
 
-		markDirty();
-		List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
-		notifyChanges(effectiveChanges, pendingChanges);
-		return List.copyOf(pendingChanges);
+			markDirty();
+			List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
+			notifyChanges(effectiveChanges, pendingChanges);
+			return List.copyOf(pendingChanges);
+		});
 	}
 
 	private static List<AppliedConfigValueChange<?>> applyUpdatesAtomically(
@@ -1033,29 +1101,37 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 		Runnable effectiveNotifications = ConfigValue.snapshotChangedValueNotifications(immutableEffectiveChanges, false);
 		List<IConfigValueBatchChangeListener> pendingSchemaListeners = definition.pendingBatchListeners.snapshot();
 		List<IConfigValueBatchChangeListener> effectiveSchemaListeners = definition.batchListeners.snapshot();
-		if (!immutablePendingChanges.isEmpty()) {
-			pendingNotifications.run();
-			notifyListeners(immutablePendingChanges, pendingSchemaListeners, "pending config schema");
+		Runnable synchronizationNotifications;
+		if (serverSynchronization == null) {
+			synchronizationNotifications = () -> {};
+		} else {
+			synchronizationNotifications = serverSynchronization.snapshotNotifications();
 		}
-		if (!immutableEffectiveChanges.isEmpty()) {
-			effectiveNotifications.run();
-			notifyListeners(immutableEffectiveChanges, effectiveSchemaListeners, "config schema");
-			if (serverSynchronization != null) {
-				serverSynchronization.notifyChanged();
+		Path path = activeFiles.path();
+		queueNotification(() -> {
+			if (!immutablePendingChanges.isEmpty()) {
+				pendingNotifications.run();
+				notifyListeners(immutablePendingChanges, pendingSchemaListeners, "pending config schema", path);
 			}
-		}
+			if (!immutableEffectiveChanges.isEmpty()) {
+				effectiveNotifications.run();
+				notifyListeners(immutableEffectiveChanges, effectiveSchemaListeners, "config schema", path);
+				synchronizationNotifications.run();
+			}
+		});
 	}
 
-	private void notifyListeners(
+	private static void notifyListeners(
 		List<? extends IAppliedConfigValueChange<?>> changes,
 		List<IConfigValueBatchChangeListener> registeredListeners,
-		String description
+		String description,
+		@Nullable Path path
 	) {
 		for (IConfigValueBatchChangeListener listener : registeredListeners) {
 			try {
 				listener.onConfigValuesChanged(changes);
 			} catch (RuntimeException e) {
-				LOGGER.error("{} listener failed for '{}'.", description, activeFiles.path(), e);
+				LOGGER.error("{} listener failed for '{}'.", description, path, e);
 			}
 		}
 	}
@@ -1090,44 +1166,48 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 	}
 
 	@Override
-	public synchronized boolean isActive() {
+	public boolean isActive() {
 		loadIfNeeded();
-		return activeFiles.path() != null || (isSynchronizedServerSchema() && remotelyActive);
+		return withLock(() -> activeFiles.path() != null || (isSynchronizedServerSchema() && remotelyActive));
 	}
 
 	@Override
-	public synchronized Optional<Path> getPath() {
+	public Optional<Path> getPath() {
 		loadIfNeeded();
-		return Optional.ofNullable(activeFiles.path());
+		return withLock(() -> Optional.ofNullable(activeFiles.path()));
 	}
 
 	public long getChangeVersion() {
 		return changeVersion.get();
 	}
 
-	public synchronized <T> T getEffectiveValue(ConfigValue<T> configValue) {
+	public <T> T getEffectiveValue(ConfigValue<T> configValue) {
 		loadIfNeeded();
-		if (usesDeclaredDefaults()) {
-			return configValue.getDefaultValue();
-		}
-		return configValue.getEffectiveValueWithoutLoading();
+		return withLock(() -> {
+			if (usesDeclaredDefaults()) {
+				return configValue.getDefaultValue();
+			}
+			return configValue.getEffectiveValueWithoutLoading();
+		});
 	}
 
-	public synchronized <T> T getPendingValue(ConfigValue<T> configValue) {
+	public <T> T getPendingValue(ConfigValue<T> configValue) {
 		loadIfNeeded();
-		if (usesDeclaredDefaults()) {
-			return configValue.getDefaultValue();
-		}
-		return configValue.getPendingValueWithoutLoading();
+		return withLock(() -> {
+			if (usesDeclaredDefaults()) {
+				return configValue.getDefaultValue();
+			}
+			return configValue.getPendingValueWithoutLoading();
+		});
 	}
 
 	private boolean usesDeclaredDefaults() {
 		return definition.type != ConfigSchemaType.CLIENT && activeFiles.path() == null && !remotelyActive;
 	}
 
-	public synchronized List<ServerConfigValueData> serializeValues() {
+	public List<ServerConfigValueData> serializeValues() {
 		loadIfNeeded();
-		return serializeCurrentValues();
+		return withLock(this::serializeCurrentValues);
 	}
 
 	private List<ServerConfigValueData> serializeCurrentValues() {
@@ -1272,25 +1352,27 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 		return result.getResult().orElseThrow();
 	}
 
-	private synchronized void applyRemoteSnapshot(List<ServerConfigValueData> values) {
-		List<SynchronizedConfigValue<?>> synchronizedValues = new ArrayList<>();
-		for (ResolvedServerConfigValue value : resolveServerValues(values, true)) {
-			synchronizedValues.add(deserializeSynchronizedValue(value));
-		}
-		loadIfNeeded();
-		if (activeFiles.path() != null) {
-			return;
-		}
-		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
-		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
-		boolean previouslyUsedDeclaredDefaults = usesDeclaredDefaults();
-		resetAllValuesToDefaults();
-		synchronizedValues.forEach(SynchronizedConfigValue::apply);
-		remotelyActive = true;
-		pendingLoad.remove(PendingLoad.RELOAD_VALUES);
-		List<AppliedConfigValueChange<?>> effectiveChanges = getChanges(previousEffectiveValues, false, previouslyUsedDeclaredDefaults);
-		List<AppliedConfigValueChange<?>> pendingChanges = getChanges(previousPendingValues, true, previouslyUsedDeclaredDefaults);
-		notifyChanges(effectiveChanges, pendingChanges);
+	private void applyRemoteSnapshot(List<ServerConfigValueData> values) {
+		withLock(() -> {
+			List<SynchronizedConfigValue<?>> synchronizedValues = new ArrayList<>();
+			for (ResolvedServerConfigValue value : resolveServerValues(values, true)) {
+				synchronizedValues.add(deserializeSynchronizedValue(value));
+			}
+			loadIfNeeded();
+			if (activeFiles.path() != null) {
+				return;
+			}
+			Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
+			Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
+			boolean previouslyUsedDeclaredDefaults = usesDeclaredDefaults();
+			resetAllValuesToDefaults();
+			synchronizedValues.forEach(SynchronizedConfigValue::apply);
+			remotelyActive = true;
+			pendingLoad.remove(PendingLoad.RELOAD_VALUES);
+			List<AppliedConfigValueChange<?>> effectiveChanges = getChanges(previousEffectiveValues, false, previouslyUsedDeclaredDefaults);
+			List<AppliedConfigValueChange<?>> pendingChanges = getChanges(previousPendingValues, true, previouslyUsedDeclaredDefaults);
+			notifyChanges(effectiveChanges, pendingChanges);
+		});
 	}
 
 	private static <T> SynchronizedConfigValue<T> deserializeSynchronizedValue(ResolvedServerConfigValue value) {
@@ -1300,18 +1382,20 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 		return new SynchronizedConfigValue<>(configValue, synchronizedValue);
 	}
 
-	private synchronized void clearRemoteSnapshot() {
-		if (!remotelyActive) {
-			return;
-		}
-		Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
-		Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
-		remotelyActive = false;
-		resetAllValuesToDefaults();
-		pendingLoad.add(PendingLoad.RELOAD_VALUES);
-		List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
-		List<AppliedConfigValueChange<?>> pendingChanges = getPendingChanges(previousPendingValues);
-		notifyChanges(effectiveChanges, pendingChanges);
+	private void clearRemoteSnapshot() {
+		withLock(() -> {
+			if (!remotelyActive) {
+				return;
+			}
+			Map<ConfigValue<?>, Object> previousEffectiveValues = getEffectiveValues();
+			Map<ConfigValue<?>, Object> previousPendingValues = getPendingValues();
+			remotelyActive = false;
+			resetAllValuesToDefaults();
+			pendingLoad.add(PendingLoad.RELOAD_VALUES);
+			List<AppliedConfigValueChange<?>> effectiveChanges = getEffectiveChanges(previousEffectiveValues);
+			List<AppliedConfigValueChange<?>> pendingChanges = getPendingChanges(previousPendingValues);
+			notifyChanges(effectiveChanges, pendingChanges);
+		});
 	}
 
 	public Optional<ServerSynchronization> getServerSynchronization() {
@@ -1339,8 +1423,9 @@ public final class ConfigSchema implements IConfigSchema, ConfigValueOwner {
 			return changeListeners.add(listener);
 		}
 
-		private void notifyChanged() {
-			changeListeners.snapshot().forEach(Runnable::run);
+		private Runnable snapshotNotifications() {
+			List<Runnable> listeners = changeListeners.snapshot();
+			return () -> listeners.forEach(Runnable::run);
 		}
 
 		public List<ServerConfigValueData> serializeValues() {

@@ -1084,9 +1084,12 @@ public class ConfigSchemaTest {
 			.build();
 		ConfigSchema schema = createSchema(builder);
 		List<List<String>> notifiedBatches = new CopyOnWriteArrayList<>();
-		schema.addBatchListener(changes -> notifiedBatches.add(changes.stream()
-			.map(change -> change.configValue().getEditorInfo().getName())
-			.toList()));
+		schema.addBatchListener(changes -> {
+			assertEquals(changes.getFirst().newValue(), changes.getLast().newValue());
+			notifiedBatches.add(changes.stream()
+				.map(change -> change.configValue().getEditorInfo().getName())
+				.toList());
+		});
 		CountDownLatch start = new CountDownLatch(1);
 
 		// Operation: release both batches together and wait for them to finish.
@@ -1115,6 +1118,174 @@ public class ConfigSchemaTest {
 		assertTrue(notifiedBatches.stream().allMatch(names -> names.equals(List.of("first", "second"))));
 		assertEquals(first.get(), second.get());
 		assertTrue(first.get() == 1 || first.get() == 2);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"value", "pendingValue", "valueBatch", "pendingValueBatch", "schema", "pendingSchema"})
+	public void concurrentListenersCanReadAndUpdateOtherSchemas(String listenerType) throws Exception {
+		ConfigCategoryBuilder firstBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> first = firstBuilder.addBoolean("enabled", false).build();
+		ConfigValue<Boolean> firstDerived = firstBuilder.addBoolean("derived", false).build();
+		ConfigSchema firstSchema = createSchema(tempDir.resolve("first.ini"), firstBuilder);
+		ConfigCategoryBuilder secondBuilder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> second = secondBuilder.addBoolean("enabled", false).build();
+		ConfigValue<Boolean> secondDerived = secondBuilder.addBoolean("derived", false).build();
+		ConfigSchema secondSchema = createSchema(tempDir.resolve("second.ini"), secondBuilder);
+		CountDownLatch listenersEntered = new CountDownLatch(2);
+		AtomicInteger completedListeners = new AtomicInteger();
+		registerCrossSchemaListener(listenerType, firstSchema, first, () -> {
+			awaitConcurrentListener(listenersEntered);
+			assertTrue(second.get());
+			assertTrue(second.getPendingValue());
+			secondDerived.set(true);
+			completedListeners.incrementAndGet();
+		});
+		registerCrossSchemaListener(listenerType, secondSchema, second, () -> {
+			awaitConcurrentListener(listenersEntered);
+			assertTrue(first.get());
+			assertTrue(first.getPendingValue());
+			firstDerived.set(true);
+			completedListeners.incrementAndGet();
+		});
+
+		runConcurrently(() -> first.set(true), () -> second.set(true));
+		assertEquals(2, completedListeners.get());
+		assertTrue(firstDerived.get());
+		assertTrue(secondDerived.get());
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"initialLoad", "reload", "worldRestart", "remoteSync", "remoteDisconnect"})
+	public void lifecycleListenersCanReadOtherSchemas(String operation) throws Exception {
+		List<ConfigValue<Boolean>> values = new ArrayList<>();
+		List<Runnable> operations = new ArrayList<>();
+		for (int index = 0; index < 2; index++) {
+			ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+			ConfigValueRestartRequirement restartRequirement = ConfigValueRestartRequirement.NONE;
+			if (operation.equals("worldRestart")) {
+				restartRequirement = ConfigValueRestartRequirement.WORLD_RESTART;
+			}
+			ConfigValue<Boolean> value = builder.addBoolean("enabled", false)
+				.setRestartRequirement(restartRequirement)
+				.build();
+			values.add(value);
+			if (operation.startsWith("remote")) {
+				ConfigSchema schema = createRemoteServerSchema(builder);
+				Runnable synchronize = () -> schema.getServerSynchronization().orElseThrow().applyRemoteSnapshot(List.of(
+					new ServerConfigValueData("category", "enabled", "true")
+				));
+				if (operation.equals("remoteDisconnect")) {
+					synchronize.run();
+					operations.add(() -> schema.getServerSynchronization().orElseThrow().clearRemoteSnapshot());
+				} else {
+					operations.add(synchronize);
+				}
+			} else {
+				Path path = tempDir.resolve(index + ".ini");
+				Files.writeString(path, "[category]\nenabled = true\n");
+				AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.of(path));
+				ConfigSchemaDefinition definition = createClientDefinition(
+					activePath::get, List.of(builder), List.of(builder),
+					(command, delay) -> CompletableFuture.completedFuture(null)
+				);
+				if (operation.equals("initialLoad")) {
+					operations.add(() -> definition.initialize(null, false));
+				} else if (operation.equals("reload")) {
+					activePath.set(Optional.empty());
+					ConfigSchema schema = definition.initialize(null, false);
+					activePath.set(Optional.of(path));
+					schema.invalidatePaths();
+					operations.add(value::get);
+				} else {
+					ConfigSchema schema = definition.initialize(null, false);
+					value.set(false);
+					operations.add(schema::promotePendingValuesAfterWorldRestart);
+				}
+			}
+		}
+		boolean expectedValue = !operation.equals("remoteDisconnect") && !operation.equals("worldRestart");
+		CountDownLatch listenersEntered = new CountDownLatch(2);
+		AtomicInteger completedListeners = new AtomicInteger();
+		for (int index = 0; index < 2; index++) {
+			ConfigValue<Boolean> other = values.get(1 - index);
+			values.get(index).addListener(change -> {
+				awaitConcurrentListener(listenersEntered);
+				assertEquals(expectedValue, other.get());
+				completedListeners.incrementAndGet();
+			});
+		}
+
+		runConcurrently(operations.getFirst(), operations.getLast());
+		assertEquals(2, completedListeners.get());
+	}
+
+	@Test
+	public void reloadReadReturnsAReentrantListenersLatestValue() throws IOException {
+		Path path = tempDir.resolve("reload.ini");
+		Files.writeString(path, "[category]\nenabled = true\n");
+		AtomicReference<Optional<Path>> activePath = new AtomicReference<>(Optional.empty());
+		ConfigCategoryBuilder builder = new ConfigCategoryBuilder("mezz_config.config.test", "category");
+		ConfigValue<Boolean> value = builder.addBoolean("enabled", false).build();
+		ConfigSchema schema = createSchema(activePath::get, builder);
+		value.addListener(change -> {
+			if (change.newValue()) {
+				value.set(false);
+			}
+		});
+		activePath.set(Optional.of(path));
+		schema.invalidatePaths();
+
+		assertFalse(value.get());
+		assertFalse(value.getPendingValue());
+	}
+
+	private static void runConcurrently(Runnable first, Runnable second) throws Exception {
+		// Daemon workers let a lock regression fail with a timeout instead of hanging the test process.
+		ExecutorService executor = Executors.newFixedThreadPool(2, task -> {
+			Thread thread = new Thread(task, "Cross-schema listener test");
+			thread.setDaemon(true);
+			return thread;
+		});
+		try {
+			Future<?> firstOperation = executor.submit(first);
+			Future<?> secondOperation = executor.submit(second);
+			firstOperation.get(5, TimeUnit.SECONDS);
+			secondOperation.get(5, TimeUnit.SECONDS);
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	private static void registerCrossSchemaListener(
+		String listenerType,
+		ConfigSchema schema,
+		ConfigValue<Boolean> value,
+		Runnable listener
+	) {
+		IConfigValueBatchChangeListener batchListener = changes -> {
+			if (changes.stream().anyMatch(change -> change.configValue() == value)) {
+				listener.run();
+			}
+		};
+		switch (listenerType) {
+			case "value" -> value.addListener(change -> listener.run());
+			case "pendingValue" -> value.addPendingListener(change -> listener.run());
+			case "valueBatch" -> value.addBatchListener(batchListener);
+			case "pendingValueBatch" -> value.addPendingBatchListener(batchListener);
+			case "schema" -> schema.addBatchListener(batchListener);
+			case "pendingSchema" -> schema.addPendingBatchListener(batchListener);
+			default -> throw new IllegalArgumentException(listenerType);
+		}
+	}
+
+	private static void awaitConcurrentListener(CountDownLatch listenersEntered) {
+		listenersEntered.countDown();
+		try {
+			assertTrue(listenersEntered.await(5, TimeUnit.SECONDS), "Both listeners must run concurrently.");
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new AssertionError(e);
+		}
 	}
 
 	@Test
