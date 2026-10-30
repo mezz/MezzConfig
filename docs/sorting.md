@@ -79,6 +79,27 @@ entries remain visible and are appended in their default order.
 If another API expects a comparator instead of a sorted list, pass it
 `categoryOrder.getComparator(allCategoryIds)`.
 
+## Reuse a resolved snapshot
+
+For repeated visibility checks and comparisons, resolve the available values once:
+
+```java
+ISortingSnapshot<String> snapshot = categoryOrder.getSnapshot(allCategoryIds);
+List<String> displayedCategoryIds = snapshot.getSortedValues();
+Comparator<String> comparator = snapshot.getComparator();
+boolean craftingVisible = snapshot.isVisible("minecraft:crafting");
+```
+
+These queries reuse the resolved order without traversing the available collection,
+serializing values, or accessing config files. Visibility uses value equality;
+hidden values and values absent from the snapshot are not visible. The comparator
+puts visible values first in their resolved order, then orders all other values
+with the config's default comparator.
+
+A snapshot does not change when the player edits the config or the available
+collection changes. Obtain a replacement when either happens. Use the change
+listener below to refresh a cached snapshot after config edits.
+
 ## Refresh when the order changes
 
 Register a listener when another screen or command can update the order while a

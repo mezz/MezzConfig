@@ -16,7 +16,8 @@ import java.util.List;
  * <p>
  * Pass the currently available values to {@link #getSortedValues(Collection)} whenever they need to be displayed. New
  * values are inserted using the default comparator, missing values are ignored, and any user-hidden values remain hidden.
- * Save edits with {@link #setSortedValues(Collection, List)}.
+ * Save edits with {@link #setSortedValues(Collection, List)}. For repeated visibility checks or comparisons, retain a
+ * {@link #getSnapshot(Collection) snapshot} and replace it when the available values or config change.
  * <p>
  * Create one through {@link IConfigRegistration#createSortingConfig(String, Comparator, boolean)}. Use the serializer
  * overload for mod-specific value types; those values must be immutable and have stable equality and serialization.
@@ -45,6 +46,21 @@ public interface ISortingConfig<T> {
 	 */
 	@Unmodifiable
 	List<T> getSortedValues(Collection<T> allValues);
+
+	/**
+	 * Resolve the saved preference for the currently available values into an immutable snapshot.
+	 * New values are inserted using the default comparator, missing values are ignored, and user-hidden values remain hidden.
+	 * <p>
+	 * Retain the snapshot for repeated queries without revalidating the available collection. Obtain a new snapshot when
+	 * available values change or an {@link #addChangeListener} callback reports a config edit.
+	 *
+	 * @param allValues every value that may be sorted; subsequent collection edits do not affect the snapshot
+	 * @return a snapshot of the resolved visibility and order
+	 * @throws IllegalArgumentException if the supplied values violate the serializer contract or the reconciled file-backed
+	 * order cannot be safely serialized
+	 * @since 0.6.10
+	 */
+	ISortingSnapshot<T> getSnapshot(Collection<T> allValues);
 
 	/**
 	 * Sort the currently available values without applying the user's saved preference.

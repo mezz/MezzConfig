@@ -1,5 +1,6 @@
 package net.mezzdev.config.test.sorting;
 
+import net.mezzdev.config.api.sorting.ISortingSnapshot;
 import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.api.value.serializer.IDeserializeResult;
 import net.mezzdev.config.file.ConfigFileReader;
@@ -30,6 +31,79 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SortingConfigTest {
+	@Test
+	public void snapshotsRetainTheirOrderAndVisibilityAfterEdits(@TempDir Path tempDir) {
+		SortingConfig<String> sorting = createSortingConfig(tempDir.resolve("order.txt"), Comparator.naturalOrder(), true);
+		List<String> values = new ArrayList<>(List.of("first", "second", "third"));
+		sorting.setSortedValues(values, List.of("second", "first"));
+		ISortingSnapshot<String> before = sorting.getSnapshot(values);
+
+		values.add("added");
+		sorting.setSortedValues(values, List.of("third", "added"));
+		ISortingSnapshot<String> after = sorting.getSnapshot(values);
+
+		assertEquals(List.of("second", "first"), before.getSortedValues());
+		assertTrue(before.isVisible(new String("first")));
+		assertFalse(before.isVisible("third"));
+		assertFalse(before.isVisible("added"));
+		assertEquals(List.of("third", "added"), after.getSortedValues());
+		assertFalse(after.isVisible("first"));
+		assertTrue(after.isVisible("third"));
+		assertEquals(List.of("second", "first", "added", "third"), values.stream().sorted(before.getComparator()).toList());
+		assertEquals(List.of("third", "added", "first", "second"), values.stream().sorted(after.getComparator()).toList());
+		assertThrows(UnsupportedOperationException.class, () -> before.getSortedValues().clear());
+	}
+
+	@Test
+	public void newSnapshotsDiscoverValuesWithoutChangingOlderSnapshots(@TempDir Path tempDir) {
+		Path path = tempDir.resolve("order.txt");
+		SortingConfig<String> sorting = createSortingConfig(path, Comparator.naturalOrder(), true);
+		sorting.setSortedValues(List.of("first", "hidden"), List.of("first"));
+		SortingConfig<String> reloaded = createSortingConfig(path, Comparator.naturalOrder(), true);
+		List<String> values = new ArrayList<>(List.of("hidden", "first", "first"));
+		ISortingSnapshot<String> before = reloaded.getSnapshot(values);
+
+		values.add("new");
+		ISortingSnapshot<String> after = reloaded.getSnapshot(values);
+
+		assertEquals(List.of("first"), before.getSortedValues());
+		assertFalse(before.isVisible("new"));
+		assertEquals(List.of("first", "new"), after.getSortedValues());
+		assertFalse(after.isVisible("hidden"));
+		assertEquals(after.getSortedValues(), reloaded.getSortedValues(values));
+		assertEquals(reloaded.isVisible(values, "hidden"), after.isVisible("hidden"));
+	}
+
+	@Test
+	public void snapshotQueriesDoNotRevalidateOrTraverseAvailableValues() {
+		CountingStringSerializer serializer = new CountingStringSerializer();
+		SortingConfig<String> sorting = SortingConfig.inMemory(serializer, Comparator.naturalOrder(), true);
+		AtomicInteger visits = new AtomicInteger();
+		List<String> values = new java.util.AbstractList<>() {
+			@Override
+			public String get(int index) {
+				visits.incrementAndGet();
+				return "value" + index;
+			}
+
+			@Override
+			public int size() {
+				return 1_000;
+			}
+		};
+		ISortingSnapshot<String> snapshot = sorting.getSnapshot(values);
+		visits.set(0);
+		serializer.calls.set(0);
+
+		for (int i = 0; i < 1_000; i++) {
+			assertTrue(snapshot.isVisible("value" + i));
+			assertTrue(snapshot.getComparator().compare("value0", "value999") < 0);
+		}
+
+		assertEquals(0, visits.get());
+		assertEquals(0, serializer.calls.get());
+	}
+
 	private static final IConfigValueSerializer<Integer> INTEGER_SERIALIZER = new IConfigValueSerializer<>() {
 		@Override
 		public String serialize(Integer value) {
@@ -430,7 +504,7 @@ public class SortingConfigTest {
 	}
 
 	@Test
-	public void comparatorLooksUpSavedIndexesWithoutLinearScans() {
+	public void comparatorAndSnapshotUseIndexedLookups() {
 		// Setup: separate but equal collections contain one thousand values that count equality checks.
 		AtomicInteger equalityChecks = new AtomicInteger();
 		IConfigValueSerializer<CountingValue> serializer = new IConfigValueSerializer<>() {
@@ -480,6 +554,13 @@ public class SortingConfigTest {
 		assertTrue(equalityChecks.get() < 50_000, "Comparator performed linear saved-order scans.");
 		assertEquals(0, valuesToSort.getFirst().id);
 		assertEquals(999, valuesToSort.getLast().id);
+
+		ISortingSnapshot<CountingValue> snapshot = sortingConfig.getSnapshot(registeredValues);
+		equalityChecks.set(0);
+		for (CountingValue value : valuesToSort) {
+			assertTrue(snapshot.isVisible(value));
+		}
+		assertTrue(equalityChecks.get() < 10_000, "Snapshot visibility performed linear scans.");
 	}
 
 	@Test

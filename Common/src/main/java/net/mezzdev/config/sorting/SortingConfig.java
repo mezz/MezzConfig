@@ -3,6 +3,7 @@ package net.mezzdev.config.sorting;
 import com.google.gson.JsonElement;
 import net.mezzdev.config.api.migration.ConfigMigrationStatus;
 import net.mezzdev.config.api.sorting.ISortingConfig;
+import net.mezzdev.config.api.sorting.ISortingSnapshot;
 import net.mezzdev.config.api.migration.ISortingConfigMigrator;
 import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.api.value.serializer.IDeserializeResult;
@@ -106,7 +107,12 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 
 	@Override
 	public synchronized List<T> getSortedValues(Collection<T> allValues) {
-		return getSortingSnapshot(allValues).sortedValues();
+		return getSnapshot(allValues).getSortedValues();
+	}
+
+	@Override
+	public synchronized ISortingSnapshot<T> getSnapshot(Collection<T> allValues) {
+		return getSortingSnapshot(allValues);
 	}
 
 	private SortingSnapshot<T> getSortingSnapshot(Collection<T> allValues) {
@@ -752,7 +758,7 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 
 	@Override
 	public synchronized Comparator<T> getComparator(Collection<T> allValues) {
-		return getSortingSnapshot(allValues).comparator();
+		return getSnapshot(allValues).getComparator();
 	}
 
 	@Override
@@ -762,7 +768,7 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		if (snapshot == null || !snapshot.validatedValues().contains(value)) {
 			validateSerializedIdentities(List.of(List.of(value)));
 		}
-		return getSortingSnapshot(allValues).visibleValues().contains(value);
+		return getSnapshot(allValues).isVisible(value);
 	}
 
 	@Override
@@ -871,7 +877,22 @@ public final class SortingConfig<T> implements ISortingConfig<T> {
 		Set<T> visibleValues,
 		Set<T> validatedValues,
 		Comparator<T> comparator
-	) {
+	) implements ISortingSnapshot<T> {
+		@Override
+		public List<T> getSortedValues() {
+			return sortedValues;
+		}
+
+		@Override
+		public boolean isVisible(T value) {
+			return visibleValues.contains(Objects.requireNonNull(value, "value"));
+		}
+
+		@Override
+		public Comparator<T> getComparator() {
+			return comparator;
+		}
+
 		private boolean matches(Collection<T> values) {
 			if (inputValues.size() != values.size()) {
 				return false;

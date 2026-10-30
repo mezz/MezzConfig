@@ -3,7 +3,7 @@
  * <p>
  * {@link ISortingConfig} is the main interface. Use it when the complete set of values is not known while declaring a
  * schema, such as plugins, recipes, or dynamically registered content. Use {@link ISortingConfigMigrator} to import an
- * older order format.
+ * older order format. Retain an {@link ISortingSnapshot} for repeated visibility checks and comparisons.
  */
 @NullMarked
 package net.mezzdev.config.api.sorting;
