@@ -764,7 +764,7 @@ public final class ConfigSerializer {
 		Settings settings,
 		Map<ConfigValue<?>, Object> updatedValues
 	) {
-		addNameAndDescription(serialized, category.getLocalizationKey(), "", settings);
+		addNameAndDescription(serialized, category.getLocalizationKey(), category.getDescriptionLocalizationKey(), "", settings);
 		serialized.add("[%s]".formatted(category.getName()));
 		for (ConfigValue<?> value : category.getConfigValues()) {
 			serializeConfigValue(serialized, value, saveDefaults, settings, updatedValues);
@@ -782,7 +782,7 @@ public final class ConfigSerializer {
 		String name = configValue.getName();
 		IConfigValueSerializer<T> serializer = configValue.getSerializer();
 
-		addNameAndDescription(serialized, configValue.getLocalizationKey(), "\t", settings);
+		addNameAndDescription(serialized, configValue.getLocalizationKey(), configValue.getDescriptionLocalizationKey(), "\t", settings);
 
 		String validValues = getComment(
 			CONFIG_VALUE_VALUES_KEY,
@@ -829,19 +829,20 @@ public final class ConfigSerializer {
 	private static void addNameAndDescription(
 		List<String> serialized,
 		String localizationKey,
+		String descriptionLocalizationKey,
 		String indentation,
 		Settings settings
 	) {
 		if (!settings.localizeComments()) {
 			addCommentedStrings(serialized, "Name: " + localizationKey, indentation);
-			addCommentedStrings(serialized, "Description: " + localizationKey + ".description", indentation);
+			addCommentedStrings(serialized, "Description: " + descriptionLocalizationKey, indentation);
 			return;
 		}
 		String nameComponent = ConfigProvider.getEnvironment().translate(localizationKey);
 		String localizedName = getLocalizedComment(CONFIG_NAME_KEY, "Name: %s", nameComponent);
 		addCommentedStrings(serialized, localizedName, indentation);
 
-		String descriptionComponent = ConfigProvider.getEnvironment().translate(localizationKey + ".description");
+		String descriptionComponent = ConfigProvider.getEnvironment().translate(descriptionLocalizationKey);
 		String description = getLocalizedComment(CONFIG_DESCRIPTION_KEY, "Description: %s", descriptionComponent);
 		addCommentedStrings(serialized, description, indentation);
 	}

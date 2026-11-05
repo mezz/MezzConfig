@@ -32,10 +32,17 @@ public final class ConfigTranslationChecker {
 		Collection<? extends IConfigCategory> categories
 	) {
 		Set<String> localizationKeys = new LinkedHashSet<>();
-		editorCategories.forEach(category -> addLocalizationKeys(localizationKeys, category.getLocalizationKey()));
+		editorCategories.forEach(category -> {
+			localizationKeys.add(category.getLocalizationKey());
+			localizationKeys.add(category.getDescriptionLocalizationKey());
+		});
 		categories.stream()
 			.flatMap(category -> category.getConfigValues().stream())
-			.forEach(configValue -> addLocalizationKeys(localizationKeys, configValue.getEditorInfo().getLocalizationKey()));
+			.map(configValue -> configValue.getEditorInfo())
+			.forEach(editorInfo -> {
+				localizationKeys.add(editorInfo.getLocalizationKey());
+				localizationKeys.add(editorInfo.getDescriptionLocalizationKey());
+			});
 
 		ConfigPhysicalSideProvider language = ConfigProvider.getEnvironment();
 		return localizationKeys.stream()
@@ -62,10 +69,5 @@ public final class ConfigTranslationChecker {
 		JsonObject translations = new JsonObject();
 		localizationKeys.forEach(localizationKey -> translations.addProperty(localizationKey, ""));
 		return PRETTY_PRINTING_GSON.toJson(translations);
-	}
-
-	private static void addLocalizationKeys(Set<String> localizationKeys, String localizationKey) {
-		localizationKeys.add(localizationKey);
-		localizationKeys.add(localizationKey + ".description");
 	}
 }

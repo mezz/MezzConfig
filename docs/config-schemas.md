@@ -142,8 +142,23 @@ integrations can discover built schemas, categories, value types, bounds,
 restart requirements, and translations.
 
 Use `value.getEditorInfo()` when an integration needs a value's stable name,
-localization key, presentation metadata, serializer, or pending-value listener
+localization keys, presentation metadata, serializer, or pending-value listener
 hooks. Regular feature code can stay on `IConfigValue` and its value accessors.
+
+Use `getLocalizationKey()` for the display name and
+`getDescriptionLocalizationKey()` for the description. Both return translation
+keys that the config screen translates into the active language:
+
+```java
+import net.minecraft.network.chat.Component;
+
+var editorInfo = value.getEditorInfo();
+Component name = Component.translatable(editorInfo.getLocalizationKey());
+Component description = Component.translatable(editorInfo.getDescriptionLocalizationKey());
+```
+
+`editorInfo.getName()` returns the stable storage name, such as `enabled`.
+Categories expose the same name and description translation key accessors.
 
 The localization prefix and stable category/value names form translation keys.
 For example, `assets/example_mod/lang/en_us.json` can contain:

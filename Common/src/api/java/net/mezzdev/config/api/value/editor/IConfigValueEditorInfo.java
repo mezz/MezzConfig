@@ -51,11 +51,24 @@ public interface IConfigValueEditorInfo<T> {
 	String getName();
 
 	/**
-	 * Get the translation key used for this config value's name.
+	 * Get the translation key used for this config value's display name.
+	 *
+	 * @see #getDescriptionLocalizationKey()
 	 *
 	 * @since 0.3.0
 	 */
 	String getLocalizationKey();
+
+	/**
+	 * Get the translation key used for this config value's description.
+	 *
+	 * @see #getLocalizationKey()
+	 *
+	 * @since 0.6.11
+	 */
+	default String getDescriptionLocalizationKey() {
+		return getLocalizationKey() + ".description";
+	}
 
 	/**
 	 * Get the edit mode hint for this value.

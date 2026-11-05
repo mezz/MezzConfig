@@ -21,10 +21,22 @@ public interface IConfigEditorCategory {
 	String getName();
 
 	/**
-	 * Get the translation key used for this category's name.
-	 * The category description uses this key with {@code .description} appended.
+	 * Get the translation key used for this category's display name.
+	 *
+	 * @see #getDescriptionLocalizationKey()
 	 *
 	 * @since 0.1.0
 	 */
 	String getLocalizationKey();
+
+	/**
+	 * Get the translation key used for this category's description.
+	 *
+	 * @see #getLocalizationKey()
+	 *
+	 * @since 0.6.11
+	 */
+	default String getDescriptionLocalizationKey() {
+		return getLocalizationKey() + ".description";
+	}
 }
