@@ -31,6 +31,11 @@ public final class DurationSerializer
 	implements IConfigValueSerializer<Duration> {
 
 	@Override
+	public Class<Duration> getValueClass() {
+		return Duration.class;
+	}
+
+	@Override
 	public String serialize(Duration value) {
 		return value.toString();
 	}
@@ -106,6 +111,16 @@ For a sorting config, the serialized text is also the value's saved identity.
 Equal values must use the same text, and different values must not collide.
 
 ## Help config screens edit the value
+
+Since 0.7.0, every serializer must provide `getValueClass()`, returning a non-null
+`Class<? extends T>` without inspecting a current value. Use boxed classes for
+primitives. Enum serializers expose the declared enum class, and custom
+serializers return their own value class.
+
+List serializers expose `List.class`. Java erases element types, so inspect
+`getElementSerializer()` to learn the element type and its validation. For
+key-value entries, inspect `getKeySerializer()` and `getValueSerializer()` for
+the two components. This works recursively for empty and nested lists.
 
 The serializer can optionally expose an inclusive range or every valid choice.
 Config-screen integrations can use that information for sliders and selection

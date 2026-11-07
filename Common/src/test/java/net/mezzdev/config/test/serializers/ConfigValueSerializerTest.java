@@ -1,6 +1,7 @@
 package net.mezzdev.config.test.serializers;
 
 import net.mezzdev.config.api.value.color.ConfigColorFormat;
+import net.mezzdev.config.api.value.IConfigValue;
 import net.mezzdev.config.api.value.serializer.ConfigListOrdering;
 import net.mezzdev.config.api.value.serializer.ConfigValueRange;
 import net.mezzdev.config.api.value.serializer.IDeserializeResult;
@@ -8,6 +9,7 @@ import net.mezzdev.config.api.value.serializer.IConfigKeyValueSerializer;
 import net.mezzdev.config.api.value.serializer.IConfigListValueSerializer;
 import net.mezzdev.config.api.value.serializer.IConfigValueSerializer;
 import net.mezzdev.config.api.value.color.PackedColor;
+import net.mezzdev.config.schema.ConfigCategoryBuilder;
 import net.mezzdev.config.serializers.BooleanSerializer;
 import net.mezzdev.config.serializers.ColorSerializer;
 import net.mezzdev.config.serializers.DoubleSerializer;
@@ -22,11 +24,116 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigValueSerializerTest {
+	@Test
+	public void emptyBuiltInListsExposeTypesForAddingTheirFirstElement() {
+		ConfigCategoryBuilder category = new ConfigCategoryBuilder("test.config", "general");
+		assertEmptyListType(category.addBooleanList("booleans", List.of()).build(), Boolean.class, true);
+		assertEmptyListType(category.addStringList("strings", List.of()).build(), String.class, "true");
+		assertEmptyListType(category.addIntegerList("integers", List.of(), 1, 10).build(), Integer.class, 2);
+		assertEmptyListType(category.addLongList("longs", List.of()).build(), Long.class, Long.MAX_VALUE);
+		assertEmptyListType(category.addDoubleList("doubles", List.of()).build(), Double.class, 0.5);
+		assertEmptyListType(category.addColorList("colors", List.of()).build(), PackedColor.class, PackedColor.rgb(0x7492CC));
+		assertEmptyListType(category.addEnumList("enums", List.of(), TestEnum.class).build(), TestEnum.class, TestEnum.FIRST_VALUE);
+	}
+
+	private static <T> void assertEmptyListType(IConfigValue<List<T>> value, Class<? extends T> elementClass, T firstElement) {
+		IConfigValueSerializer<List<T>> serializer = value.getEditorInfo().getSerializer();
+		assertEquals(List.of(), value.get());
+		Class<? extends List<T>> listClass = serializer.getValueClass();
+		assertEquals(List.class, listClass);
+		IConfigListValueSerializer<?> listSerializer = assertInstanceOf(IConfigListValueSerializer.class, serializer);
+		assertEquals(elementClass, listSerializer.getElementSerializer().getValueClass());
+		assertEquals(List.of(), deserializeValue(serializer, "[]"));
+		List<T> populated = List.of(firstElement);
+		List<T> parsed = listClass.cast(deserializeValue(serializer, serializer.serialize(populated)));
+		assertEquals(populated, parsed);
+		assertEquals(firstElement, elementClass.cast(parsed.getFirst()));
+		assertEquals(elementClass, listSerializer.getElementSerializer().getValueClass());
+	}
+
+	@Test
+	public void nestedEmptyListsExposeEntryComponentTypesWithoutSampleValues() {
+		ConfigCategoryBuilder category = new ConfigCategoryBuilder("test.config", "general");
+		IConfigValue<List<List<NamedColor>>> value = category.addList(
+				"colors", List.of(), new ListSerializer<>(new NamedColorSerializer())
+			)
+			.build();
+		IConfigValueSerializer<List<List<NamedColor>>> serializer = value.getEditorInfo().getSerializer();
+		assertEquals(List.class, serializer.getValueClass());
+		IConfigListValueSerializer<?> outer = assertInstanceOf(IConfigListValueSerializer.class, serializer);
+		assertEquals(List.class, outer.getElementSerializer().getValueClass());
+		IConfigListValueSerializer<?> inner = assertInstanceOf(IConfigListValueSerializer.class, outer.getElementSerializer());
+		assertEquals(NamedColor.class, inner.getElementSerializer().getValueClass());
+		IConfigKeyValueSerializer<?, ?, ?> entry = assertInstanceOf(IConfigKeyValueSerializer.class, inner.getElementSerializer());
+		assertSame(String.class, entry.getKeySerializer().getValueClass());
+		assertSame(PackedColor.class, entry.getValueSerializer().getValueClass());
+		assertEquals(List.of(), deserializeValue(serializer, "[]"));
+		assertEquals(List.of(List.of()), deserializeValue(serializer, "[[]]"));
+		List<List<NamedColor>> populated = List.of(List.of(new NamedColor("Blue", PackedColor.rgb(0x2222DD))));
+		assertEquals(populated, deserializeValue(serializer, serializer.serialize(populated)));
+	}
+
+	@Test
+	public void enumTypesExposeTheDeclaringClassWithoutRequiringAConstant() {
+		EnumSerializer<EmptyEnum> empty = new EnumSerializer<>(EmptyEnum.class);
+		assertEquals(List.of(), empty.getAllValidValues().orElseThrow());
+		Class<? extends EmptyEnum> emptyClass = empty.getValueClass();
+		assertEquals(EmptyEnum.class, emptyClass);
+
+		EnumSerializer<SpecializedEnum> specialized = new EnumSerializer<>(SpecializedEnum.class);
+		Class<? extends SpecializedEnum> valueClass = specialized.getValueClass();
+		assertEquals(SpecializedEnum.class, valueClass);
+		SpecializedEnum parsed = valueClass.cast(deserializeValue(specialized, "VALUE"));
+		assertEquals(SpecializedEnum.VALUE, parsed);
+	}
+
+	@Test
+	public void customSerializersExposeTheirClassForEmptyLists() {
+		IConfigValueSerializer<String> serializer = new IConfigValueSerializer<>() {
+			@Override
+			public Class<String> getValueClass() {
+				return String.class;
+			}
+
+			@Override
+			public String serialize(String value) {
+				return value;
+			}
+
+			@Override
+			public IDeserializeResult<String> deserialize(String string) {
+				if (isValid(string)) {
+					return IDeserializeResult.success(string);
+				}
+				return IDeserializeResult.failure("Expected a nonempty ID");
+			}
+
+			@Override
+			public boolean isValid(String value) {
+				return !value.isEmpty();
+			}
+
+			@Override
+			public String getValidValuesDescription() {
+				return "A nonempty ID";
+			}
+		};
+		ConfigCategoryBuilder category = new ConfigCategoryBuilder("test.config", "general");
+		IConfigValue<List<String>> ids = category.addList("ids", List.of(), serializer).build();
+		IConfigValueSerializer<List<String>> listSerializer = ids.getEditorInfo().getSerializer();
+		assertEquals(List.of(), ids.get());
+		assertEquals(String.class, serializer.getValueClass());
+		assertEquals(List.class, listSerializer.getValueClass());
+		assertEquals(List.of("true"), deserializeValue(listSerializer, listSerializer.serialize(List.of("true"))));
+		assertTrue(serializer.deserialize("").getResult().isEmpty());
+	}
+
 	@Test
 	public void booleanSerializerParsesTrimmedCaseInsensitiveValues() {
 		// Operation and assertions: booleans parse without case or padding sensitivity and expose their finite domain.
@@ -436,9 +543,25 @@ public class ConfigValueSerializerTest {
 		SECOND_VALUE
 	}
 
+	private enum EmptyEnum {}
+
+	private enum SpecializedEnum {
+		VALUE {
+			@Override
+			public String toString() {
+				return "Specialized value";
+			}
+		}
+	}
+
 	private record NamedColor(String name, PackedColor color) {}
 
 	private static final class NamedColorSerializer implements IConfigKeyValueSerializer<NamedColor, String, PackedColor> {
+		@Override
+		public Class<NamedColor> getValueClass() {
+			return NamedColor.class;
+		}
+
 		@Override
 		public IConfigValueSerializer<String> getKeySerializer() {
 			return StringSerializer.INSTANCE;

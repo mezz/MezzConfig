@@ -47,6 +47,11 @@ public class EnumSerializer<T extends Enum<T>> implements IConfigValueSerializer
 	}
 
 	@Override
+	public Class<T> getValueClass() {
+		return enumClass;
+	}
+
+	@Override
 	public String serialize(T value) {
 		return value.name();
 	}

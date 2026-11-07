@@ -22,6 +22,11 @@ public final class LongSerializer implements IConfigValueSerializer<Long> {
 	}
 
 	@Override
+	public Class<Long> getValueClass() {
+		return Long.class;
+	}
+
+	@Override
 	public Optional<ConfigValueRange<Long>> getRange() {
 		return Optional.of(range);
 	}

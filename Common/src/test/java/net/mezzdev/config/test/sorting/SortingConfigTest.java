@@ -106,6 +106,11 @@ public class SortingConfigTest {
 
 	private static final IConfigValueSerializer<Integer> INTEGER_SERIALIZER = new IConfigValueSerializer<>() {
 		@Override
+		public Class<Integer> getValueClass() {
+			return Integer.class;
+		}
+
+		@Override
 		public String serialize(Integer value) {
 			return value.toString();
 		}
@@ -130,6 +135,11 @@ public class SortingConfigTest {
 		}
 	};
 	private static final IConfigValueSerializer<EquivalentValue> EQUIVALENT_VALUE_SERIALIZER = new IConfigValueSerializer<>() {
+		@Override
+		public Class<EquivalentValue> getValueClass() {
+			return EquivalentValue.class;
+		}
+
 		@Override
 		public String serialize(EquivalentValue value) {
 			return value.serializedIdentity;
@@ -509,6 +519,11 @@ public class SortingConfigTest {
 		AtomicInteger equalityChecks = new AtomicInteger();
 		IConfigValueSerializer<CountingValue> serializer = new IConfigValueSerializer<>() {
 			@Override
+			public Class<CountingValue> getValueClass() {
+				return CountingValue.class;
+			}
+
+			@Override
 			public String serialize(CountingValue value) {
 				return Integer.toString(value.id);
 			}
@@ -707,6 +722,11 @@ public class SortingConfigTest {
 		// Setup: a serializer maps distinct integers to the same serialized identity.
 		Path path = tempDir.resolve("ambiguous-sort-order.txt");
 		IConfigValueSerializer<Integer> ambiguousSerializer = new IConfigValueSerializer<>() {
+			@Override
+			public Class<Integer> getValueClass() {
+				return Integer.class;
+			}
+
 			@Override
 			public String serialize(Integer value) {
 				return Integer.toString(value % 2);
@@ -909,6 +929,11 @@ public class SortingConfigTest {
 
 	private static final class CountingStringSerializer implements IConfigValueSerializer<String> {
 		private final AtomicInteger calls = new AtomicInteger();
+
+		@Override
+		public Class<String> getValueClass() {
+			return String.class;
+		}
 
 		@Override
 		public String serialize(String value) {

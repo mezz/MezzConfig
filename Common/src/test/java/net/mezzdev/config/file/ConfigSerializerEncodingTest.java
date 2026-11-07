@@ -211,6 +211,11 @@ public class ConfigSerializerEncodingTest {
 
 	private static final class IdentitySerializer implements IConfigValueSerializer<String> {
 		@Override
+		public Class<String> getValueClass() {
+			return String.class;
+		}
+
+		@Override
 		public String serialize(String value) {
 			return value;
 		}

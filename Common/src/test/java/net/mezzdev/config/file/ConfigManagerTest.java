@@ -243,6 +243,11 @@ public class ConfigManagerTest {
 		AtomicReference<List<Boolean>> valuesReadDuringLoading = new AtomicReference<>();
 		IConfigValueSerializer<Boolean> observer = new IConfigValueSerializer<>() {
 			@Override
+			public Class<Boolean> getValueClass() {
+				return Boolean.class;
+			}
+
+			@Override
 			public String serialize(Boolean value) {
 				return BooleanSerializer.INSTANCE.serialize(value);
 			}

@@ -27,6 +27,7 @@ public class ConfigFileValueAdapterTest {
 	public void throwingDeserializerBecomesABoundedFailure() {
 		// Setup: a custom serializer throws an excessively long exception for external input.
 		IConfigValueSerializer<String> serializer = serializer(
+			String.class,
 			value -> value,
 			value -> {
 				throw new IllegalArgumentException("x".repeat(2_000));
@@ -48,11 +49,13 @@ public class ConfigFileValueAdapterTest {
 	public void successfulInvalidDeserializerResultIsRejected() {
 		// Setup: two serializers return invalid values as complete and partial successes.
 		IConfigValueSerializer<String> successfulSerializer = serializer(
+			String.class,
 			value -> value,
 			value -> IDeserializeResult.success("invalid"),
 			"valid"::equals
 		);
 		IConfigValueSerializer<String> partialSerializer = serializer(
+			String.class,
 			value -> value,
 			value -> IDeserializeResult.partialSuccess("invalid", "recovered input"),
 			"valid"::equals
@@ -76,16 +79,19 @@ public class ConfigFileValueAdapterTest {
 		// Setup: serializers violate determinism, round-trip, and exception-safety requirements.
 		AtomicInteger serializations = new AtomicInteger();
 		IConfigValueSerializer<String> nonDeterministic = serializer(
+			String.class,
 			value -> value + serializations.incrementAndGet(),
 			IDeserializeResult::success,
 			value -> true
 		);
 		IConfigValueSerializer<String> lossy = serializer(
+			String.class,
 			value -> value,
 			value -> IDeserializeResult.success(value + " changed"),
 			value -> true
 		);
 		IConfigValueSerializer<String> throwing = serializer(
+			String.class,
 			value -> {
 				throw new IllegalStateException("cannot serialize");
 			},
@@ -118,6 +124,7 @@ public class ConfigFileValueAdapterTest {
 		// Setup: a serializer passes construction validation but becomes unavailable later.
 		AtomicBoolean serializationFails = new AtomicBoolean();
 		IConfigValueSerializer<String> serializer = serializer(
+			String.class,
 			value -> {
 				if (serializationFails.get()) {
 					throw new IllegalStateException("serializer became unavailable");
@@ -144,6 +151,7 @@ public class ConfigFileValueAdapterTest {
 		Path path = tempDir.resolve("test.ini");
 		Files.writeString(path, "[general]\nbad = boom\ngood = false\n");
 		IConfigValueSerializer<String> serializer = serializer(
+			String.class,
 			value -> value,
 			value -> {
 				if (value.equals("boom")) {
@@ -167,11 +175,17 @@ public class ConfigFileValueAdapterTest {
 	}
 
 	private static <T> IConfigValueSerializer<T> serializer(
+		Class<? extends T> valueClass,
 		SerializerFunction<T, String> serialize,
 		SerializerFunction<String, IDeserializeResult<T>> deserialize,
 		SerializerFunction<T, Boolean> isValid
 	) {
 		return new IConfigValueSerializer<>() {
+			@Override
+			public Class<? extends T> getValueClass() {
+				return valueClass;
+			}
+
 			@Override
 			public String serialize(T value) {
 				return serialize.apply(value);

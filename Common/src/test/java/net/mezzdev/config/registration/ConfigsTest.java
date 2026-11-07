@@ -39,6 +39,11 @@ public class ConfigsTest {
 	private static final int MAX_CONFIG_FILE_BYTES = 4 * 1024 * 1024;
 	private static final IConfigValueSerializer<Integer> INTEGER_SERIALIZER = new IConfigValueSerializer<>() {
 		@Override
+		public Class<Integer> getValueClass() {
+			return Integer.class;
+		}
+
+		@Override
 		public String serialize(Integer value) {
 			return value.toString();
 		}

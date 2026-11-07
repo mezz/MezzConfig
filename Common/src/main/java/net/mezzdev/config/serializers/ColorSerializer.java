@@ -21,6 +21,11 @@ public final class ColorSerializer implements IConfigValueSerializer<PackedColor
 	private ColorSerializer() {}
 
 	@Override
+	public Class<PackedColor> getValueClass() {
+		return PackedColor.class;
+	}
+
+	@Override
 	public String serialize(PackedColor value) {
 		return switch (value.format()) {
 			case RGB -> "0x%06X".formatted(value.packedValue());

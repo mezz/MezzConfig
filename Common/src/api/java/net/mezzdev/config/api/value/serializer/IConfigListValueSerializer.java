@@ -19,6 +19,19 @@ import java.util.List;
  */
 public interface IConfigListValueSerializer<T> extends IConfigValueSerializer<List<T>> {
 	/**
+	 * {@inheritDoc}
+	 *
+	 * @since 0.7.0
+	 */
+	@Override
+	default Class<? extends List<T>> getValueClass() {
+		// Use the erased List class because Java has no class literal for List<T>.
+		@SuppressWarnings("unchecked")
+		Class<? extends List<T>> listClass = (Class<? extends List<T>>) (Class<?>) List.class;
+		return listClass;
+	}
+
+	/**
 	 * Tell config editors whether reordering entries changes the setting's meaning.
 	 * <p>
 	 * MezzConfig preserves the physical order in the config file either way. Integrations can use this metadata to

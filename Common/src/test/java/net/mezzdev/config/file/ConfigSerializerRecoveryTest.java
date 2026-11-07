@@ -116,6 +116,11 @@ public class ConfigSerializerRecoveryTest {
 		AtomicBoolean serializationFails = new AtomicBoolean();
 		IConfigValueSerializer<String> serializer = new IConfigValueSerializer<>() {
 			@Override
+			public Class<String> getValueClass() {
+				return String.class;
+			}
+
+			@Override
 			public String serialize(String value) {
 				if (serializationFails.get()) {
 					throw new IllegalStateException("expected test serialization failure");

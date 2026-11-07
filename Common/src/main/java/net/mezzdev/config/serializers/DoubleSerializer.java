@@ -23,6 +23,11 @@ public final class DoubleSerializer implements IConfigValueSerializer<Double> {
 	}
 
 	@Override
+	public Class<Double> getValueClass() {
+		return Double.class;
+	}
+
+	@Override
 	public Optional<ConfigValueRange<Double>> getRange() {
 		return Optional.of(range);
 	}

@@ -89,6 +89,11 @@ public class ConfigSchemaTest {
 		AtomicBoolean modifyFileOnRead = new AtomicBoolean();
 		IConfigValueSerializer<Boolean> serializer = new IConfigValueSerializer<>() {
 			@Override
+			public Class<Boolean> getValueClass() {
+				return Boolean.class;
+			}
+
+			@Override
 			public String serialize(Boolean value) {
 				return BooleanSerializer.INSTANCE.serialize(value);
 			}
@@ -2096,6 +2101,11 @@ public class ConfigSchemaTest {
 		// Setup: one remote value makes its serializer throw while a neighboring value is valid.
 		IConfigValueSerializer<String> throwingSerializer = new IConfigValueSerializer<>() {
 			@Override
+			public Class<String> getValueClass() {
+				return String.class;
+			}
+
+			@Override
 			public String serialize(String value) {
 				return value;
 			}
@@ -2397,6 +2407,11 @@ public class ConfigSchemaTest {
 	private record ExtensionEntry(String key, String value) {}
 
 	private static final class ExtensionEntrySerializer implements IConfigKeyValueSerializer<ExtensionEntry, String, String> {
+		@Override
+		public Class<ExtensionEntry> getValueClass() {
+			return ExtensionEntry.class;
+		}
+
 		@Override
 		public IConfigValueSerializer<String> getKeySerializer() {
 			return StringSerializer.INSTANCE;

@@ -25,6 +25,21 @@ import java.util.Optional;
  */
 public interface IConfigValueSerializer<T> {
 	/**
+	 * Get the value class independently of current values, defaults, and collection contents.
+	 * <p>
+	 * The declared class must remain constant and accept every value supported by this serializer. Use boxed classes for
+	 * primitive values. Describe the Java value, even when its serialized text resembles another type.
+	 * <p>
+	 * A list's class describes only the container because Java erases element types. Use
+	 * {@link IConfigListValueSerializer#getElementSerializer()} to inspect the element class and validation.
+	 *
+	 * @return the non-null value class
+	 *
+	 * @since 0.7.0
+	 */
+	Class<? extends T> getValueClass();
+
+	/**
 	 * Convert a valid value to its stable text representation.
 	 *
 	 * @since 0.1.0

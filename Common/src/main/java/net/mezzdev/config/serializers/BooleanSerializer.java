@@ -18,6 +18,11 @@ public final class BooleanSerializer implements IConfigValueSerializer<Boolean> 
 	private BooleanSerializer() {}
 
 	@Override
+	public Class<Boolean> getValueClass() {
+		return Boolean.class;
+	}
+
+	@Override
 	public String serialize(Boolean value) {
 		return value.toString();
 	}
