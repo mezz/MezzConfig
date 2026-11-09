@@ -69,13 +69,8 @@ val specificationVersion: String by extra
 val isInitialApiRelease = apiBaselineVersion == specificationVersion
 
 repositories {
-    maven {
-        name = "publicationValidation"
-        url = rootProject.layout.buildDirectory.dir("publication-validation").get().asFile.toURI()
-        content {
-            includeGroup(configModGroup)
-        }
-    }
+    // Resolve baselines from releases so a missing version cannot cache a failed lookup in the local repository
+    // before publication validation populates it.
     maven("https://maven.blamejared.com") {
         name = "mezzReleases"
         content {

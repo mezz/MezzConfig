@@ -461,8 +461,6 @@ subprojects {
     }
 
     tasks.withType<PublishToMavenRepository>().configureEach {
-        // The compatibility baseline may come from the same local validation repository.
-        // Finish reading it before any publication task can replace the artifact.
         dependsOn(":Common:checkJarCompatibility")
     }
 
