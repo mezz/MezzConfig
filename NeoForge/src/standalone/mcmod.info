@@ -1,0 +1,12 @@
+[
+  {
+    "modid": "${configModId}",
+    "name": "${modName}",
+    "description": "${modDescription}",
+    "version": "${version}",
+    "mcversion": "${minecraftVersion}",
+    "url": "${githubUrl}",
+    "authorList": ["${modAuthor}"],
+    "logoFile": "mezz_config-icon.png"
+  }
+]

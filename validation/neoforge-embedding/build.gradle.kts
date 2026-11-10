@@ -81,6 +81,16 @@ val validateStandaloneDistribution = tasks.register("validateStandaloneDistribut
             check(manifest.mainAttributes.getValue("FMLModType") == "GAMELIBRARY") { "Wrapper is not a game library." }
             check(archive.getEntry("META-INF/neoforge.mods.toml") == null) { "Wrapper declares a top-level mod." }
             check(archive.entries().asSequence().none { it.name.endsWith(".class") }) { "Wrapper contains runtime classes." }
+            val launcherMetadataEntry = archive.getEntry("mcmod.info") ?: error("Wrapper is missing launcher metadata.")
+            val launcherMetadata = archive.getInputStream(launcherMetadataEntry).use { JsonSlurper().parse(it) } as List<*>
+            val launcherMod = launcherMetadata.single() as Map<*, *>
+            check(launcherMod["modid"] == "mezz_config" && launcherMod["name"] == "MezzConfig") {
+                "Launcher metadata does not identify MezzConfig."
+            }
+            check(launcherMod["version"] == mezzConfigVersion && launcherMod["mcversion"] == minecraftVersion) {
+                "Launcher metadata does not match the distributed version."
+            }
+            check(archive.getEntry(launcherMod["logoFile"] as String) != null) { "Wrapper is missing the launcher icon." }
             val runtimeBytes = archive.readEmbeddedRuntime("[$mezzConfigVersion,)")
             check(runtimeBytes.contentEquals(runtimeJar.readBytes())) { "Wrapper does not contain the published Maven runtime." }
         }

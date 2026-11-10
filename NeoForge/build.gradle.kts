@@ -17,6 +17,10 @@ val jspecifyVersion: String by extra
 val configModGroup: String by extra
 val neoforgeTestModId: String by extra
 val modJavaVersion: String by extra
+val modName: String by extra
+val modDescription: String by extra
+val modAuthor: String by extra
+val githubUrl: String by extra
 val deduplicatingRunnerVersion: String by extra
 val fileWatcherVersion: String by extra
 val jsr305Version: String by extra
@@ -194,10 +198,18 @@ tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+// Use mcmod.info so launchers can identify the wrapper without declaring a top-level NeoForge mod.
+// Keep the NeoForge descriptor inside the nested runtime so JarJar can replace that runtime.
 val standaloneMetadata = tasks.register<ProcessResources>("processStandaloneMetadata") {
     val properties = mapOf(
         "group" to configModGroup,
         "artifact" to baseArchivesName,
+        "configModId" to configModId,
+        "modName" to modName,
+        "modDescription" to modDescription,
+        "modAuthor" to modAuthor,
+        "githubUrl" to githubUrl,
+        "minecraftVersion" to minecraftVersion,
         "version" to project.version.toString(),
         "runtimeFileName" to tasks.jar.get().archiveFileName.get()
     )
@@ -214,6 +226,7 @@ val standaloneJar = tasks.register<Jar>("standaloneJar") {
         "Automatic-Module-Name" to "net.mezzdev.config.neoforge.distribution"
     )
     from(standaloneMetadata)
+    from(commonProject.file("src/main/resources/mezz_config-icon.png"))
     from(tasks.jar) { into("META-INF/jarjar") }
 }
 
