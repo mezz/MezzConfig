@@ -42,24 +42,3 @@ into the existing `depends` object:
 
 This tells Fabric Loader to require MezzConfig and start it before your mod.
 Change the version range only when your mod supports a different range.
-
-## Optional: include MezzConfig in your jar
-
-You can include MezzConfig when your mod must work as a single download. This
-makes installation simpler, but increases your jar size and packages another
-copy in every mod that uses this option.
-
-Include the complete Fabric artifact:
-
-```kotlin
-dependencies {
-	include("net.mezzdev.config:mezz_config-1.21.1-fabric:$mezzConfigVersion")
-}
-```
-
-Run `./gradlew build` as usual. The release jar now contains MezzConfig and
-satisfies the same required dependency in
-`fabric.mod.json`; do not remove that entry.
-
-For more detail, see the official
-[Fabric Loom dependency documentation](https://docs.fabricmc.net/develop/loom/#dependency-configurations).

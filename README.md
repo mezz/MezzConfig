@@ -31,9 +31,6 @@ Choose the guide for your loader:
 - NeoForge with [ModDevGradle](docs/neoforge.md) or
   [NeoGradle](docs/neogradle.md)
 
-Each guide also explains how to include MezzConfig inside your mod as an
-optional Jar-in-Jar dependency.
-
 Use classes under `net.mezzdev.config.api`, other packages are internal.
 
 ## Documentation
